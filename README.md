@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
-  <img src="https://img.shields.io/badge/tests-32%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-106%20passed-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -66,6 +66,9 @@ fusion-k12 personalize path 张三 3 数学 掌握分数运算
 
 # Generate a worksheet
 fusion-k12 content worksheet 英语 3 动物
+
+# Start HTTP API server
+fusion-k12 serve --port 8900
 ```
 
 ---
@@ -126,14 +129,27 @@ Worksheets, flashcards, slides, educational games, parent communication.
 | `generate_educational_game()` | Design classroom learning games |
 | `generate_parent_communication()` | Write parent communication templates |
 
+### 6. HTTP API (`serve.py`)
+
+REST API for programmatic access (default port 8900).
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check |
+| `/api/curriculum/plan` | POST | Generate lesson plan |
+| `/api/assessment/grade` | POST | Grade math problem |
+| `/api/subject/explain` | POST | Explain concept |
+| `/api/personalize/path` | POST | Create learning path |
+| `/api/content/generate` | POST | Generate content (worksheet/flashcards/slides/game) |
+
 ---
 
 ## 🏗️ Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                    CLI (fusion-k12)                           │
-│    lesson │ assess │ subject │ personalize │ content          │
+│              CLI (fusion-k12)  │  HTTP API (serve.py:8900)   │
+│  lesson │ assess │ subject │ personalize │ content │ serve   │
 ├──────────────────────────────────────────────────────────────┤
 │                    Engine Layer                                │
 │  CurriculumEngine │ AssessmentEngine │ SubjectExpert          │

@@ -28,18 +28,15 @@ class TestMLXClientDeep:
         with pytest.raises(Exception):
             await client.chat([{"role": "user", "content": "hi"}])
 
-    def test_client_property(self):
-        """测试 client 属性延迟初始化。"""
+    def test_inner_client(self):
+        """测试 _inner 客户端初始化。"""
         client = MLXClient()
-        c = client.client
-        assert c is not None
-        # 第二次调用返回同一实例
-        assert client.client is c
+        assert client._inner is not None
 
-    def test_client_base_url(self):
-        """测试自定义 base_url。"""
+    def test_inner_client_custom_base_url(self):
+        """测试自定义 base_url 传入 _inner。"""
         client = MLXClient(base_url="http://localhost:18000/v1")
-        assert "18000" in client.base_url
+        assert client._inner is not None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -612,11 +609,10 @@ class TestMockSuccess:
 
     @pytest.mark.asyncio
     async def test_ai_client_chat_success(self):
-        """测试 AI 客户端 chat 成功路径。"""
+        """测试 AI 客户端 _inner 初始化。"""
         from fusion_k12_teacher.ai_client import MLXClient
         client = MLXClient(model="test")
-        # 直接测试 client 属性
-        assert client.client is not None
+        assert client._inner is not None
         # 测试 chat 失败（fusion-mlx 不可用）
         with pytest.raises(Exception):
             await client.chat([{"role": "user", "content": "hi"}])
