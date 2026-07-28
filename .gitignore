@@ -18,4 +18,4 @@ build/
 # Test / Coverage
 .pytest_cache/
 .coverage
-htmlcov/
+htmlcov/CLAUDE.md
