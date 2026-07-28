@@ -204,6 +204,15 @@ async def _async_content_worksheet(ctx, subject, grade, topic):
     click.echo()
 
 
+@cli.command()
+@click.option("--host", default="0.0.0.0", help="监听地址")
+@click.option("--port", default=8900, help="监听端口")
+def serve(host, port):
+    """启动 HTTP API 服务。"""
+    import uvicorn
+    uvicorn.run("fusion_k12_teacher.serve:app", host=host, port=port)
+
+
 def main():
     cli()
 

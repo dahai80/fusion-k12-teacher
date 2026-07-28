@@ -304,35 +304,77 @@ fusion-k12 personalize path <student> <grade> <subject> <goal>
 fusion-k12 content worksheet <subject> <grade> <topic>
 ```
 
-## Data Models
+#### `serve`
 
-### `Vulnerability`
+```bash
+fusion-k12 serve [--host 0.0.0.0] [--port 8900]
+```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `str` | Unique identifier |
-| `title` | `str` | Vulnerability title |
-| `description` | `str` | Detailed description |
-| `severity` | `str` | `critical`, `high`, `medium`, `low` |
-| `confidence` | `float` | 0.0 - 1.0 |
-| `file_path` | `str` | Affected file path |
-| `line_number` | `int` | Line number |
-| `code_snippet` | `str` | Surrounding code context |
-| `rule_id` | `str` | Matching rule ID |
-| `cwe_id` | `str` | CWE identifier |
-| `fix_suggestion` | `str` | Fix recommendation |
-| `verified` | `bool` | AI-verified status |
+## HTTP API Reference
 
-### `ScanRule`
+Base URL: `http://localhost:8900`
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `str` | Rule identifier |
-| `name` | `str` | Human-readable name |
-| `description` | `str` | Rule description |
-| `severity` | `str` | Default severity |
-| `cwe_id` | `str` | CWE mapping |
-| `pattern` | `str` | Regex pattern |
-| `language` | `str` | Target language |
-| `fix_template` | `str` | Fix suggestion template |
-| `category` | `str` | `injection`, `xss`, `crypto`, `config`, `auth` |
+### Health Check
+
+```
+GET /api/health
+```
+
+Response: `{"status": "ok", "version": "0.2.0"}`
+
+### Curriculum Plan
+
+```
+POST /api/curriculum/plan
+```
+
+Request body:
+```json
+{"grade": "3", "subject": "数学", "topic": "分数"}
+```
+
+### Assessment Grade
+
+```
+POST /api/assessment/grade
+```
+
+Request body:
+```json
+{"question": "2+2=?", "answer": "4", "standard": "4"}
+```
+
+### Subject Explain
+
+```
+POST /api/subject/explain
+```
+
+Request body:
+```json
+{"question": "分数", "grade": "3"}
+```
+
+### Personalize Path
+
+```
+POST /api/personalize/path
+```
+
+Request body:
+```json
+{"student_id": "张三", "progress": {"grade": "3", "subject": "数学", "goal": "掌握分数"}}
+```
+
+### Content Generate
+
+```
+POST /api/content/generate
+```
+
+Request body:
+```json
+{"topic": "分数", "grade": "3", "style": "interactive"}
+```
+
+`style` values: `interactive` (worksheet), `flashcards`, `slides`, `game`
