@@ -2,6 +2,9 @@
   <h1>🍎 Fusion-K12-Teacher</h1>
   <p><strong>Local AI-powered K-12 education assistant for macOS Apple Silicon</strong></p>
   <p><em>100% offline, zero data upload, powered by fusion-mlx. The domestic alternative to Claude K-12 Teacher.</em></p>
+  <p>
+    <a href="README_CN.md">中文文档</a>
+  </p>
 </div>
 
 <p align="center">
@@ -35,7 +38,7 @@
 | **Parent communication** | ✅ Templates | ✅ Templates |
 | **STEM projects** | ✅ PBL design | ✅ PBL design |
 | **Language learning** | ✅ Activities | ✅ Activities |
-| **Curriculum standards** | ❌ Not built-in | ✅ **2022 课标知识图谱** |
+| **Curriculum standards** | ❌ Not built-in | ✅ **2022 Curriculum Knowledge Graph** |
 | **Differentiated teaching** | ❌ Not available | ✅ **Three-tier lessons** |
 | **Learning analytics** | ❌ Not available | ✅ **Class/student profiles, error analysis** |
 | **Task automation** | ❌ Not available | ✅ **Scheduled multi-step teaching tasks** |
@@ -138,7 +141,7 @@ Worksheets, flashcards, slides, educational games, parent communication.
 
 ### 6. Curriculum Standards (`standards/`) — v0.3
 
-Curriculum standards knowledge graph aligned with 《义务教育课程标准（2022年版）》.
+Curriculum standards knowledge graph aligned with 2022 national curriculum standards.
 
 | Command | Description |
 |---------|-------------|
@@ -229,8 +232,6 @@ Student data privacy: name anonymization, field masking, reversible mapping.
 
 ### 12. HTTP API (`serve.py`)
 
-### 11. HTTP API (`serve.py`)
-
 REST API for programmatic access (default port 8900).
 
 | Endpoint | Method | Description |
@@ -250,6 +251,8 @@ REST API for programmatic access (default port 8900).
 | `/api/analytics/error-analysis` | POST | Error root-cause analysis |
 | `/api/analytics/remedial` | POST | Generate remedial teaching plan |
 | `/api/analytics/class-report` | POST | Generate class Markdown report |
+| `/api/analytics/upload` | POST | Upload assessment data |
+| `/api/content/worksheet-diff` | POST | Generate differentiated worksheet |
 | `/api/agent/tasks` | GET | List predefined task templates |
 | `/api/agent/run` | POST | Execute a task immediately |
 | `/api/agent/schedule` | POST | Enable/disable scheduled task |
@@ -260,8 +263,6 @@ REST API for programmatic access (default port 8900).
 | `/api/safety/wordlist` | POST | Add/remove sensitive words |
 | `/api/desensitize/anonymize` | POST | Anonymize student records |
 | `/api/desensitize/export` | POST | Export desensitized data |
-| `/api/analytics/upload` | POST | Upload assessment data |
-| `/api/content/worksheet-diff` | POST | Generate differentiated worksheet |
 
 ---
 
@@ -272,16 +273,16 @@ REST API for programmatic access (default port 8900).
 │              CLI (fusion-k12)  │  HTTP API (serve.py:8900)   │
 │  lesson │ assess │ subject │ personalize │ content │ serve   │
 │  standards │ lesson plan-diff/quiz-diff │ analytics │ agent  │
-│  safety                                                          │
+│  safety │ desensitize                                        │
 ├──────────────────────────────────────────────────────────────┤
 │                    Engine Layer                                │
 │  CurriculumEngine │ AssessmentEngine │ SubjectExpert          │
 │  PersonalizationEngine │ ContentGenerator                     │
 │  StandardsLoader │ StandardsQuery │ StandardsAligner          │
-│  DifferentiationEngine (三层分层教学)                          │
-│  AnalyticsEngine (学情分析/错题归因/补救方案)                   │
-│  ContentFilter + SensitiveWordList + AgeChecker (内容安全)      │
-│  DataAnonymizer (数据脱敏)                                      │
+│  DifferentiationEngine (Three-tier Differentiation)           │
+│  AnalyticsEngine (Learning Analytics / Error Analysis)        │
+│  ContentFilter + SensitiveWordList + AgeChecker (Safety)     │
+│  DataAnonymizer (Data Desensitization)                        │
 ├──────────────────────────────────────────────────────────────┤
 │  Agent Layer (v0.5)                                           │
 │  EngineRegistry → execute_step → Engines                      │
@@ -319,9 +320,9 @@ pytest tests/ -v
 
 See [docs/deploy.md](docs/deploy.md) for full deployment guide:
 
-- **个人教师本地** — `pip install -e .` + CLI/API
-- **学校内网** — Docker Compose (`docker-compose up -d`)
-- **教培机构商用** — K8s + 算法备案 + 合规配置
+- **Individual teacher** — `pip install -e .` + CLI/API
+- **School intranet** — Docker Compose (`docker-compose up -d`)
+- **Commercial institution** — K8s + algorithm registration + compliance config
 
 Quick Docker start:
 ```bash
@@ -353,110 +354,3 @@ MIT License. See [LICENSE](LICENSE) for details.
 <p align="center">
   <sub>Built with ❤️ and fusion-mlx</sub>
 </p>
-
----
-
-<br>
-
-<div align="center">
-  <h1>🍎 Fusion-K12-Teacher</h1>
-  <p><strong>本地 AI K-12 教育助手 — macOS Apple Silicon 原生</strong></p>
-  <p><em>100% 本地离线，数据不出境，基于 fusion-mlx。国内 Claude K-12 Teacher 替代方案。</em></p>
-</div>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11%2B-blue" alt="Python">
-  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-brightgreen" alt="macOS">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="许可证">
-  <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
-  <img src="https://img.shields.io/badge/离线优先-核心特性-important" alt="离线优先">
-  <img src="https://img.shields.io/badge/测试-272%20通过-brightgreen" alt="测试">
-</p>
-
----
-
-## 📋 产品简介
-
-**Fusion-K12-Teacher** 是一款本地 AI K-12 教育助手，基于 `fusion-mlx` 构建，**100% 本地离线，数据不出境**，是国内环境下 Claude K-12 Teacher 的合规替代方案。
-
-### 对标 Claude K-12 Teacher
-
-| 能力 | Claude K-12 Teacher | Fusion-K12-Teacher |
-|------|---------------------|-------------------|
-| 数据本地化 | ❌ 云端处理 | ✅ **100% 本地** |
-| 离线运行 | ❌ 需要联网 | ✅ **完全离线** |
-| 国内可访问 | ❌ 被屏蔽 | ✅ **完全可用** |
-| 教案生成 | ✅ 标准对齐 | ✅ 标准对齐 |
-| 测验生成 | ✅ 自动出题 | ✅ 自动出题 |
-| 作文批改 | ✅ 评分标准 | ✅ 评分标准 |
-| 学科知识 | ✅ STEM/语言/文科 | ✅ STEM/语言/文科 |
-| 个性化学习 | ✅ 自适应路径 | ✅ 自适应路径 |
-| 内容生成 | ✅ 工作纸/课件 | ✅ 工作纸/课件/游戏 |
-| 家校沟通 | ✅ 模板 | ✅ 模板 |
-| STEM 项目 | ✅ PBL 设计 | ✅ PBL 设计 |
-| 语言学习 | ✅ 活动设计 | ✅ 活动设计 |
-| 课标对齐 | ❌ 无内置 | ✅ **2022课标知识图谱** |
-| 分层教学 | ❌ 不支持 | ✅ **三层差异化内容** |
-| 学情分析 | ❌ 不支持 | ✅ **班级/学生画像、错题归因** |
-| 任务自动化 | ❌ 不支持 | ✅ **定时多步骤教学任务** |
-| 内容安全 | ❌ 不支持 | ✅ **多层内容过滤与适龄检查** |
-| 数据脱敏 | ❌ 不支持 | ✅ **姓名匿名化 & 字段脱敏** |
-| Docker 部署 | ❌ 不支持 | ✅ **Docker Compose & K8s 就绪** |
-| 开源免费 | ❌ 企业订阅 | ✅ **MIT 协议** |
-
-### 快速开始
-
-```bash
-# 安装
-git clone https://github.com/dahai80/fusion-k12-teacher.git
-cd fusion-k12-teacher
-pip install -e .
-
-# 生成教案
-fusion-k12 lesson plan 数学 3 分数
-
-# 生成测验
-fusion-k12 lesson quiz 数学 3 分数 --questions 5
-
-# 批改作文
-fusion-k12 assess essay "今天真是美好的一天..."
-
-# 解释概念
-fusion-k12 subject explain 科学 5 光合作用
-
-# 创建学习路径
-fusion-k12 personalize path 张三 3 数学 掌握分数运算
-
-# 生成工作纸
-fusion-k12 content worksheet 英语 3 动物
-```
-
-### 五大模块
-
-| 模块 | 功能 | 命令 |
-|------|------|------|
-| 📚 **课程规划** | 教案、测验、单元计划 | `lesson plan/quiz` |
-| 📊 **评估** | 作文批改、数学批改、报告 | `assess essay` |
-| 🔬 **学科知识** | 概念解释、STEM 项目、语言活动 | `subject explain` |
-| 🎯 **个性化** | 学习路径、能力诊断、资源推荐 | `personalize path` |
-| 📄 **内容生成** | 工作纸、闪卡、课件、游戏 | `content worksheet` |
-| 📐 **课标知识图谱** | 2022课标对齐、知识关联 | `standards list/show` |
-| 🎚️ **分层教学** | 三层差异化教案/测验 | `lesson plan-diff/quiz-diff` |
-| 📊 **学情分析** | 班级画像、错题归因、补救方案 | `analytics class-profile/student-profile/error-analysis/remedial/report` |
-| 🤖 **任务自动化** | 多步骤教学任务编排、定时调度 | `agent tasks/enable/disable/run/history/start/stop` |
-| 🛡️ **内容安全** | 敏感词过滤、适龄检查、LLM审核 | `safety check/filter/wordlist` |
-| 🔐 **数据脱敏** | 姓名匿名化、字段脱敏、可逆映射 | `desensitize anon/export` |
-
-### 安全合规
-
-- **100% 本地离线** — 零数据上传，零隐私泄露
-- **无遥测** — 无埋点、无回传
-- **数据主权** — 所有处理在本地完成
-- **符合国内法规** — 无跨境数据传输
-- **学生隐私** — 所有学生数据留在设备上
-- **内容安全** — 多层过滤（敏感词+适龄+LLM审核+输出检查）
-- **数据脱敏** — 自动姓名匿名化与字段脱敏
-
-### 开源协议
-
-MIT License
