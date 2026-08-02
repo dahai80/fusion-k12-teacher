@@ -78,7 +78,7 @@ fusion-k12 personalize path 张三 3 数学 掌握分数运算
 fusion-k12 content worksheet 英语 3 动物
 
 # Start HTTP API server
-fusion-k12 serve --port 8900
+fusion-k12 serve --port 11448
 ```
 
 ---
@@ -232,7 +232,7 @@ Student data privacy: name anonymization, field masking, reversible mapping.
 
 ### 12. HTTP API (`serve.py`)
 
-REST API for programmatic access (default port 8900).
+REST API for programmatic access (default port 11448).
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -270,7 +270,7 @@ REST API for programmatic access (default port 8900).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│              CLI (fusion-k12)  │  HTTP API (serve.py:8900)   │
+│              CLI (fusion-k12)  │  HTTP API (serve.py:11448)  │
 │  lesson │ assess │ subject │ personalize │ content │ serve   │
 │  standards │ lesson plan-diff/quiz-diff │ analytics │ agent  │
 │  safety │ desensitize                                        │
@@ -289,7 +289,7 @@ REST API for programmatic access (default port 8900).
 │  TaskScheduler (APScheduler + SQLite) │ Predefined Tasks      │
 ├──────────────────────────────────────────────────────────────┤
 │                    AI Backend (fusion-mlx)                     │
-│  HTTP → http://localhost:8000/v1/chat/completions             │
+│  HTTP → http://localhost:11434/v1/chat/completions            │
 │  100% local, zero data upload                                │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -328,7 +328,7 @@ Quick Docker start:
 ```bash
 docker build -t fusion-k12-teacher:latest .
 docker-compose up -d
-curl http://localhost:8900/api/health
+curl http://localhost:11448/api/health
 ```
 
 ---

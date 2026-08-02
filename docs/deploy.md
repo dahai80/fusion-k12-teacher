@@ -17,10 +17,10 @@ pip install -e .
 fusion-k12 lesson plan 数学 3 分数
 
 # 或启动 HTTP API
-fusion-k12 serve --port 8900
+fusion-k12 serve --port 11448
 ```
 
-访问 API 文档：http://localhost:8900/docs
+访问 API 文档：http://localhost:11448/docs
 
 ## 场景二：学校内网部署
 
@@ -43,15 +43,15 @@ docker build -t fusion-k12-teacher:latest .
 docker-compose up -d
 
 # 3. 验证
-curl http://localhost:8900/api/health
+curl http://localhost:11448/api/health
 ```
 
 ### 配置说明
 
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
-| `FUSION_MLX_URL` | `http://fusion-mlx:8000` | fusion-mlx 后端地址 |
-| `FUSION_K12_PORT` | `8900` | HTTP API 端口 |
+| `FUSION_MLX_URL` | `http://fusion-mlx:11434` | fusion-mlx 后端地址 |
+| `FUSION_K12_PORT` | `11448` | HTTP API 端口 |
 
 ### 数据持久化
 
@@ -90,10 +90,10 @@ spec:
       - name: fusion-k12
         image: fusion-k12-teacher:1.0.0
         ports:
-        - containerPort: 8900
+        - containerPort: 11448
         env:
         - name: FUSION_MLX_URL
-          value: "http://fusion-mlx-service:8000"
+          value: "http://fusion-mlx-service:11434"
         resources:
           requests:
             memory: "2Gi"
@@ -108,8 +108,8 @@ spec:
   selector:
     app: fusion-k12-teacher
   ports:
-  - port: 8900
-    targetPort: 8900
+  - port: 11448
+    targetPort: 11448
 ```
 
 ### 安全配置
@@ -129,7 +129,7 @@ fusion-k12 safety wordlist --add "新敏感词"
 
 ```bash
 # HTTP API 健康检查
-curl http://localhost:8900/api/health
+curl http://localhost:11448/api/health
 
 # 预期返回
 # {"status": "ok", "version": "1.0.0"}
@@ -142,7 +142,7 @@ curl http://localhost:8900/api/health
 确保 fusion-mlx 服务已启动：
 ```bash
 ~/claude-home/fusion-mlx/start.sh start
-curl http://localhost:8000/v1/models
+curl http://localhost:11434/v1/models
 ```
 
 ### Q: 模型未下载

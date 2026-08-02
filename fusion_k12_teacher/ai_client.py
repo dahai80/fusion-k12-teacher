@@ -22,7 +22,7 @@ class MLXClient:
     All LLM calls go through fusion-mlx's /v1/chat/completions endpoint.
     """
 
-    def __init__(self, model: str = "", base_url: str = "http://localhost:8000/v1"):
+    def __init__(self, model: str = "", base_url: str = "http://localhost:11434/v1"):
         self.model = model
         self._inner = _FusionMLXClient(base_url=base_url)
 

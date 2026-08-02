@@ -252,8 +252,8 @@ async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
 
 
 @cli.command()
-@click.option("--host", default="0.0.0.0", help="监听地址")
-@click.option("--port", default=8900, help="监听端口")
+@click.option("--host", default="127.0.0.1", help="监听地址")
+@click.option("--port", default=11448, help="监听端口")
 def serve(host, port):
     """启动 HTTP API 服务。"""
     import uvicorn

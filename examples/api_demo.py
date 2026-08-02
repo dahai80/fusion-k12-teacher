@@ -8,7 +8,7 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BASE = "http://localhost:8900/api"
+BASE = "http://localhost:11448/api"
 
 
 def demo_health():

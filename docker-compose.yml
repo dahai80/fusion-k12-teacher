@@ -4,9 +4,9 @@ services:
   fusion-k12:
     build: .
     ports:
-      - "8900:8900"
+      - "11448:11448"
     environment:
-      - FUSION_MLX_URL=http://fusion-mlx:8000
+      - FUSION_MLX_URL=http://fusion-mlx:11434
     depends_on:
       - fusion-mlx
     restart: unless-stopped
@@ -14,7 +14,7 @@ services:
   fusion-mlx:
     image: fusion-mlx:latest
     ports:
-      - "8000:8000"
+      - "11434:11434"
     volumes:
       - mlx-models:/root/.cache/huggingface
     restart: unless-stopped
