@@ -10,6 +10,6 @@ COPY . .
 
 RUN pip install --no-cache-dir -e .
 
-EXPOSE 8900
+EXPOSE 11448
 
-CMD ["fusion-k12", "serve", "--host", "0.0.0.0", "--port", "8900"]
+CMD ["fusion-k12", "serve", "--host", "127.0.0.1", "--port", "11448"]

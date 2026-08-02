@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Fusion-K12-Teacher API",
-    version="1.0.0",
+    version="1.0.1",
     lifespan=lifespan,
 )
 
@@ -113,7 +113,7 @@ class ContentGenerateRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "1.0.1"}
 
 
 # ── Curriculum ──
