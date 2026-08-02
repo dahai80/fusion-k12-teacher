@@ -307,12 +307,12 @@ fusion-k12 content worksheet <subject> <grade> <topic>
 #### `serve`
 
 ```bash
-fusion-k12 serve [--host 0.0.0.0] [--port 8900]
+fusion-k12 serve [--host 127.0.0.1] [--port 11448]
 ```
 
 ## HTTP API Reference
 
-Base URL: `http://localhost:8900`
+Base URL: `http://localhost:11448`
 
 ### Health Check
 
