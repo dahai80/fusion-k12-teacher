@@ -10,7 +10,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-brightgreen" alt="macOS">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
   <img src="https://img.shields.io/badge/tests-272%20passed-brightgreen" alt="Tests">
@@ -45,7 +45,7 @@
 | **Content safety** | ❌ Not available | ✅ **Multi-layer content filtering & age check** |
 | **Data desensitization** | ❌ Not available | ✅ **Name anonymization & field masking** |
 | **Docker deployment** | ❌ Not available | ✅ **Docker Compose & K8s ready** |
-| **License** | Enterprise subscription | **MIT (free)** |
+| **License** | Enterprise subscription | **Apache 2.0 (free)** |
 
 ---
 
@@ -344,7 +344,7 @@ curl http://localhost:11448/api/health
 
 ## 📄 License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 ---
 

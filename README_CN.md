@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue" alt="Python">
   <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-brightgreen" alt="macOS">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
   <img src="https://img.shields.io/badge/tests-272%20passed-brightgreen" alt="Tests">
@@ -49,7 +49,7 @@
 | **Content safety / 内容安全** | ❌ Not available / 不支持 | ✅ **Multi-layer content filtering & age check / 多层内容过滤与适龄检查** |
 | **Data desensitization / 数据脱敏** | ❌ Not available / 不支持 | ✅ **Name anonymization & field masking / 姓名匿名化 & 字段脱敏** |
 | **Docker deployment / Docker 部署** | ❌ Not available / 不支持 | ✅ **Docker Compose & K8s ready / Docker Compose & K8s 就绪** |
-| **License / 开源协议** | Enterprise subscription / 企业订阅 | **MIT (free) / MIT 免费** |
+| **License / 开源协议** | Enterprise subscription / 企业订阅 | **Apache 2.0 (free) / Apache 2.0 免费** |
 
 ---
 
@@ -323,8 +323,8 @@ curl http://localhost:11448/api/health
 
 ## 📄 License / 开源协议
 
-MIT License. See [LICENSE](LICENSE) for details.
-MIT 协议，详见 [LICENSE](LICENSE)。
+Apache License 2.0. See [LICENSE](LICENSE) for details.
+Apache 2.0 协议，详见 [LICENSE](LICENSE)。
 
 ---
 
