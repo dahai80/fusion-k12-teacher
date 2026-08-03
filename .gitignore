@@ -18,4 +18,9 @@ build/
 # Test / Coverage
 .pytest_cache/
 .coverage
-htmlcov/CLAUDE.md
+htmlcov/
+
+# Local-only docs (not for repo)
+CLAUDE.md
+audit_k12_report.md
+k12-prd-plan.md
