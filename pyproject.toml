@@ -2,6 +2,7 @@
 name = "fusion-k12-teacher"
 version = "1.0.1"
 description = "Fusion-K12-Teacher — Local AI-powered K-12 education assistant. macOS Apple Silicon native, 100% offline, powered by fusion-mlx."
+license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
     "fusion-core>=0.1.0",
