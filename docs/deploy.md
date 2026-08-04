@@ -50,7 +50,7 @@ curl http://localhost:11448/api/health
 
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
-| `FUSION_MLX_URL` | `http://fusion-mlx:11434` | fusion-mlx 后端地址 |
+| `FUSION_MLX_URL` | `http://fusion-mlx:11432` | fusion-mlx 后端地址 |
 | `FUSION_K12_PORT` | `11448` | HTTP API 端口 |
 
 ### 数据持久化
@@ -88,12 +88,12 @@ spec:
     spec:
       containers:
       - name: fusion-k12
-        image: fusion-k12-teacher:1.0.0
+        image: fusion-k12-teacher:1.0.2
         ports:
         - containerPort: 11448
         env:
         - name: FUSION_MLX_URL
-          value: "http://fusion-mlx-service:11434"
+          value: "http://fusion-mlx-service:11432"
         resources:
           requests:
             memory: "2Gi"
@@ -132,7 +132,7 @@ fusion-k12 safety wordlist --add "新敏感词"
 curl http://localhost:11448/api/health
 
 # 预期返回
-# {"status": "ok", "version": "1.0.0"}
+# {"status": "ok", "version": "1.0.2"}
 ```
 
 ## 常见问题
@@ -142,7 +142,7 @@ curl http://localhost:11448/api/health
 确保 fusion-mlx 服务已启动：
 ```bash
 ~/claude-home/fusion-mlx/start.sh start
-curl http://localhost:11434/v1/models
+curl http://localhost:11432/v1/models
 ```
 
 ### Q: 模型未下载
