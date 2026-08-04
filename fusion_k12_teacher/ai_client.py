@@ -8,11 +8,16 @@ No direct mlx or mlx-lm imports — every call is routed via fusion-mlx.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, List, Optional
 
 from fusion_core.mlx_client import FusionMLXClient as _FusionMLXClient
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MLX_BASE_URL = os.environ.get(
+    "FUSION_MLX_URL", "http://localhost:11432/v1"
+)
 
 
 class MLXClient:
@@ -20,11 +25,13 @@ class MLXClient:
 
     Thin wrapper around fusion-core's FusionMLXClient.
     All LLM calls go through fusion-mlx's /v1/chat/completions endpoint.
+    Default base_url: http://localhost:11432/v1 (overridable via FUSION_MLX_URL env).
     """
 
-    def __init__(self, model: str = "", base_url: str = "http://localhost:11434/v1"):
+    def __init__(self, model: str = "", base_url: str = ""):
+        url = base_url or DEFAULT_MLX_BASE_URL
         self.model = model
-        self._inner = _FusionMLXClient(base_url=base_url)
+        self._inner = _FusionMLXClient(base_url=url)
 
     async def chat(self, messages: List[Dict[str, str]], temperature: float = 0.7, max_tokens: int = 4096) -> str:
         """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx."""

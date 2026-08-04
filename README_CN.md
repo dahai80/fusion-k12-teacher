@@ -264,7 +264,7 @@ Full endpoint list: see [README.md](README.md#12-http-api-servepy)
 │  TaskScheduler (APScheduler + SQLite) │ Predefined Tasks      │
 ├──────────────────────────────────────────────────────────────┤
 │                    AI Backend (fusion-mlx)                     │
-│  HTTP → http://localhost:11434/v1/chat/completions            │
+│  HTTP → http://localhost:11432/v1/chat/completions            │
 │  100% local, zero data upload / 100%本地，零上传               │
 └──────────────────────────────────────────────────────────────┘
 ```

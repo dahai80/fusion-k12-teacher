@@ -320,7 +320,7 @@ Base URL: `http://localhost:11448`
 GET /api/health
 ```
 
-Response: `{"status": "ok", "version": "1.0.0"}`
+Response: `{"status": "ok", "version": "1.0.2"}`
 
 ### Curriculum Plan
 

@@ -289,7 +289,7 @@ REST API for programmatic access (default port 11448).
 │  TaskScheduler (APScheduler + SQLite) │ Predefined Tasks      │
 ├──────────────────────────────────────────────────────────────┤
 │                    AI Backend (fusion-mlx)                     │
-│  HTTP → http://localhost:11434/v1/chat/completions            │
+│  HTTP → http://localhost:11432/v1/chat/completions            │
 │  100% local, zero data upload                                │
 └──────────────────────────────────────────────────────────────┘
 ```
