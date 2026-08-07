@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
-LEVEL_CONFIGS: Dict[str, Dict[str, Any]] = {
+LEVEL_CONFIGS: dict[str, dict[str, Any]] = {
     "struggling": {
         "label": "学困生",
         "vocabulary_level": "基础",

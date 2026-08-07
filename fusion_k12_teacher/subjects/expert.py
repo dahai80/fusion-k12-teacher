@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..ai_client import MLXClient
 
@@ -19,11 +19,11 @@ class SubjectExercise:
     difficulty: str = "medium"
     subject: str = ""
     grade: str = ""
-    hints: List[str] = field(default_factory=list)
+    hints: list[str] = field(default_factory=list)
     answer: str = ""
     explanation: str = ""
     topic: str = ""
-    skills: List[str] = field(default_factory=list)
+    skills: list[str] = field(default_factory=list)
 
 
 class SubjectExpert:
@@ -32,10 +32,10 @@ class SubjectExpert:
     支持：数学、科学、编程、语言、历史、地理等学科。
     """
 
-    def __init__(self, mlx: Optional[MLXClient] = None):
+    def __init__(self, mlx: MLXClient | None = None):
         self.mlx = mlx or MLXClient()
 
-    async def explain_concept(self, subject: str, grade: str, concept: str) -> Dict[str, Any]:
+    async def explain_concept(self, subject: str, grade: str, concept: str) -> dict[str, Any]:
         """解释学科概念（分年级适配）。"""
         prompt = f"""用{grade}年级学生能理解的语言解释"{concept}"（{subject}学科）。
 
@@ -72,7 +72,7 @@ class SubjectExpert:
             err_msg = str(exc)
         return SubjectExercise(question=f"生成失败: {err_msg}", topic=topic)
 
-    async def stem_project(self, grade: str, topic: str, duration: str = "2课时") -> Dict[str, Any]:
+    async def stem_project(self, grade: str, topic: str, duration: str = "2课时") -> dict[str, Any]:
         """生成STEM项目式学习方案。"""
         prompt = f"""为{grade}年级学生设计一个STEM项目式学习方案。
 
@@ -89,7 +89,7 @@ class SubjectExpert:
         except Exception as e:
             return {"error": str(e)}
 
-    async def language_activity(self, grade: str, language: str, skill: str, theme: str) -> Dict[str, Any]:
+    async def language_activity(self, grade: str, language: str, skill: str, theme: str) -> dict[str, Any]:
         """生成语言学习活动。"""
         prompt = f"""为{grade}年级{language}学习者设计一个{skill}练习活动。
 

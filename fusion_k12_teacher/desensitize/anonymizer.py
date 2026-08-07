@@ -1,8 +1,5 @@
 import copy
-import json
 import logging
-import re
-from typing import Any, Dict, List, Optional
 
 from .models import AnonymizeResult, DesensitizeConfig
 
@@ -10,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 class DataAnonymizer:
-    def __init__(self, config: Optional[DesensitizeConfig] = None):
+    def __init__(self, config: DesensitizeConfig | None = None):
         self.config = config or DesensitizeConfig()
-        self._name_map: Dict[str, str] = {}
-        self._reverse_map: Dict[str, str] = {}
+        self._name_map: dict[str, str] = {}
+        self._reverse_map: dict[str, str] = {}
         self._id_counter = self.config.id_counter_start
 
     def anonymize_name(self, name: str) -> str:
@@ -47,7 +44,7 @@ class DataAnonymizer:
             return self.config.mask_char * len(value)
         return value[:k] + self.config.mask_char * (len(value) - k)
 
-    def anonymize_record(self, record: Dict) -> Dict:
+    def anonymize_record(self, record: dict) -> dict:
         result = copy.deepcopy(record)
         masked_fields = []
         for field_name in self.config.fields_to_mask:
@@ -64,7 +61,7 @@ class DataAnonymizer:
                     masked_fields.append(field_name)
         return result
 
-    def anonymize_records(self, records: List[Dict]) -> AnonymizeResult:
+    def anonymize_records(self, records: list[dict]) -> AnonymizeResult:
         anonymized = []
         masked_fields = []
         for rec in records:
@@ -83,17 +80,17 @@ class DataAnonymizer:
             masked_fields=masked_fields,
         )
 
-    def deanonymize_record(self, record: Dict) -> Dict:
+    def deanonymize_record(self, record: dict) -> dict:
         result = copy.deepcopy(record)
         for field_name in ("student_name", "name"):
             if field_name in result and isinstance(result[field_name], str):
                 result[field_name] = self.deanonymize_name(result[field_name])
         return result
 
-    def export_desensitized(self, records: List[Dict]) -> List[Dict]:
+    def export_desensitized(self, records: list[dict]) -> list[dict]:
         return [self.anonymize_record(rec) for rec in records]
 
-    def get_name_map(self) -> Dict[str, str]:
+    def get_name_map(self) -> dict[str, str]:
         return dict(self._name_map)
 
     def reset(self):

@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
 
+from .age_checker import AgeChecker
 from .models import ContentCheckResult, FilterLevel
 from .wordlist import SensitiveWordList
-from .age_checker import AgeChecker
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +32,10 @@ class ContentFilter:
 
     def __init__(
         self,
-        wordlist: Optional[SensitiveWordList] = None,
-        age_checker: Optional[AgeChecker] = None,
+        wordlist: SensitiveWordList | None = None,
+        age_checker: AgeChecker | None = None,
         mlx=None,
-        filter_level: Optional[FilterLevel] = None,
+        filter_level: FilterLevel | None = None,
     ):
         self.wordlist = wordlist or SensitiveWordList()
         self.age_checker = age_checker or AgeChecker()
@@ -104,7 +103,9 @@ class ContentFilter:
                 f"如有不当内容，请列出问题并返回JSON: "
                 f'{{"safe": true/false, "issues": ["问题1", ...]}}\n\n内容:\n{text}'
             )
-            resp = await self.mlx.chat(prompt, temperature=0.1)
+            resp = await self.mlx.chat(
+                [{"role": "user", "content": prompt}], temperature=0.1
+            )
             import json
             data = json.loads(self._strip_json(resp))
             issues = data.get("issues", [])
@@ -131,7 +132,7 @@ class ContentFilter:
     def get_safety_prompt_suffix(self) -> str:
         return SAFETY_PROMPT_SUFFIX
 
-    def _replace_words(self, text: str, words: List[str]) -> str:
+    def _replace_words(self, text: str, words: list[str]) -> str:
         result = text
         for w in words:
             pattern = re.compile(re.escape(w), re.IGNORECASE)

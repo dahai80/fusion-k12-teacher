@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from .loader import StandardsLoader
-from .models import AlignmentContext, KnowledgePoint
+from .models import AlignmentContext
 from .query import StandardsQuery
 
 logger = logging.getLogger(__name__)
@@ -13,7 +11,7 @@ logger = logging.getLogger(__name__)
 class StandardsAligner:
     """课标对齐器 — 生成内容时自动注入课标上下文。"""
 
-    def __init__(self, query: Optional[StandardsQuery] = None):
+    def __init__(self, query: StandardsQuery | None = None):
         self._query = query or StandardsQuery()
 
     def align(

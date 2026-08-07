@@ -1,16 +1,16 @@
 """安全模块 — 内容过滤 + 适龄审查 + 数据脱敏。"""
 
-from .models import ContentCheckResult, AgeRating, FilterLevel
-from .wordlist import SensitiveWordList
 from .age_checker import AgeChecker
-from .filter import ContentFilter, SAFETY_PROMPT_SUFFIX
+from .filter import SAFETY_PROMPT_SUFFIX, ContentFilter
+from .models import AgeRating, ContentCheckResult, FilterLevel
+from .wordlist import SensitiveWordList
 
 __all__ = [
-    "ContentCheckResult",
+    "SAFETY_PROMPT_SUFFIX",
+    "AgeChecker",
     "AgeRating",
+    "ContentCheckResult",
+    "ContentFilter",
     "FilterLevel",
     "SensitiveWordList",
-    "AgeChecker",
-    "ContentFilter",
-    "SAFETY_PROMPT_SUFFIX",
 ]

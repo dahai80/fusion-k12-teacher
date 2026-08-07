@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 
 @dataclass
@@ -12,13 +12,13 @@ class ContentCheckResult:
 
     is_safe: bool = True
     risk_level: str = "safe"
-    flagged_words: List[str] = field(default_factory=list)
-    age_issues: List[str] = field(default_factory=list)
-    llm_issues: List[str] = field(default_factory=list)
+    flagged_words: list[str] = field(default_factory=list)
+    age_issues: list[str] = field(default_factory=list)
+    llm_issues: list[str] = field(default_factory=list)
     filtered_text: str = ""
     summary: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "is_safe": self.is_safe,
             "risk_level": self.risk_level,
@@ -30,7 +30,7 @@ class ContentCheckResult:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> ContentCheckResult:
+    def from_dict(cls, d: dict[str, Any]) -> ContentCheckResult:
         return cls(
             is_safe=d.get("is_safe", True),
             risk_level=d.get("risk_level", "safe"),
@@ -48,11 +48,11 @@ class AgeRating:
 
     grade: str = ""
     max_abstraction: str = "concrete"
-    allowed_topics: List[str] = field(default_factory=list)
-    restricted_topics: List[str] = field(default_factory=list)
+    allowed_topics: list[str] = field(default_factory=list)
+    restricted_topics: list[str] = field(default_factory=list)
     vocabulary_level: str = "基础"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "grade": self.grade,
             "max_abstraction": self.max_abstraction,
@@ -72,7 +72,7 @@ class FilterLevel:
     llm_review: bool = False
     output_check: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "level": self.level,
             "sensitive_words": self.sensitive_words,

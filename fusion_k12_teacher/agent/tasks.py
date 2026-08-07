@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
 from .models import TaskStep, TeachingTask
 
 
@@ -143,7 +141,7 @@ def batch_differentiated_materials(subject: str = "数学", grade: str = "3", to
     )
 
 
-TASK_BUILDERS: Dict[str, callable] = {
+TASK_BUILDERS: dict[str, callable] = {
     "weekly_prep": weekly_prep,
     "weekly_summary": weekly_summary,
     "daily_homework_review": daily_homework_review,
@@ -152,7 +150,7 @@ TASK_BUILDERS: Dict[str, callable] = {
 }
 
 
-def list_available_tasks() -> Dict[str, str]:
+def list_available_tasks() -> dict[str, str]:
     """返回可用任务 {id: name}。"""
     builder = {tid: fn().name for tid, fn in TASK_BUILDERS.items()}
     return builder

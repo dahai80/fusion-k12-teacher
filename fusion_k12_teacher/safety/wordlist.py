@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,7 @@ class SensitiveWordList:
 
     def __init__(self, path: str = ""):
         self._path = path or DEFAULT_WORDLIST_PATH
-        self._words: Set[str] = set()
+        self._words: set[str] = set()
         self.load()
 
     def load(self) -> None:
@@ -24,7 +23,7 @@ class SensitiveWordList:
             logger.warning(f"敏感词库文件不存在: {self._path}")
             self._words = set()
             return
-        with open(self._path, "r", encoding="utf-8") as f:
+        with open(self._path, encoding="utf-8") as f:
             lines = f.readlines()
         self._words = {
             line.strip().lower()
@@ -38,8 +37,7 @@ class SensitiveWordList:
         with open(self._path, "w", encoding="utf-8") as f:
             f.write("# Fusion-K12-Teacher 敏感词库\n")
             f.write("# 格式: 每行一词，# 开头为注释\n\n")
-            for word in sorted(self._words):
-                f.write(f"{word}\n")
+            f.writelines(f"{word}\n" for word in sorted(self._words))
         logger.info(f"敏感词库保存: {len(self._words)} 个词")
 
     def add(self, word: str) -> None:
@@ -48,10 +46,10 @@ class SensitiveWordList:
     def remove(self, word: str) -> None:
         self._words.discard(word.strip().lower())
 
-    def list_words(self) -> List[str]:
+    def list_words(self) -> list[str]:
         return sorted(self._words)
 
-    def check(self, text: str) -> List[str]:
+    def check(self, text: str) -> list[str]:
         text_lower = text.lower()
         return [w for w in self._words if w in text_lower]
 

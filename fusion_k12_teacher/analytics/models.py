@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,8 @@ class StudentAssessment:
     date: str = ""
     subject: str = ""
     grade: str = ""
-    scores: Dict[str, float] = field(default_factory=dict)
-    responses: List[Dict[str, Any]] = field(default_factory=list)
+    scores: dict[str, float] = field(default_factory=dict)
+    responses: list[dict[str, Any]] = field(default_factory=list)
     total_score: float = 0.0
     max_score: float = 100.0
 
@@ -29,7 +29,7 @@ class StudentAssessment:
             return 0.0
         return round(self.total_score / self.max_score * 100, 1)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "student_id": self.student_id,
             "student_name": self.student_name,
@@ -45,7 +45,7 @@ class StudentAssessment:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StudentAssessment:
+    def from_dict(cls, data: dict[str, Any]) -> StudentAssessment:
         return cls(
             student_id=data.get("student_id", ""),
             student_name=data.get("student_name", ""),
@@ -66,11 +66,11 @@ class WeakPoint:
     knowledge_point_id: str = ""
     knowledge_point_name: str = ""
     error_rate: float = 0.0
-    affected_students: List[str] = field(default_factory=list)
-    common_mistakes: List[str] = field(default_factory=list)
+    affected_students: list[str] = field(default_factory=list)
+    common_mistakes: list[str] = field(default_factory=list)
     suggested_remedial: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "knowledge_point_id": self.knowledge_point_id,
             "knowledge_point_name": self.knowledge_point_name,
@@ -81,7 +81,7 @@ class WeakPoint:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> WeakPoint:
+    def from_dict(cls, data: dict[str, Any]) -> WeakPoint:
         return cls(
             knowledge_point_id=data.get("knowledge_point_id", ""),
             knowledge_point_name=data.get("knowledge_point_name", ""),
@@ -101,13 +101,13 @@ class ClassProfile:
     period: str = ""
     total_students: int = 0
     avg_score: float = 0.0
-    score_distribution: Dict[str, int] = field(default_factory=dict)
-    weak_knowledge_points: List[WeakPoint] = field(default_factory=list)
-    strong_knowledge_points: List[str] = field(default_factory=list)
-    student_risk_levels: Dict[str, str] = field(default_factory=dict)
+    score_distribution: dict[str, int] = field(default_factory=dict)
+    weak_knowledge_points: list[WeakPoint] = field(default_factory=list)
+    strong_knowledge_points: list[str] = field(default_factory=list)
+    student_risk_levels: dict[str, str] = field(default_factory=dict)
     generated_at: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "class_id": self.class_id,
             "subject": self.subject,
@@ -123,7 +123,7 @@ class ClassProfile:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ClassProfile:
+    def from_dict(cls, data: dict[str, Any]) -> ClassProfile:
         wps = [WeakPoint.from_dict(wp) for wp in data.get("weak_knowledge_points", [])]
         return cls(
             class_id=data.get("class_id", ""),
@@ -148,12 +148,12 @@ class StudentProfile:
     grade: str = ""
     subject: str = ""
     overall_level: str = "standard"
-    knowledge_mastery: Dict[str, float] = field(default_factory=dict)
+    knowledge_mastery: dict[str, float] = field(default_factory=dict)
     learning_trend: str = "stable"
-    risk_indicators: List[str] = field(default_factory=list)
-    recommended_actions: List[str] = field(default_factory=list)
+    risk_indicators: list[str] = field(default_factory=list)
+    recommended_actions: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "student_id": self.student_id,
             "name": self.name,
@@ -167,7 +167,7 @@ class StudentProfile:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StudentProfile:
+    def from_dict(cls, data: dict[str, Any]) -> StudentProfile:
         return cls(
             student_id=data.get("student_id", ""),
             name=data.get("name", ""),
@@ -188,11 +188,11 @@ class ErrorAnalysis:
     knowledge_point_id: str = ""
     error_type: str = ""
     frequency: int = 0
-    sample_responses: List[str] = field(default_factory=list)
+    sample_responses: list[str] = field(default_factory=list)
     root_cause: str = ""
     remediation: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "error_id": self.error_id,
             "knowledge_point_id": self.knowledge_point_id,
@@ -204,7 +204,7 @@ class ErrorAnalysis:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ErrorAnalysis:
+    def from_dict(cls, data: dict[str, Any]) -> ErrorAnalysis:
         return cls(
             error_id=data.get("error_id", ""),
             knowledge_point_id=data.get("knowledge_point_id", ""),
@@ -222,13 +222,13 @@ class RemedialPlan:
     student_id: str = ""
     subject: str = ""
     grade: str = ""
-    weak_points: List[WeakPoint] = field(default_factory=list)
-    strategies: List[str] = field(default_factory=list)
+    weak_points: list[WeakPoint] = field(default_factory=list)
+    strategies: list[str] = field(default_factory=list)
     timeline: str = ""
-    exercises: List[Dict[str, Any]] = field(default_factory=list)
+    exercises: list[dict[str, Any]] = field(default_factory=list)
     estimated_duration: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "student_id": self.student_id,
             "subject": self.subject,
@@ -241,7 +241,7 @@ class RemedialPlan:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> RemedialPlan:
+    def from_dict(cls, data: dict[str, Any]) -> RemedialPlan:
         wps = [WeakPoint.from_dict(wp) for wp in data.get("weak_points", [])]
         return cls(
             student_id=data.get("student_id", ""),
