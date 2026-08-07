@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..ai_client import MLXClient
 from ..standards.query import StandardsQuery
@@ -26,8 +26,8 @@ class AnalyticsEngine:
 
     def __init__(
         self,
-        mlx: Optional[MLXClient] = None,
-        standards_query: Optional[StandardsQuery] = None,
+        mlx: MLXClient | None = None,
+        standards_query: StandardsQuery | None = None,
     ):
         self.mlx = mlx or MLXClient()
         self._standards = standards_query
@@ -37,7 +37,7 @@ class AnalyticsEngine:
         class_id: str,
         subject: str,
         grade: str,
-        assessments: List[StudentAssessment],
+        assessments: list[StudentAssessment],
     ) -> ClassProfile:
         """生成班级学情画像。"""
         if not assessments:
@@ -102,7 +102,7 @@ class AnalyticsEngine:
         student_id: str,
         subject: str,
         grade: str,
-        history: List[StudentAssessment],
+        history: list[StudentAssessment],
     ) -> StudentProfile:
         """生成学生个体画像。"""
         student_name = history[0].student_name if history else student_id
@@ -186,8 +186,8 @@ class AnalyticsEngine:
         self,
         subject: str,
         grade: str,
-        responses: List[Dict[str, Any]],
-    ) -> List[ErrorAnalysis]:
+        responses: list[dict[str, Any]],
+    ) -> list[ErrorAnalysis]:
         """错题归因分析。"""
         if not responses:
             return []
@@ -260,7 +260,7 @@ class AnalyticsEngine:
         student_id: str,
         subject: str,
         grade: str,
-        weak_points: List[WeakPoint],
+        weak_points: list[WeakPoint],
     ) -> RemedialPlan:
         """生成补救教学方案。"""
         if not weak_points:
@@ -361,7 +361,7 @@ class AnalyticsEngine:
 
     # ── 统计辅助方法 ──
 
-    def _calc_score_distribution(self, scores: List[float]) -> Dict[str, int]:
+    def _calc_score_distribution(self, scores: list[float]) -> dict[str, int]:
         dist = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0, "0-59": 0}
         for s in scores:
             if s >= 90:
@@ -376,8 +376,8 @@ class AnalyticsEngine:
                 dist["0-59"] += 1
         return dist
 
-    def _calc_weak_points(self, assessments: List[StudentAssessment]) -> List[WeakPoint]:
-        topic_stats: Dict[str, Dict[str, Any]] = {}
+    def _calc_weak_points(self, assessments: list[StudentAssessment]) -> list[WeakPoint]:
+        topic_stats: dict[str, dict[str, Any]] = {}
         for a in assessments:
             for resp in a.responses:
                 qid = resp.get("question_id", resp.get("question", ""))
@@ -407,8 +407,8 @@ class AnalyticsEngine:
         weak.sort(key=lambda w: w.error_rate, reverse=True)
         return weak[:10]
 
-    def _calc_strong_points(self, assessments: List[StudentAssessment]) -> List[str]:
-        topic_stats: Dict[str, Dict[str, int]] = {}
+    def _calc_strong_points(self, assessments: list[StudentAssessment]) -> list[str]:
+        topic_stats: dict[str, dict[str, int]] = {}
         for a in assessments:
             for resp in a.responses:
                 qid = resp.get("question_id", resp.get("question", ""))
@@ -426,8 +426,8 @@ class AnalyticsEngine:
                 strong.append(qid)
         return strong[:5]
 
-    def _calc_risk_levels(self, assessments: List[StudentAssessment]) -> Dict[str, str]:
-        student_scores: Dict[str, List[float]] = {}
+    def _calc_risk_levels(self, assessments: list[StudentAssessment]) -> dict[str, str]:
+        student_scores: dict[str, list[float]] = {}
         for a in assessments:
             student_scores.setdefault(a.student_id, []).append(a.percentage)
 
@@ -442,14 +442,14 @@ class AnalyticsEngine:
                 risk[sid] = "low"
         return risk
 
-    def _calc_knowledge_mastery(self, history: List[StudentAssessment]) -> Dict[str, float]:
-        mastery: Dict[str, List[float]] = {}
+    def _calc_knowledge_mastery(self, history: list[StudentAssessment]) -> dict[str, float]:
+        mastery: dict[str, list[float]] = {}
         for a in history:
             for qid, score in a.scores.items():
                 mastery.setdefault(qid, []).append(score)
         return {k: round(sum(v) / len(v), 1) for k, v in mastery.items()}
 
-    def _calc_trend(self, history: List[StudentAssessment]) -> str:
+    def _calc_trend(self, history: list[StudentAssessment]) -> str:
         if len(history) < 2:
             return "stable"
         sorted_h = sorted(history, key=lambda a: a.date)
@@ -464,7 +464,7 @@ class AnalyticsEngine:
             return "declining"
         return "stable"
 
-    def _calc_risk_indicators(self, history: List[StudentAssessment], avg_pct: float) -> List[str]:
+    def _calc_risk_indicators(self, history: list[StudentAssessment], avg_pct: float) -> list[str]:
         indicators = []
         if avg_pct < 60:
             indicators.append("成绩低于及格线")
@@ -481,9 +481,9 @@ class AnalyticsEngine:
         self,
         class_id: str, subject: str, grade: str,
         total_students: int, avg_score: float,
-        score_distribution: Dict[str, int],
-        weak_points: List[WeakPoint],
-        risk_levels: Dict[str, str],
+        score_distribution: dict[str, int],
+        weak_points: list[WeakPoint],
+        risk_levels: dict[str, str],
     ) -> str:
         wp_str = "\n".join(
             f"  - {wp.knowledge_point_name}: 错误率{wp.error_rate:.0%}"

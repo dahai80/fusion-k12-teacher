@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..ai_client import MLXClient
 
@@ -24,16 +24,16 @@ class LessonPlan:
     subject: str = ""
     grade: str = ""
     duration_minutes: int = 45
-    objectives: List[str] = field(default_factory=list)
-    materials: List[str] = field(default_factory=list)
-    procedures: List[Dict[str, str]] = field(default_factory=list)
+    objectives: list[str] = field(default_factory=list)
+    materials: list[str] = field(default_factory=list)
+    procedures: list[dict[str, str]] = field(default_factory=list)
     assessment: str = ""
     homework: str = ""
-    standards_aligned: List[str] = field(default_factory=list)
-    differentiation: Dict[str, str] = field(default_factory=dict)
+    standards_aligned: list[str] = field(default_factory=list)
+    differentiation: dict[str, str] = field(default_factory=dict)
     created_at: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in self.__dict__.items() if v}
 
 
@@ -43,7 +43,7 @@ class Quiz:
     title: str = ""
     subject: str = ""
     grade: str = ""
-    questions: List[Dict[str, Any]] = field(default_factory=list)
+    questions: list[dict[str, Any]] = field(default_factory=list)
     total_points: int = 0
     time_limit_minutes: int = 0
     answer_key: str = ""
@@ -59,9 +59,9 @@ class CurriculumEngine:
     - 单元/学期课程规划
     """
 
-    def __init__(self, mlx: Optional[MLXClient] = None):
+    def __init__(self, mlx: MLXClient | None = None):
         self.mlx = mlx or MLXClient()
-        self._plans: Dict[str, LessonPlan] = {}
+        self._plans: dict[str, LessonPlan] = {}
 
     async def generate_lesson_plan(
         self,
@@ -69,7 +69,7 @@ class CurriculumEngine:
         grade: str,
         topic: str,
         duration: int = 45,
-        standards: Optional[List[str]] = None,
+        standards: list[str] | None = None,
     ) -> LessonPlan:
         """生成标准对齐的教案。"""
         standards_str = ", ".join(standards) if standards else "Common Core"
@@ -130,7 +130,7 @@ class CurriculumEngine:
         grade: str,
         topic: str,
         num_questions: int = 10,
-        question_types: Optional[List[str]] = None,
+        question_types: list[str] | None = None,
     ) -> Quiz:
         """生成测验。"""
         types = question_types or ["multiple_choice", "short_answer", "true_false"]
@@ -157,7 +157,7 @@ class CurriculumEngine:
             logger.error(f"测验生成失败: {e}")
         return Quiz(title=f"{topic}测验", subject=subject, grade=grade)
 
-    async def generate_unit_plan(self, subject: str, grade: str, unit_title: str, weeks: int = 4) -> Dict[str, Any]:
+    async def generate_unit_plan(self, subject: str, grade: str, unit_title: str, weeks: int = 4) -> dict[str, Any]:
         """生成单元教学计划。"""
         prompt = f"""为{grade}年级{subject}设计一个为期{weeks}周的教学单元：
 单元主题: {unit_title}

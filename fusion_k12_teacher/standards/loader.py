@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from .models import CurriculumStandard, KnowledgePoint
 
@@ -15,13 +14,13 @@ DATA_DIR = Path(__file__).parent / "data"
 class StandardsLoader:
     """课标数据加载器 — 从 JSON 文件加载课标知识点到内存。"""
 
-    def __init__(self, data_dir: Optional[Path] = None):
+    def __init__(self, data_dir: Path | None = None):
         self._data_dir = data_dir or DATA_DIR
-        self._standards: Dict[str, CurriculumStandard] = {}
-        self._points_index: Dict[str, KnowledgePoint] = {}
+        self._standards: dict[str, CurriculumStandard] = {}
+        self._points_index: dict[str, KnowledgePoint] = {}
         self._loaded = False
 
-    def load_all(self) -> Dict[str, CurriculumStandard]:
+    def load_all(self) -> dict[str, CurriculumStandard]:
         """加载 data 目录下所有 JSON 课标文件。"""
         if self._loaded:
             return self._standards
@@ -43,7 +42,7 @@ class StandardsLoader:
 
     def _load_file(self, path: Path) -> None:
         """加载单个 JSON 课标文件。"""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             raw = json.load(f)
 
         if isinstance(raw, list):
@@ -77,37 +76,37 @@ class StandardsLoader:
         for kp in std.knowledge_points:
             self._points_index[kp.id] = kp
 
-    def get_standard(self, std_id: str) -> Optional[CurriculumStandard]:
+    def get_standard(self, std_id: str) -> CurriculumStandard | None:
         """按 ID 获取课标。"""
         if not self._loaded:
             self.load_all()
         return self._standards.get(std_id)
 
-    def get_point(self, point_id: str) -> Optional[KnowledgePoint]:
+    def get_point(self, point_id: str) -> KnowledgePoint | None:
         """按 ID 获取知识点。"""
         if not self._loaded:
             self.load_all()
         return self._points_index.get(point_id)
 
-    def all_points(self) -> Dict[str, KnowledgePoint]:
+    def all_points(self) -> dict[str, KnowledgePoint]:
         """返回所有知识点索引。"""
         if not self._loaded:
             self.load_all()
         return dict(self._points_index)
 
-    def all_standards(self) -> Dict[str, CurriculumStandard]:
+    def all_standards(self) -> dict[str, CurriculumStandard]:
         """返回所有课标。"""
         if not self._loaded:
             self.load_all()
         return dict(self._standards)
 
-    def list_subjects(self) -> List[str]:
+    def list_subjects(self) -> list[str]:
         """列出已加载的学科。"""
         if not self._loaded:
             self.load_all()
         return sorted({std.subject for std in self._standards.values() if std.subject})
 
-    def list_grades(self, subject: str = "") -> List[str]:
+    def list_grades(self, subject: str = "") -> list[str]:
         """列出已加载的年级。"""
         if not self._loaded:
             self.load_all()
@@ -119,7 +118,7 @@ class StandardsLoader:
                 grades.add(kp.grade)
         return sorted(grades, key=_grade_sort_key)
 
-    def reload(self) -> Dict[str, CurriculumStandard]:
+    def reload(self) -> dict[str, CurriculumStandard]:
         """强制重新加载。"""
         self._standards.clear()
         self._points_index.clear()

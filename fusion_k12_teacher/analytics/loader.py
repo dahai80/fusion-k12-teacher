@@ -6,14 +6,14 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .models import StudentAssessment
 
 logger = logging.getLogger(__name__)
 
 
-def load_from_json(path: str | Path) -> List[StudentAssessment]:
+def load_from_json(path: str | Path) -> list[StudentAssessment]:
     """从 JSON 文件加载学情数据。
 
     支持两种格式:
@@ -26,7 +26,7 @@ def load_from_json(path: str | Path) -> List[StudentAssessment]:
         return []
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         logger.error(f"学情文件读取失败: {path} — {e}")
@@ -41,7 +41,7 @@ def load_from_json(path: str | Path) -> List[StudentAssessment]:
     return normalize_assessments(raw_list)
 
 
-def load_from_csv(path: str | Path) -> List[StudentAssessment]:
+def load_from_csv(path: str | Path) -> list[StudentAssessment]:
     """从 CSV 文件加载学情数据。
 
     期望列: student_id, student_name, assessment_id, date, subject, grade,
@@ -53,9 +53,9 @@ def load_from_csv(path: str | Path) -> List[StudentAssessment]:
         logger.error(f"学情文件不存在: {path}")
         return []
 
-    grouped: Dict[str, Dict[str, Any]] = {}
+    grouped: dict[str, dict[str, Any]] = {}
     try:
-        with open(path, "r", encoding="utf-8-sig") as f:
+        with open(path, encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 sid = row.get("student_id", "").strip()
@@ -89,7 +89,7 @@ def load_from_csv(path: str | Path) -> List[StudentAssessment]:
     return normalize_assessments(list(grouped.values()))
 
 
-def normalize_assessments(data: List[Dict[str, Any]]) -> List[StudentAssessment]:
+def normalize_assessments(data: list[dict[str, Any]]) -> list[StudentAssessment]:
     """将原始字典列表标准化为 StudentAssessment 列表。"""
     results = []
     for item in data:

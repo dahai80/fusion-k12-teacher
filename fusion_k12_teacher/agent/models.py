@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 
 @dataclass
@@ -13,11 +12,11 @@ class TaskStep:
 
     engine: str
     method: str
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
     output_key: str = ""
-    depends_on: List[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "engine": self.engine,
             "method": self.method,
@@ -27,7 +26,7 @@ class TaskStep:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> TaskStep:
+    def from_dict(cls, d: dict[str, Any]) -> TaskStep:
         return cls(
             engine=d.get("engine", ""),
             method=d.get("method", ""),
@@ -45,12 +44,12 @@ class TeachingTask:
     name: str
     task_type: str = "scheduled"
     schedule: str = ""
-    steps: List[TaskStep] = field(default_factory=list)
+    steps: list[TaskStep] = field(default_factory=list)
     enabled: bool = True
     last_run: str = ""
     last_status: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -63,7 +62,7 @@ class TeachingTask:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> TeachingTask:
+    def from_dict(cls, d: dict[str, Any]) -> TeachingTask:
         steps = [TaskStep.from_dict(s) for s in d.get("steps", [])]
         return cls(
             id=d.get("id", ""),
@@ -85,10 +84,10 @@ class TaskResult:
     status: str = "pending"
     started_at: str = ""
     completed_at: str = ""
-    step_results: Dict[str, Any] = field(default_factory=dict)
+    step_results: dict[str, Any] = field(default_factory=dict)
     summary: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
             "status": self.status,
@@ -99,7 +98,7 @@ class TaskResult:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> TaskResult:
+    def from_dict(cls, d: dict[str, Any]) -> TaskResult:
         return cls(
             task_id=d.get("task_id", ""),
             status=d.get("status", "pending"),

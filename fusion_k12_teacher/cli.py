@@ -3,26 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import sys
 
 import click
 
-from . import __version__, __app_name__
+from . import __app_name__, __version__
+from .agent import list_available_tasks, register_all_engines, scheduler
 from .ai_client import MLXClient
-from .curriculum import CurriculumEngine
-from .assessment import AssessmentEngine
-from .subjects import SubjectExpert
-from .personalization import PersonalizationEngine
-from .content import ContentGenerator
-from .differentiation import DifferentiationEngine
-from .standards import StandardsLoader, StandardsQuery
-from .analytics import AnalyticsEngine, load_from_json, load_from_csv
+from .analytics import AnalyticsEngine, load_from_csv, load_from_json
 from .analytics.models import WeakPoint
-from .agent import scheduler, list_available_tasks, build_task, register_all_engines
-from .safety import ContentFilter, SensitiveWordList
+from .assessment import AssessmentEngine
+from .content import ContentGenerator
+from .curriculum import CurriculumEngine
 from .desensitize import DataAnonymizer, DesensitizeConfig
+from .differentiation import DifferentiationEngine
+from .personalization import PersonalizationEngine
+from .safety import ContentFilter, SensitiveWordList
+from .standards import StandardsLoader, StandardsQuery
+from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +65,6 @@ def cli(ctx, verbose, model):
 @cli.group()
 def lesson():
     """课程规划与教案管理。"""
-    pass
 
 
 @lesson.command("plan")
@@ -119,7 +116,6 @@ async def _async_lesson_quiz(ctx, subject, grade, topic, questions):
 @cli.group()
 def assess():
     """作业批改与评估。"""
-    pass
 
 
 @assess.command("essay")
@@ -147,7 +143,6 @@ async def _async_assess_essay(ctx, essay_text):
 @cli.group()
 def subject():
     """学科知识问答与练习。"""
-    pass
 
 
 @subject.command("explain")
@@ -176,7 +171,6 @@ async def _async_subject_explain(ctx, subject_name, grade, concept):
 @cli.group()
 def personalize():
     """个性化学习。"""
-    pass
 
 
 @personalize.command("path")
@@ -205,7 +199,6 @@ async def _async_personalize_path(ctx, student, grade, subject, goal):
 @cli.group()
 def content():
     """教学材料生成。"""
-    pass
 
 
 @content.command("worksheet")
@@ -265,7 +258,6 @@ def serve(host, port):
 @cli.group()
 def standards():
     """课标知识点查询。"""
-    pass
 
 
 @standards.command("list")
@@ -383,7 +375,6 @@ async def _async_lesson_quiz_diff(ctx, subject, grade, topic, questions):
 @cli.group()
 def analytics():
     """学情分析与补救方案。"""
-    pass
 
 
 @analytics.command("class-profile")
@@ -531,7 +522,6 @@ def _load_assessments(path: str):
 @cli.group()
 def agent():
     """任务编排与自动化调度。"""
-    pass
 
 
 @agent.command("tasks")
@@ -615,7 +605,6 @@ def agent_stop():
 @cli.group()
 def safety():
     """内容安全过滤与审查。"""
-    pass
 
 
 @safety.command("check")
@@ -626,7 +615,7 @@ def safety_check(text, grade):
     cf = ContentFilter()
     result = cf.check_text(text, grade)
     click.echo()
-    click.echo(f"🛡️ 内容检查结果:")
+    click.echo("🛡️ 内容检查结果:")
     click.echo(f"   安全: {'✅ 是' if result.is_safe else '❌ 否'}")
     click.echo(f"   风险等级: {result.risk_level}")
     if result.flagged_words:
@@ -679,7 +668,6 @@ def safety_wordlist(add_word, remove_word, list_words):
 @cli.group()
 def desensitize():
     """数据脱敏与匿名化。"""
-    pass
 
 
 @desensitize.command("anon")
@@ -691,7 +679,7 @@ def desensitize_anon(input_file, mode, prefix, output):
     """对JSON文件中的记录进行脱敏。"""
     import json as _json
     try:
-        with open(input_file, "r", encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8") as f:
             records = _json.load(f)
     except Exception as e:
         click.echo(f"❌ 读取文件失败: {e}")
@@ -704,7 +692,7 @@ def desensitize_anon(input_file, mode, prefix, output):
     result = anon.anonymize_records(records)
     desensitized = anon.export_desensitized(records)
     click.echo()
-    click.echo(f"🔒 脱敏完成:")
+    click.echo("🔒 脱敏完成:")
     click.echo(f"   原始记录: {result.original_count}")
     click.echo(f"   脱敏记录: {result.anonymized_count}")
     click.echo(f"   名称映射: {len(result.name_map)} 个")
@@ -726,7 +714,7 @@ def desensitize_export(input_file, output, mode):
     """导出脱敏数据到文件。"""
     import json as _json
     try:
-        with open(input_file, "r", encoding="utf-8") as f:
+        with open(input_file, encoding="utf-8") as f:
             records = _json.load(f)
     except Exception as e:
         click.echo(f"❌ 读取文件失败: {e}")

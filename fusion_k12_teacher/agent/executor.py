@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .models import TaskResult, TaskStep, TeachingTask
 
@@ -16,13 +16,13 @@ class EngineRegistry:
     """引擎注册表 — 按名称查找引擎实例。"""
 
     def __init__(self):
-        self._engines: Dict[str, Any] = {}
+        self._engines: dict[str, Any] = {}
 
     def register(self, name: str, engine: Any) -> None:
         self._engines[name] = engine
         logger.info(f"引擎注册: {name}")
 
-    def get(self, name: str) -> Optional[Any]:
+    def get(self, name: str) -> Any | None:
         return self._engines.get(name)
 
     def list_names(self) -> list:
@@ -62,7 +62,7 @@ def register_all_engines(
     return registry
 
 
-async def execute_step(step: TaskStep, context: Dict[str, Any]) -> Any:
+async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     """执行单个步骤。"""
     engine = registry.get(step.engine)
     if not engine:
@@ -103,7 +103,7 @@ async def execute_task(task: TeachingTask) -> TaskResult:
         started_at=datetime.now().isoformat(),
     )
 
-    context: Dict[str, Any] = {}
+    context: dict[str, Any] = {}
 
     try:
         for step in task.steps:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..ai_client import MLXClient
 from ..standards.aligner import StandardsAligner
@@ -18,8 +18,8 @@ class DifferentiationEngine:
 
     def __init__(
         self,
-        mlx: Optional[MLXClient] = None,
-        standards_query: Optional[StandardsQuery] = None,
+        mlx: MLXClient | None = None,
+        standards_query: StandardsQuery | None = None,
     ):
         self.mlx = mlx or MLXClient()
         self._aligner = StandardsAligner(standards_query)
@@ -245,7 +245,7 @@ class DifferentiationEngine:
         grade: str,
         topic: str,
         duration: int,
-    ) -> List[GroupTask]:
+    ) -> list[GroupTask]:
         """生成分组课堂任务单。"""
         prompt = f"""为{grade}年级{subject}课程"{topic}"设计三组分层课堂任务：
 

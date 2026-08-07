@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers import SchedulerNotRunningError
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from .executor import execute_task, register_all_engines
+from .executor import execute_task
 from .models import TaskResult, TeachingTask
 from .tasks import build_task, list_available_tasks
 
@@ -27,9 +25,9 @@ class TaskScheduler:
     """任务调度器 — 管理任务注册、调度、执行历史。"""
 
     def __init__(self, db_path: str = ""):
-        self._tasks: Dict[str, TeachingTask] = {}
-        self._history: List[TaskResult] = []
-        self._scheduler: Optional[AsyncIOScheduler] = None
+        self._tasks: dict[str, TeachingTask] = {}
+        self._history: list[TaskResult] = []
+        self._scheduler: AsyncIOScheduler | None = None
         self._db_path = db_path or DEFAULT_DB_PATH
         self._history_path = HISTORY_JSON
         self._running = False
@@ -38,10 +36,10 @@ class TaskScheduler:
         self._tasks[task.id] = task
         logger.info(f"任务注册: {task.id} ({task.name})")
 
-    def get_task(self, task_id: str) -> Optional[TeachingTask]:
+    def get_task(self, task_id: str) -> TeachingTask | None:
         return self._tasks.get(task_id)
 
-    def list_tasks(self) -> List[TeachingTask]:
+    def list_tasks(self) -> list[TeachingTask]:
         return list(self._tasks.values())
 
     def enable_task(self, task_id: str) -> bool:
@@ -85,7 +83,7 @@ class TaskScheduler:
         self._save_history()
         return result
 
-    def get_history(self, limit: int = 20) -> List[TaskResult]:
+    def get_history(self, limit: int = 20) -> list[TaskResult]:
         return self._history[-limit:]
 
     def start(self) -> None:
@@ -137,7 +135,7 @@ class TaskScheduler:
         )
         logger.info(f"任务调度: {task.id} → {task.schedule}")
 
-    def _parse_cron(self, cron_expr: str) -> Dict[str, Any]:
+    def _parse_cron(self, cron_expr: str) -> dict[str, Any]:
         parts = cron_expr.split()
         keys = ["minute", "hour", "day", "month", "day_of_week"]
         result = {}
@@ -158,7 +156,7 @@ class TaskScheduler:
     def load_history(self) -> None:
         try:
             if os.path.exists(self._history_path):
-                with open(self._history_path, "r", encoding="utf-8") as f:
+                with open(self._history_path, encoding="utf-8") as f:
                     data = json.load(f)
                 self._history = [TaskResult.from_dict(d) for d in data]
                 logger.info(f"加载历史: {len(self._history)} 条")

@@ -1,5 +1,5 @@
 """Fusion-K12-Teacher 学科知识库模块。"""
 
-from .expert import SubjectExpert, SubjectExercise
+from .expert import SubjectExercise, SubjectExpert
 
-__all__ = ["SubjectExpert", "SubjectExercise"]
+__all__ = ["SubjectExercise", "SubjectExpert"]

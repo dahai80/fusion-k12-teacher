@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..ai_client import MLXClient
 
@@ -18,7 +18,7 @@ class Worksheet:
     title: str = ""
     subject: str = ""
     grade: str = ""
-    sections: List[Dict[str, Any]] = field(default_factory=list)
+    sections: list[dict[str, Any]] = field(default_factory=list)
     answer_key: str = ""
     instructions: str = ""
 
@@ -26,7 +26,7 @@ class Worksheet:
 class ContentGenerator:
     """教育内容生成器 — 对标 Claude K-12 Teacher 的教学材料制作能力。"""
 
-    def __init__(self, mlx: Optional[MLXClient] = None):
+    def __init__(self, mlx: MLXClient | None = None):
         self.mlx = mlx or MLXClient()
 
     async def generate_worksheet(self, subject: str, grade: str, topic: str, num_questions: int = 10) -> Worksheet:
@@ -53,7 +53,7 @@ class ContentGenerator:
             logger.error(f"工作纸生成失败: {e}")
         return Worksheet(title=f"{topic}练习", subject=subject, grade=grade)
 
-    async def generate_flashcards(self, subject: str, grade: str, topic: str, count: int = 10) -> List[Dict[str, str]]:
+    async def generate_flashcards(self, subject: str, grade: str, topic: str, count: int = 10) -> list[dict[str, str]]:
         """生成闪卡/抽认卡。"""
         prompt = f"""为{grade}年级{subject}学科关于"{topic}"生成{count}张学习闪卡。
 
@@ -65,10 +65,10 @@ class ContentGenerator:
             ], temperature=0.3)
             data = self._parse_json(response)
             return data if isinstance(data, list) else []
-        except Exception as e:
+        except Exception:
             return []
 
-    async def generate_lesson_slides(self, subject: str, grade: str, topic: str, num_slides: int = 8) -> List[Dict[str, str]]:
+    async def generate_lesson_slides(self, subject: str, grade: str, topic: str, num_slides: int = 8) -> list[dict[str, str]]:
         """生成课件大纲。"""
         prompt = f"""为{grade}年级{subject}学科关于"{topic}"设计{num_slides}页课件大纲。
 
@@ -80,10 +80,10 @@ class ContentGenerator:
             ], temperature=0.3)
             data = self._parse_json(response)
             return data if isinstance(data, list) else []
-        except Exception as e:
+        except Exception:
             return []
 
-    async def generate_educational_game(self, subject: str, grade: str, topic: str, game_type: str = "quiz") -> Dict[str, Any]:
+    async def generate_educational_game(self, subject: str, grade: str, topic: str, game_type: str = "quiz") -> dict[str, Any]:
         """生成教育游戏设计。"""
         prompt = f"""为{grade}年级{subject}学科关于"{topic}"设计一个{game_type}类型的教育游戏。
 

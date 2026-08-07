@@ -1,7 +1,5 @@
-import json
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -10,14 +8,14 @@ logger = logging.getLogger(__name__)
 class DesensitizeConfig:
     name_mode: str = "id"
     id_prefix: str = "S"
-    fields_to_mask: List[str] = field(default_factory=lambda: [
+    fields_to_mask: list[str] = field(default_factory=lambda: [
         "student_name", "name", "phone", "email", "address", "id_number"
     ])
     mask_char: str = "*"
     mask_keep_chars: int = 1
     id_counter_start: int = 1
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "name_mode": self.name_mode,
             "id_prefix": self.id_prefix,
@@ -28,7 +26,7 @@ class DesensitizeConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "DesensitizeConfig":
+    def from_dict(cls, data: dict) -> "DesensitizeConfig":
         return cls(
             name_mode=data.get("name_mode", "id"),
             id_prefix=data.get("id_prefix", "S"),
@@ -45,10 +43,10 @@ class DesensitizeConfig:
 class AnonymizeResult:
     original_count: int
     anonymized_count: int
-    name_map: Dict[str, str] = field(default_factory=dict)
-    masked_fields: List[str] = field(default_factory=list)
+    name_map: dict[str, str] = field(default_factory=dict)
+    masked_fields: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "original_count": self.original_count,
             "anonymized_count": self.anonymized_count,
@@ -57,7 +55,7 @@ class AnonymizeResult:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "AnonymizeResult":
+    def from_dict(cls, data: dict) -> "AnonymizeResult":
         return cls(
             original_count=data.get("original_count", 0),
             anonymized_count=data.get("anonymized_count", 0),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +15,12 @@ class KnowledgePoint:
     strand: str = ""
     topic: str = ""
     description: str = ""
-    prerequisites: List[str] = field(default_factory=list)
-    progression_next: List[str] = field(default_factory=list)
+    prerequisites: list[str] = field(default_factory=list)
+    progression_next: list[str] = field(default_factory=list)
     difficulty_level: str = "standard"
     curriculum_code: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "subject": self.subject,
@@ -35,7 +35,7 @@ class KnowledgePoint:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> KnowledgePoint:
+    def from_dict(cls, data: dict[str, Any]) -> KnowledgePoint:
         return cls(
             id=data.get("id", ""),
             subject=data.get("subject", ""),
@@ -57,9 +57,9 @@ class CurriculumStandard:
     year: str = ""
     subject: str = ""
     grade_range: str = ""
-    knowledge_points: List[KnowledgePoint] = field(default_factory=list)
+    knowledge_points: list[KnowledgePoint] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "name": self.name,
@@ -70,7 +70,7 @@ class CurriculumStandard:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> CurriculumStandard:
+    def from_dict(cls, data: dict[str, Any]) -> CurriculumStandard:
         kps = [KnowledgePoint.from_dict(kp) for kp in data.get("knowledge_points", [])]
         return cls(
             id=data.get("id", ""),
@@ -84,12 +84,12 @@ class CurriculumStandard:
 
 @dataclass
 class AlignmentContext:
-    knowledge_points: List[KnowledgePoint] = field(default_factory=list)
-    prerequisites: List[List[KnowledgePoint]] = field(default_factory=list)
-    curriculum_codes: List[str] = field(default_factory=list)
-    suggested_objectives: List[str] = field(default_factory=list)
-    must_cover: List[str] = field(default_factory=list)
-    optional_advanced: List[str] = field(default_factory=list)
+    knowledge_points: list[KnowledgePoint] = field(default_factory=list)
+    prerequisites: list[list[KnowledgePoint]] = field(default_factory=list)
+    curriculum_codes: list[str] = field(default_factory=list)
+    suggested_objectives: list[str] = field(default_factory=list)
+    must_cover: list[str] = field(default_factory=list)
+    optional_advanced: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -99,5 +99,5 @@ class CoverageReport:
     total_points: int = 0
     covered_points: int = 0
     coverage_ratio: float = 0.0
-    missing_points: List[str] = field(default_factory=list)
-    details: List[Dict[str, Any]] = field(default_factory=list)
+    missing_points: list[str] = field(default_factory=list)
+    details: list[dict[str, Any]] = field(default_factory=list)

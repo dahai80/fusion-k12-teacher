@@ -4,24 +4,24 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from .agent import list_available_tasks, register_all_engines, scheduler
 from .ai_client import MLXClient
+from .analytics import AnalyticsEngine, load_from_csv, load_from_json
+from .analytics.models import StudentAssessment, WeakPoint
 from .assessment import AssessmentEngine
 from .content import ContentGenerator
 from .curriculum import CurriculumEngine
-from .personalization import PersonalizationEngine
-from .subjects import SubjectExpert
-from .differentiation import DifferentiationEngine
-from .standards import StandardsLoader, StandardsQuery
-from .analytics import AnalyticsEngine, load_from_json, load_from_csv
-from .agent import scheduler, list_available_tasks, build_task, register_all_engines
-from .safety import ContentFilter, SensitiveWordList
 from .desensitize import DataAnonymizer, DesensitizeConfig
-from .analytics.models import WeakPoint, StudentAssessment
+from .differentiation import DifferentiationEngine
+from .personalization import PersonalizationEngine
+from .safety import ContentFilter, SensitiveWordList
+from .standards import StandardsLoader, StandardsQuery
+from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Fusion-K12-Teacher API",
-    version="1.0.2",
+    version="1.0.3",
     lifespan=lifespan,
 )
 
@@ -101,7 +101,7 @@ class SubjectExplainRequest(BaseModel):
 
 class PersonalizePathRequest(BaseModel):
     student_id: str = Field(..., description="学生ID")
-    progress: Dict[str, Any] = Field(default_factory=dict, description="学习进度")
+    progress: dict[str, Any] = Field(default_factory=dict, description="学习进度")
 
 class ContentGenerateRequest(BaseModel):
     topic: str = Field(..., description="主题")
@@ -113,7 +113,7 @@ class ContentGenerateRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.2"}
+    return {"status": "ok", "version": "1.0.3"}
 
 
 # ── Curriculum ──
@@ -318,7 +318,7 @@ class ClassReportRequest(BaseModel):
     data_path: str = Field("", description="评估数据文件路径(JSON/CSV)")
 
 class AnalyticsUploadRequest(BaseModel):
-    data: List[Dict[str, Any]] = Field(..., description="评估数据(JSON数组)")
+    data: list[dict[str, Any]] = Field(..., description="评估数据(JSON数组)")
     format: str = Field("json", description="数据格式: json")
 
 class ContentWorksheetDiffRequest(BaseModel):
@@ -573,12 +573,12 @@ async def safety_wordlist_list():
 # ── Request Models (v0.6 desensitize) ──
 
 class DesensitizeAnonRequest(BaseModel):
-    records: List[Dict[str, Any]] = Field(..., description="待脱敏记录列表")
+    records: list[dict[str, Any]] = Field(..., description="待脱敏记录列表")
     name_mode: str = Field("id", description="匿名模式: id/mask")
     id_prefix: str = Field("S", description="ID前缀")
 
 class DesensitizeExportRequest(BaseModel):
-    records: List[Dict[str, Any]] = Field(..., description="待脱敏记录列表")
+    records: list[dict[str, Any]] = Field(..., description="待脱敏记录列表")
     name_mode: str = Field("id", description="匿名模式: id/mask")
 
 

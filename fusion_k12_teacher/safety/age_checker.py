@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Dict, List
 
 from .models import AgeRating
 
@@ -31,7 +30,7 @@ class AgeChecker:
 
     def __init__(self, ratings_path: str = ""):
         self._path = ratings_path or DEFAULT_RATINGS_PATH
-        self._ratings: Dict[str, AgeRating] = {}
+        self._ratings: dict[str, AgeRating] = {}
         self.load()
 
     def load(self) -> None:
@@ -39,7 +38,7 @@ class AgeChecker:
             logger.warning(f"适龄配置文件不存在: {self._path}")
             self._init_defaults()
             return
-        with open(self._path, "r", encoding="utf-8") as f:
+        with open(self._path, encoding="utf-8") as f:
             data = json.load(f)
         self._ratings = {
             g: AgeRating(**r) for g, r in data.get("ratings", {}).items()
@@ -60,7 +59,7 @@ class AgeChecker:
             return self._default_rating(grade)
         return self._ratings[grade]
 
-    def check_content(self, text: str, grade: str) -> List[str]:
+    def check_content(self, text: str, grade: str) -> list[str]:
         issues = []
         rating = self.get_rating(grade)
         for restricted in rating.restricted_topics:
@@ -68,7 +67,7 @@ class AgeChecker:
                 issues.append(f"受限主题: {restricted}")
         return issues
 
-    def check_abstraction(self, abstraction: str, grade: str) -> List[str]:
+    def check_abstraction(self, abstraction: str, grade: str) -> list[str]:
         issues = []
         rating = self.get_rating(grade)
         order = {"concrete": 0, "semi-abstract": 1, "abstract": 2}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..ai_client import MLXClient
 
@@ -18,16 +18,16 @@ class LearningPath:
     student_id: str = ""
     grade: str = ""
     subject: str = ""
-    units: List[Dict[str, Any]] = field(default_factory=list)
+    units: list[dict[str, Any]] = field(default_factory=list)
     estimated_duration: str = ""
-    prerequisites: List[str] = field(default_factory=list)
-    goals: List[str] = field(default_factory=list)
+    prerequisites: list[str] = field(default_factory=list)
+    goals: list[str] = field(default_factory=list)
 
 
 class PersonalizationEngine:
     """个性化学习引擎 — 对标 Claude K-12 Teacher 的差异化教学能力。"""
 
-    def __init__(self, mlx: Optional[MLXClient] = None):
+    def __init__(self, mlx: MLXClient | None = None):
         self.mlx = mlx or MLXClient()
 
     async def create_learning_path(self, student: str, grade: str, subject: str, goal: str) -> LearningPath:
@@ -55,7 +55,7 @@ class PersonalizationEngine:
             logger.error(f"学习路径生成失败: {e}")
         return LearningPath(student_id=student, grade=grade, subject=subject)
 
-    async def diagnose_skills(self, subject: str, grade: str, responses: List[Dict]) -> Dict[str, Any]:
+    async def diagnose_skills(self, subject: str, grade: str, responses: list[dict]) -> dict[str, Any]:
         """诊断学生能力水平。"""
         prompt = f"""基于以下学生答题情况，诊断{grade}年级{subject}能力水平：
 
@@ -71,7 +71,7 @@ class PersonalizationEngine:
         except Exception as e:
             return {"error": str(e)}
 
-    async def recommend_resources(self, student: str, grade: str, subject: str, weakness: str) -> Dict[str, Any]:
+    async def recommend_resources(self, student: str, grade: str, subject: str, weakness: str) -> dict[str, Any]:
         """推荐个性化学习资源。"""
         prompt = f"""为{grade}年级学生{student}推荐针对"{weakness}"的学习资源。
 

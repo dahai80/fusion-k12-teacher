@@ -1,14 +1,14 @@
-from .models import KnowledgePoint, CurriculumStandard, AlignmentContext, CoverageReport
-from .loader import StandardsLoader
-from .query import StandardsQuery
 from .aligner import StandardsAligner
+from .loader import StandardsLoader
+from .models import AlignmentContext, CoverageReport, CurriculumStandard, KnowledgePoint
+from .query import StandardsQuery
 
 __all__ = [
-    "KnowledgePoint",
-    "CurriculumStandard",
     "AlignmentContext",
     "CoverageReport",
+    "CurriculumStandard",
+    "KnowledgePoint",
+    "StandardsAligner",
     "StandardsLoader",
     "StandardsQuery",
-    "StandardsAligner",
 ]
