@@ -546,11 +546,15 @@ def agent_disable(task_id):
 @click.argument("task_id")
 @click.option("--subject", "-s", default="数学", help="学科")
 @click.option("--grade", "-g", default="3", help="年级")
-def agent_run(task_id, subject, grade):
-    """立即执行任务。"""
+@click.option("--data", "data_path", default=None, help="学情数据文件路径 (JSON/CSV)")
+def agent_run(task_id, subject, grade, data_path):
+    """立即执行任务 — 每次按参数即时重建，避免烘焙过期数据 (AGT-5)。"""
     if not scheduler.get_task(task_id):
         scheduler.load_default_tasks(subject=subject, grade=grade)
-    result = asyncio.run(scheduler.run_task(task_id))
+    run_kwargs = {"subject": subject, "grade": grade}
+    if data_path:
+        run_kwargs["data_path"] = data_path
+    result = asyncio.run(scheduler.run_task(task_id, **run_kwargs))
     click.echo()
     click.echo(f"📌 任务: {result.task_id}")
     click.echo(f"   状态: {result.status}")
@@ -719,15 +723,19 @@ def desensitize_export(input_file, output, mode):
     with open(output, "w", encoding="utf-8") as f:
         _json.dump(desensitized, f, ensure_ascii=False, indent=2)
     name_map = anon.get_name_map()
-    map_path = output.replace(".json", "_map.json")
+    keys_dir = os.path.expanduser("~/.fusion-k12/keys")
+    os.makedirs(keys_dir, exist_ok=True)
+    os.chmod(keys_dir, 0o700)
+    base_name = os.path.basename(output).replace(".json", "")
+    map_path = os.path.join(keys_dir, f"{base_name}_map.json")
     fd = os.open(map_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         _json.dump(name_map, f, ensure_ascii=False, indent=2)
     if os.path.exists(map_path):
         os.chmod(map_path, 0o600)
-    logger.warning("可逆映射表已导出(权限0600, 含敏感还原信息, 勿与脱敏数据同存/外传): %s", map_path)
+    logger.warning("可逆映射表已导出至受限目录(0600, 含敏感还原信息, 勿与脱敏数据同存/外传): %s", map_path)
     click.echo(f"✅ 脱敏数据已导出: {output}")
-    click.echo(f"✅ 映射表已导出(0600): {map_path}")
+    click.echo(f"✅ 映射表已导出(0600, 独立受限目录): {map_path}")
 
 
 def main():

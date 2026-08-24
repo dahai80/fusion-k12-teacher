@@ -9,7 +9,7 @@ import unicodedata
 
 logger = logging.getLogger(__name__)
 
-_BYPASS_RE = re.compile(r"[\s​-‍⁠﻿·・\-_]")
+_BYPASS_RE = re.compile(r"[\s.​-‍⁠﻿·・、。・\-_/|]")
 
 
 def _normalize(text: str) -> str:
@@ -24,12 +24,22 @@ class SensitiveWordList:
     def __init__(self, path: str = ""):
         self._path = path or DEFAULT_WORDLIST_PATH
         self._words: set[str] = set()
+        self._matcher: re.Pattern[str] = re.compile(r"$^")
         self.load()
+
+    def _rebuild_matcher(self) -> None:
+        # SECb-P1: 单正则一次扫描, 替代 O(W×N) 逐词 in 子串
+        if not self._words:
+            self._matcher = re.compile(r"$^")
+            return
+        escaped = sorted((re.escape(w) for w in self._words), key=len, reverse=True)
+        self._matcher = re.compile("|".join(escaped))
 
     def load(self) -> None:
         if not os.path.exists(self._path):
             logger.warning(f"敏感词库文件不存在: {self._path}")
             self._words = set()
+            self._rebuild_matcher()
             return
         with open(self._path, encoding="utf-8") as f:
             lines = f.readlines()
@@ -39,6 +49,7 @@ class SensitiveWordList:
             if line.strip() and not line.startswith("#")
         }
         self._words.discard("")
+        self._rebuild_matcher()
         logger.info(f"敏感词库加载: {len(self._words)} 个词")
 
     def save(self) -> None:
@@ -53,16 +64,26 @@ class SensitiveWordList:
         w = _normalize(word.strip())
         if w:
             self._words.add(w)
+            self._rebuild_matcher()
 
     def remove(self, word: str) -> None:
         self._words.discard(_normalize(word.strip()))
+        self._rebuild_matcher()
 
     def list_words(self) -> list[str]:
         return sorted(self._words)
 
     def check(self, text: str) -> list[str]:
+        # SECb-P1: 单正则扫描, 命中词去重保持出现顺序
         text_norm = _normalize(text)
-        return [w for w in self._words if w and w in text_norm]
+        seen: set[str] = set()
+        found: list[str] = []
+        for m in self._matcher.finditer(text_norm):
+            w = m.group(0)
+            if w not in seen:
+                seen.add(w)
+                found.append(w)
+        return found
 
     @property
     def count(self) -> int:

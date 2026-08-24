@@ -45,8 +45,9 @@ class AnonymizeResult:
     anonymized_count: int
     name_map: dict[str, str] = field(default_factory=dict)
     masked_fields: list[str] = field(default_factory=list)
+    records: list[dict] = field(default_factory=list)
 
-    def to_dict(self, include_map: bool = False) -> dict:
+    def to_dict(self, include_map: bool = False, include_records: bool = False) -> dict:
         data = {
             "original_count": self.original_count,
             "anonymized_count": self.anonymized_count,
@@ -54,6 +55,8 @@ class AnonymizeResult:
         }
         if include_map:
             data["name_map"] = self.name_map
+        if include_records:
+            data["records"] = self.records
         return data
 
     @classmethod
@@ -63,4 +66,5 @@ class AnonymizeResult:
             anonymized_count=data.get("anonymized_count", 0),
             name_map=data.get("name_map", {}),
             masked_fields=data.get("masked_fields", []),
+            records=data.get("records", []),
         )

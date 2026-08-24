@@ -13,21 +13,17 @@ def _hash_id(name: str, salt: str, prefix: str) -> str:
 
 
 def _mask_phone(value: str, mask_char: str) -> str:
+    # SEC-3: 不保留长度, 仅留末 4 位 + 固定掩码, 避免位数泄露
     digits = "".join(c for c in value if c.isdigit())
     if len(digits) <= 4:
-        return mask_char * len(value)
-    return mask_char * (len(value) - 4) + value[-4:]
+        return mask_char * 8
+    return mask_char * 4 + digits[-4:]
 
 
 def _mask_email(value: str, mask_char: str) -> str:
-    if "@" not in value:
-        return mask_char * len(value)
-    local, _, domain = value.partition("@")
-    if len(local) <= 1:
-        masked_local = mask_char
-    else:
-        masked_local = local[0] + mask_char * (len(local) - 1)
-    return f"{masked_local}@{domain}"
+    # SEC-3: 不泄露域名, 整体哈希成不可逆伪邮箱
+    digest = hashlib.sha256(value.encode()).hexdigest()
+    return f"{mask_char * 3}@{digest[:8]}.invalid"
 
 
 def _mask_id_number(value: str, salt: str, mask_char: str) -> str:
@@ -36,9 +32,10 @@ def _mask_id_number(value: str, salt: str, mask_char: str) -> str:
 
 
 def _mask_generic(value: str, mask_char: str) -> str:
+    # SEC-3: 不保留长度, 固定掩码长度
     if not value:
         return value
-    return mask_char * len(value)
+    return mask_char * 8
 
 
 class DataAnonymizer:
@@ -94,13 +91,15 @@ class DataAnonymizer:
         return result
 
     def anonymize_records(self, records: list[dict]) -> AnonymizeResult:
+        # SECb-A2: 直接返脱敏 records, 避免调用方二次遍历 export_desensitized
         anonymized = []
+        masked_fields = set()
         for rec in records:
-            anonymized.append(self.anonymize_record(rec))
-        masked_fields = list({
-            f for rec in records for f in self.config.fields_to_mask
-            if f in rec
-        }) if records else []
+            anon_rec = self.anonymize_record(rec)
+            anonymized.append(anon_rec)
+            for f in self.config.fields_to_mask:
+                if f in rec:
+                    masked_fields.add(f)
         logger.info(
             "anonymize_records: %d -> %d records", len(records), len(anonymized)
         )
@@ -108,7 +107,8 @@ class DataAnonymizer:
             original_count=len(records),
             anonymized_count=len(anonymized),
             name_map=dict(self._name_map),
-            masked_fields=masked_fields,
+            masked_fields=sorted(masked_fields),
+            records=anonymized,
         )
 
     def deanonymize_record(self, record: dict) -> dict:

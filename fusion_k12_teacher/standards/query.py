@@ -56,14 +56,21 @@ class StandardsQuery:
         return result
 
     def find_by_topic(self, subject: str, grade: str, topic: str) -> list[KnowledgePoint]:
-        """按主题关键词查找知识点。"""
+        """按主题关键词查找知识点 — 单字不模糊匹配, 避免误命中 (STD-4)。"""
         points = self.get_knowledge_points(subject, grade)
-        topic_lower = topic.lower()
+        topic_lower = topic.strip().lower()
         result = []
+        # 单字关键词仅允许精确等于知识点 topic, 杜绝"加"匹配"加权/增加"
+        loose = len(topic_lower) >= 2
         for kp in points:
-            if topic_lower in kp.topic.lower() or topic_lower in kp.description.lower():
-                result.append(kp)
-        if not result:
+            kp_topic = kp.topic.lower()
+            if loose:
+                if topic_lower in kp_topic or topic_lower in kp.description.lower():
+                    result.append(kp)
+            else:
+                if topic_lower == kp_topic:
+                    result.append(kp)
+        if not result and loose:
             for kp in points:
                 if any(topic_lower in pre.lower() for pre in kp.prerequisites):
                     result.append(kp)
@@ -86,7 +93,7 @@ class StandardsQuery:
 
         for kp in all_points:
             is_covered = any(
-                kp.topic.lower() in obj or kp.description.lower() in obj or obj in kp.description.lower()
+                kp.topic.lower() in obj or kp.description.lower() in obj
                 for obj in objectives_lower
             )
             if is_covered:

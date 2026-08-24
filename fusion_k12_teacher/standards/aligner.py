@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from .models import AlignmentContext
 from .query import StandardsQuery
 
 logger = logging.getLogger(__name__)
+
+_CJK_RE = re.compile(r"[一-鿿]")
+
+
+def _cjk_tokens(text: str) -> list[str]:
+    """中文 + 空格混合分词 — CJK 段取 2-gram, 拉丁段按空白切 (STD-6/7)。"""
+    text = text.lower().strip()
+    tokens: list[str] = []
+    for chunk in text.split():
+        if _CJK_RE.search(chunk):
+            tokens.extend(chunk[i:i + 2] for i in range(len(chunk) - 1))
+            if len(chunk) >= 2:
+                tokens.append(chunk)
+        else:
+            tokens.append(chunk)
+    return [t for t in tokens if len(t) >= 2]
 
 
 class StandardsAligner:
@@ -24,10 +41,10 @@ class StandardsAligner:
             logger.info(f"课标未命中: {subject}/{grade}/{topic}，尝试宽泛匹配")
             all_points = self._query.get_knowledge_points(subject, grade)
             topic_lower = topic.lower()
-            topic_tokens = [t for t in topic_lower.split() if t]
+            topic_tokens = _cjk_tokens(topic)
             for kp in all_points:
                 kp_text = (kp.topic + " " + kp.description).lower()
-                if any(tok in kp_text for tok in topic_tokens) or topic_lower in kp_text:
+                if topic_lower in kp_text or any(tok in kp_text for tok in topic_tokens):
                     points.append(kp)
 
         prerequisites = []
@@ -88,7 +105,7 @@ class StandardsAligner:
     def validate_alignment(
         self, subject: str, grade: str, generated_objectives: list
     ) -> dict:
-        """验证生成内容是否覆盖课标必修(basic)知识点。"""
+        """验证生成内容是否覆盖课标必修(basic)知识点 — CJK bigram 分词 (STD-7)。"""
         all_points = self._query.get_knowledge_points(subject, grade)
         must_cover = [kp for kp in all_points if kp.difficulty_level == "basic"]
 
@@ -98,17 +115,15 @@ class StandardsAligner:
 
         covered = []
         missing = []
-        obj_tokens = []
+        obj_tokens: list[str] = []
         for o in generated_objectives:
-            o_str = str(o).lower()
-            obj_tokens.extend([t for t in o_str.split() if t])
+            obj_tokens.extend(_cjk_tokens(str(o)))
+        obj_blob = " ".join(obj_tokens)
 
         for kp in must_cover:
-            kp_text = (kp.topic + " " + kp.description).lower()
-            kp_tokens = [t for t in kp_text.split() if t]
-            if kp.topic.lower() in " ".join(obj_tokens) or any(
-                tok and tok in obj_tokens for tok in kp_tokens
-            ):
+            kp_topic_lower = kp.topic.lower()
+            kp_tokens = _cjk_tokens(kp.topic + " " + kp.description)
+            if kp_topic_lower in obj_blob or any(tok in obj_tokens for tok in kp_tokens):
                 covered.append(kp.id)
             else:
                 missing.append(kp.id)

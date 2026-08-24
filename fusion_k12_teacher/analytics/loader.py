@@ -12,13 +12,39 @@ from .models import StudentAssessment
 
 logger = logging.getLogger(__name__)
 
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def _sanitize_cell(val: Any) -> str:
+    """消毒 CSV 单元格 — 剥离公式注入前缀 (ENG-8)。"""
+    s = str(val) if val is not None else ""
+    if s.startswith(_CSV_INJECTION_PREFIXES):
+        logger.warning("CSV 单元格疑似公式注入, 已剥离前导字符: %r", s[:20])
+        s = "'" + s
+    return s
+
+
+def _parse_num(val: Any, default: float = 0.0) -> float | None:
+    """解析数值字段 — 空串返回 None(区别于真实 0), 非数返回 default (ENG-7)。"""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if s == "":
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        logger.warning("数值字段非数字, 回退默认值 %s: %r", default, s[:20])
+        return default
+
 
 def load_from_json(path: str | Path) -> list[StudentAssessment]:
     """从 JSON 文件加载学情数据。
 
     支持两种格式:
     1. 数组: [{student_id, ...}, ...]
-    2. 对象: {assessments: [{...}, ...]}
+    2. 对象: {assessments: [...]} 或 {records: [...]}
+       值为按学号键的 dict 时, 自动展开为记录列表 (ENG-9)。
     """
     path = Path(path)
     if not path.exists():
@@ -32,11 +58,25 @@ def load_from_json(path: str | Path) -> list[StudentAssessment]:
         logger.error(f"学情文件读取失败: {path} — {e}")
         return []
 
-    raw_list = []
+    raw_list: list[Any] = []
     if isinstance(data, list):
         raw_list = data
     elif isinstance(data, dict):
-        raw_list = data.get("assessments", data.get("records", []))
+        bucket = data.get("assessments")
+        if bucket is None:
+            bucket = data.get("records")
+        if isinstance(bucket, list):
+            raw_list = bucket
+        elif isinstance(bucket, dict):
+            raw_list = list(bucket.values())
+        elif not bucket and data:
+            top = next(iter(data.values()))
+            if isinstance(top, dict):
+                logger.warning("JSON 顶层为按学号键的 dict, 自动展开为记录列表")
+                raw_list = list(data.values())
+    else:
+        logger.error("学情文件非 list/dict 结构, 跳过: %s", path)
+        return []
 
     return normalize_assessments(raw_list)
 
@@ -47,6 +87,7 @@ def load_from_csv(path: str | Path) -> list[StudentAssessment]:
     期望列: student_id, student_name, assessment_id, date, subject, grade,
             total_score, max_score, question_id, question, student_answer, correct_answer, points, max_points
     每行一条答题记录，按 student_id+assessment_id 聚合。
+    空单元格不静默零填 — total_score 空则跳过该测评记录 (ENG-7)。
     """
     path = Path(path)
     if not path.exists():
@@ -62,25 +103,34 @@ def load_from_csv(path: str | Path) -> list[StudentAssessment]:
                     sid = row.get("student_id", "").strip()
                     aid = row.get("assessment_id", "").strip()
                     key = f"{sid}::{aid}"
+                    total = _parse_num(row.get("total_score"), 0.0)
+                    max_s = _parse_num(row.get("max_score"), 100.0)
+                    if max_s is None:
+                        max_s = 100.0
                     if key not in grouped:
                         grouped[key] = {
-                            "student_id": sid,
-                            "student_name": row.get("student_name", ""),
-                            "assessment_id": aid,
-                            "date": row.get("date", ""),
-                            "subject": row.get("subject", ""),
-                            "grade": row.get("grade", ""),
-                            "total_score": float(row.get("total_score") or 0),
-                            "max_score": float(row.get("max_score") or 100),
+                            "student_id": _sanitize_cell(sid),
+                            "student_name": _sanitize_cell(row.get("student_name", "")),
+                            "assessment_id": _sanitize_cell(aid),
+                            "date": _sanitize_cell(row.get("date", "")),
+                            "subject": _sanitize_cell(row.get("subject", "")),
+                            "grade": _sanitize_cell(row.get("grade", "")),
+                            "total_score": total if total is not None else 0.0,
+                            "max_score": max_s,
+                            "_total_missing": total is None,
                             "responses": [],
                         }
+                    else:
+                        if total is not None and grouped[key]["_total_missing"]:
+                            grouped[key]["total_score"] = total
+                            grouped[key]["_total_missing"] = False
                     resp = {
-                        "question_id": row.get("question_id", ""),
-                        "question": row.get("question", ""),
-                        "student_answer": row.get("student_answer", ""),
-                        "correct_answer": row.get("correct_answer", ""),
-                        "points": float(row.get("points") or 0),
-                        "max_points": float(row.get("max_points") or 0),
+                        "question_id": _sanitize_cell(row.get("question_id", "")),
+                        "question": _sanitize_cell(row.get("question", "")),
+                        "student_answer": _sanitize_cell(row.get("student_answer", "")),
+                        "correct_answer": _sanitize_cell(row.get("correct_answer", "")),
+                        "points": _parse_num(row.get("points"), 0.0) or 0.0,
+                        "max_points": _parse_num(row.get("max_points"), 0.0) or 0.0,
                     }
                     grouped[key]["responses"].append(resp)
                 except (ValueError, TypeError) as e:
@@ -90,17 +140,28 @@ def load_from_csv(path: str | Path) -> list[StudentAssessment]:
         logger.error(f"CSV 读取失败: {path} — {e}")
         return []
 
-    return normalize_assessments(list(grouped.values()))
+    results = []
+    for key, rec in grouped.items():
+        if rec.pop("_total_missing", False):
+            logger.warning("CSV 测评记录缺 total_score, 跳过(不静默零填): %s", key)
+            continue
+        results.append(rec)
+    return normalize_assessments(results)
 
 
-def normalize_assessments(data: list[dict[str, Any]]) -> list[StudentAssessment]:
+def normalize_assessments(data: list[Any]) -> list[StudentAssessment]:
     """将原始字典列表标准化为 StudentAssessment 列表。"""
     results = []
     for item in data:
+        if not isinstance(item, dict):
+            logger.warning("跳过非 dict 学情记录: %r", type(item).__name__)
+            continue
         try:
             sa = StudentAssessment.from_dict(item)
             if sa.student_id:
                 results.append(sa)
+            else:
+                logger.warning("跳过无 student_id 的学情记录")
         except Exception as e:
             logger.warning(f"跳过无效学情记录: {e}")
     logger.info(f"学情数据加载完成: {len(results)} 条")

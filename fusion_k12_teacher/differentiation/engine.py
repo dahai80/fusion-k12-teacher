@@ -3,15 +3,25 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..safety.filter import sanitize_input
 from ..standards.aligner import StandardsAligner
 from ..standards.query import StandardsQuery
 from .level_config import LEVEL_CONFIGS
 from .models import DifferentiatedContent, GroupTask, LayerContent
 
 logger = logging.getLogger(__name__)
+
+
+def _sgt(subject: str, grade: str, topic: str) -> tuple[str, str, str]:
+    return (
+        sanitize_input(subject, 20),
+        sanitize_input(grade, 4),
+        sanitize_input(topic),
+    )
 
 
 class DifferentiationEngine:
@@ -33,22 +43,23 @@ class DifferentiationEngine:
         duration: int = 45,
     ) -> DifferentiatedContent:
         """生成三层分层教案。"""
-        alignment = self._aligner.align(subject, grade, topic)
+        subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
+        alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
 
         result = DifferentiatedContent(
-            topic=topic, grade=grade, subject=subject,
+            topic=topic_s, grade=grade_s, subject=subject_s,
             standards_aligned=alignment.curriculum_codes,
         )
 
         levels = ["struggling", "standard", "advanced"]
         layer_coros = [
             self._generate_layer(
-                subject, grade, topic, lvl, duration, standards_context
+                subject_s, grade_s, topic_s, lvl, duration, standards_context
             )
             for lvl in levels
         ]
-        group_coro = self._generate_group_tasks(subject, grade, topic, duration)
+        group_coro = self._generate_group_tasks(subject_s, grade_s, topic_s, duration)
         layer_results, group_tasks = await asyncio.gather(
             asyncio.gather(*layer_coros, return_exceptions=True),
             group_coro,
@@ -78,18 +89,19 @@ class DifferentiationEngine:
         num_questions: int = 10,
     ) -> DifferentiatedContent:
         """生成三层分层测验。"""
-        alignment = self._aligner.align(subject, grade, topic)
+        subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
+        alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
 
         result = DifferentiatedContent(
-            topic=topic, grade=grade, subject=subject,
+            topic=topic_s, grade=grade_s, subject=subject_s,
             standards_aligned=alignment.curriculum_codes,
         )
 
         levels = ["struggling", "standard", "advanced"]
         quiz_coros = [
             self._generate_quiz_layer(
-                subject, grade, topic, lvl, num_questions, standards_context
+                subject_s, grade_s, topic_s, lvl, num_questions, standards_context
             )
             for lvl in levels
         ]
@@ -111,18 +123,19 @@ class DifferentiationEngine:
         num_questions: int = 8,
     ) -> DifferentiatedContent:
         """生成三层分层工作纸。"""
-        alignment = self._aligner.align(subject, grade, topic)
+        subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
+        alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
 
         result = DifferentiatedContent(
-            topic=topic, grade=grade, subject=subject,
+            topic=topic_s, grade=grade_s, subject=subject_s,
             standards_aligned=alignment.curriculum_codes,
         )
 
         levels = ["struggling", "standard", "advanced"]
         ws_coros = [
             self._generate_worksheet_layer(
-                subject, grade, topic, lvl, num_questions, standards_context
+                subject_s, grade_s, topic_s, lvl, num_questions, standards_context
             )
             for lvl in levels
         ]
@@ -282,30 +295,43 @@ C组(挑战): 面向优等生，任务有挑战，重在拓展探究
     {{"group_name": "C组(挑战)", "task_description": "...", "expected_output": "...", "time_allocation": "..."}}
 ]"""
 
-        response = await self.mlx.chat([
-            {"role": "system", "content": "你是一位专业K-12教师，擅长设计分层分组课堂活动。"},
-            {"role": "user", "content": prompt},
-        ], temperature=0.3)
+        try:
+            response = await self.mlx.chat([
+                {"role": "system", "content": "你是一位专业K-12教师，擅长设计分层分组课堂活动。"},
+                {"role": "user", "content": prompt},
+            ], temperature=0.3)
+        except Exception as e:
+            logger.error(f"分组任务 LLM 调用失败: {e}")
+            return []
 
         data = self._parse_json(response)
         if isinstance(data, list):
-            return [
-                GroupTask(
-                    group_name=item.get("group_name", ""),
-                    task_description=item.get("task_description", ""),
-                    expected_output=item.get("expected_output", ""),
-                    time_allocation=item.get("time_allocation", ""),
-                )
-                for item in data
-            ]
+            tasks = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                tasks.append(GroupTask(
+                    group_name=str(item.get("group_name", "")),
+                    task_description=str(item.get("task_description", "")),
+                    expected_output=str(item.get("expected_output", "")),
+                    time_allocation=str(item.get("time_allocation", "")),
+                ))
+            if tasks:
+                return tasks
+        logger.error("分组任务生成失败: LLM 返回空或无法解析, 教师将无分组任务")
         return []
 
-    def _parse_json(self, text: str) -> Any:
+    def _parse_json(self, text: Any) -> Any:
+        if not isinstance(text, str) or not text.strip():
+            return None
         text = text.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+        else:
+            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+            if obj_match:
+                text = obj_match.group(0)
         try:
             return json.loads(text)
         except json.JSONDecodeError:

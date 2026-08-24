@@ -19,7 +19,7 @@ GRADE_ORDER = [
     "7", "8", "9", "10", "11", "12",
 ]
 
-_BYPASS_RE = re.compile(r"[\s​-‍⁠﻿·・\-_]")
+_BYPASS_RE = re.compile(r"[\s.​-‍⁠﻿·・、。・\-_/|]")
 
 
 def _normalize(text: str) -> str:
