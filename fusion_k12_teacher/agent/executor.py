@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 import logging
 from datetime import datetime
 from typing import Any
@@ -76,20 +76,23 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     for k, v in step.params.items():
         if isinstance(v, str) and v.startswith("$"):
             ref_key = v[1:]
-            resolved_params[k] = context.get(ref_key, v)
+            in_deps = ref_key in step.depends_on
+            if ref_key not in context:
+                if in_deps:
+                    raise ValueError(f"步骤引用未解析: {ref_key} (参数 {k})")
+                resolved_params[k] = v
+            else:
+                resolved_params[k] = context[ref_key]
         else:
             resolved_params[k] = v
 
-    if asyncio.iscoroutinefunction(method):
+    if inspect.iscoroutinefunction(method):
         result = await method(**resolved_params)
     else:
         result = method(**resolved_params)
 
     if step.output_key:
-        if hasattr(result, "to_dict"):
-            context[step.output_key] = result.to_dict()
-        else:
-            context[step.output_key] = result
+        context[step.output_key] = result
 
     logger.info(f"步骤完成: {step.engine}.{step.method} → {step.output_key}")
     return result
@@ -112,7 +115,15 @@ async def execute_task(task: TeachingTask) -> TaskResult:
                     raise ValueError(f"步骤依赖未满足: {dep}")
 
             step_result = await execute_step(step, context)
-            result.step_results[step.output_key or f"{step.engine}.{step.method}"] = (
+            key = step.output_key or f"{step.engine}.{step.method}"
+            if key in result.step_results:
+                logger.warning(f"步骤输出键重复: {key}，追加序号")
+                idx = 0
+                base = key
+                while key in result.step_results:
+                    idx += 1
+                    key = f"{base}_{idx}"
+            result.step_results[key] = (
                 step_result.to_dict() if hasattr(step_result, "to_dict") else str(step_result)
             )
 
@@ -121,7 +132,7 @@ async def execute_task(task: TeachingTask) -> TaskResult:
     except Exception as e:
         result.status = "failed"
         result.summary = f"失败: {e}"
-        logger.error(f"任务执行失败 {task.id}: {e}")
+        logger.error(f"任务执行失败 {task.id}: {e}", exc_info=True)
 
     result.completed_at = datetime.now().isoformat()
 

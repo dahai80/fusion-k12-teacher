@@ -24,8 +24,10 @@ class StandardsAligner:
             logger.info(f"课标未命中: {subject}/{grade}/{topic}，尝试宽泛匹配")
             all_points = self._query.get_knowledge_points(subject, grade)
             topic_lower = topic.lower()
+            topic_tokens = [t for t in topic_lower.split() if t]
             for kp in all_points:
-                if any(c in kp.topic.lower() or c in kp.description.lower() for c in topic_lower):
+                kp_text = (kp.topic + " " + kp.description).lower()
+                if any(tok in kp_text for tok in topic_tokens) or topic_lower in kp_text:
                     points.append(kp)
 
         prerequisites = []
@@ -86,23 +88,32 @@ class StandardsAligner:
     def validate_alignment(
         self, subject: str, grade: str, generated_objectives: list
     ) -> dict:
-        """验证生成内容是否覆盖课标必修知识点。"""
-        alignment = self.align(subject, grade, "")
-        if not alignment.must_cover:
+        """验证生成内容是否覆盖课标必修(basic)知识点。"""
+        all_points = self._query.get_knowledge_points(subject, grade)
+        must_cover = [kp for kp in all_points if kp.difficulty_level == "basic"]
+
+        if not must_cover:
+            logger.info(f"对齐验证: {subject}/{grade} 无必修知识点，视为已对齐")
             return {"aligned": True, "coverage": 1.0, "missing": []}
 
         covered = []
         missing = []
-        obj_text = " ".join(str(o).lower() for o in generated_objectives)
+        obj_tokens = []
+        for o in generated_objectives:
+            o_str = str(o).lower()
+            obj_tokens.extend([t for t in o_str.split() if t])
 
-        for kp_id in alignment.must_cover:
-            kp = self._query._loader.get_point(kp_id) if kp_id else None
-            if kp and (kp.topic.lower() in obj_text or kp.description.lower() in obj_text):
-                covered.append(kp_id)
+        for kp in must_cover:
+            kp_text = (kp.topic + " " + kp.description).lower()
+            kp_tokens = [t for t in kp_text.split() if t]
+            if kp.topic.lower() in " ".join(obj_tokens) or any(
+                tok and tok in obj_tokens for tok in kp_tokens
+            ):
+                covered.append(kp.id)
             else:
-                missing.append(kp_id)
+                missing.append(kp.id)
 
-        total = len(alignment.must_cover)
+        total = len(must_cover)
         coverage = len(covered) / total if total > 0 else 1.0
 
         logger.info(f"对齐验证: 覆盖 {len(covered)}/{total} 必修知识点")

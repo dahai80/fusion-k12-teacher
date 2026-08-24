@@ -4,23 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import click
 
 from . import __app_name__, __version__
-from .agent import list_available_tasks, register_all_engines, scheduler
-from .ai_client import MLXClient
-from .analytics import AnalyticsEngine, load_from_csv, load_from_json
+from .agent import list_available_tasks, scheduler
+from .analytics import load_from_csv, load_from_json
 from .analytics.models import WeakPoint
-from .assessment import AssessmentEngine
-from .content import ContentGenerator
-from .curriculum import CurriculumEngine
 from .desensitize import DataAnonymizer, DesensitizeConfig
-from .differentiation import DifferentiationEngine
-from .personalization import PersonalizationEngine
+from .engines import build_engines
 from .safety import ContentFilter, SensitiveWordList
-from .standards import StandardsLoader, StandardsQuery
-from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
 
@@ -34,30 +28,18 @@ def cli(ctx, verbose, model):
     """Fusion-K12-Teacher — Local AI-powered K-12 education assistant."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(levelname)-8s %(message)s")
-    mlx = MLXClient(model=model)
     ctx.ensure_object(dict)
-    ctx.obj["mlx"] = mlx
-    ctx.obj["curriculum"] = CurriculumEngine(mlx)
-    ctx.obj["assessment"] = AssessmentEngine(mlx)
-    ctx.obj["subjects"] = SubjectExpert(mlx)
-    ctx.obj["personalization"] = PersonalizationEngine(mlx)
-    ctx.obj["content"] = ContentGenerator(mlx)
-    ctx.obj["differentiation"] = DifferentiationEngine(mlx)
-    loader = StandardsLoader()
-    loader.load_all()
-    ctx.obj["standards_query"] = StandardsQuery(loader)
-    ctx.obj["standards_loader"] = loader
-    ctx.obj["analytics"] = AnalyticsEngine(mlx, ctx.obj["standards_query"])
-    register_all_engines(
-        curriculum=ctx.obj["curriculum"],
-        assessment=ctx.obj["assessment"],
-        subjects=ctx.obj["subjects"],
-        personalization=ctx.obj["personalization"],
-        content=ctx.obj["content"],
-        differentiation=ctx.obj["differentiation"],
-        analytics=ctx.obj["analytics"],
-        standards_query=ctx.obj["standards_query"],
-    )
+    bundle = build_engines(model=model)
+    ctx.obj["mlx"] = bundle.mlx
+    ctx.obj["curriculum"] = bundle.curriculum
+    ctx.obj["assessment"] = bundle.assessment
+    ctx.obj["subjects"] = bundle.subjects
+    ctx.obj["personalization"] = bundle.personalization
+    ctx.obj["content"] = bundle.content
+    ctx.obj["differentiation"] = bundle.differentiation
+    ctx.obj["standards_query"] = bundle.standards_query
+    ctx.obj["standards_loader"] = bundle.standards_loader
+    ctx.obj["analytics"] = bundle.analytics
 
 
 # ── 课程规划 ──
@@ -245,10 +227,13 @@ async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
 
 
 @cli.command()
-@click.option("--host", default="127.0.0.1", help="监听地址")
+@click.option("--host", default="127.0.0.1", help="监听地址(仅本地回环, 外部绑定请用反向代理+鉴权)")
 @click.option("--port", default=11448, help="监听端口")
 def serve(host, port):
     """启动 HTTP API 服务。"""
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        click.echo("❌ 禁止监听非回环地址; 请用反向代理+鉴权暴露服务, 避免裸奔")
+        raise SystemExit(1)
     import uvicorn
     uvicorn.run("fusion_k12_teacher.serve:app", host=host, port=port)
 
@@ -590,7 +575,14 @@ def agent_start():
     """启动调度器守护。"""
     scheduler.load_default_tasks()
     scheduler.start()
-    click.echo("🚀 Agent 调度器已启动")
+    click.echo("🚀 Agent 调度器已启动，Ctrl+C 退出")
+    try:
+        import time
+        while scheduler.is_running():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        scheduler.stop()
+        click.echo("🛑 Agent 调度器已停止")
 
 
 @agent.command("stop")
@@ -728,10 +720,14 @@ def desensitize_export(input_file, output, mode):
         _json.dump(desensitized, f, ensure_ascii=False, indent=2)
     name_map = anon.get_name_map()
     map_path = output.replace(".json", "_map.json")
-    with open(map_path, "w", encoding="utf-8") as f:
+    fd = os.open(map_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         _json.dump(name_map, f, ensure_ascii=False, indent=2)
+    if os.path.exists(map_path):
+        os.chmod(map_path, 0o600)
+    logger.warning("可逆映射表已导出(权限0600, 含敏感还原信息, 勿与脱敏数据同存/外传): %s", map_path)
     click.echo(f"✅ 脱敏数据已导出: {output}")
-    click.echo(f"✅ 映射表已导出: {map_path}")
+    click.echo(f"✅ 映射表已导出(0600): {map_path}")
 
 
 def main():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -40,23 +41,32 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        for level_name in ["struggling", "standard", "advanced"]:
-            try:
-                layer = await self._generate_layer(
-                    subject, grade, topic, level_name, duration, standards_context
-                )
-                setattr(result, level_name, layer)
-            except Exception as e:
-                logger.error(f"分层教案生成失败 [{level_name}]: {e}")
-                setattr(result, level_name, LayerContent())
-
-        try:
-            result.group_tasks = await self._generate_group_tasks(
-                subject, grade, topic, duration
+        levels = ["struggling", "standard", "advanced"]
+        layer_coros = [
+            self._generate_layer(
+                subject, grade, topic, lvl, duration, standards_context
             )
-        except Exception as e:
-            logger.error(f"分组任务生成失败: {e}")
+            for lvl in levels
+        ]
+        group_coro = self._generate_group_tasks(subject, grade, topic, duration)
+        layer_results, group_tasks = await asyncio.gather(
+            asyncio.gather(*layer_coros, return_exceptions=True),
+            group_coro,
+            return_exceptions=True,
+        )
+
+        for lvl, lr in zip(levels, layer_results):
+            if isinstance(lr, Exception):
+                logger.error(f"分层教案生成失败 [{lvl}]: {lr}")
+                setattr(result, lvl, LayerContent())
+            else:
+                setattr(result, lvl, lr)
+
+        if isinstance(group_tasks, Exception):
+            logger.error(f"分组任务生成失败: {group_tasks}")
             result.group_tasks = []
+        else:
+            result.group_tasks = group_tasks
 
         return result
 
@@ -72,19 +82,24 @@ class DifferentiationEngine:
         standards_context = self._aligner.build_prompt_context(alignment)
 
         result = DifferentiatedContent(
-            topic=topic, grade=grade, subject=topic,
+            topic=topic, grade=grade, subject=subject,
             standards_aligned=alignment.curriculum_codes,
         )
 
-        for level_name in ["struggling", "standard", "advanced"]:
-            try:
-                layer = await self._generate_quiz_layer(
-                    subject, grade, topic, level_name, num_questions, standards_context
-                )
-                setattr(result, level_name, layer)
-            except Exception as e:
-                logger.error(f"分层测验生成失败 [{level_name}]: {e}")
-                setattr(result, level_name, LayerContent())
+        levels = ["struggling", "standard", "advanced"]
+        quiz_coros = [
+            self._generate_quiz_layer(
+                subject, grade, topic, lvl, num_questions, standards_context
+            )
+            for lvl in levels
+        ]
+        quiz_results = await asyncio.gather(*quiz_coros, return_exceptions=True)
+        for lvl, qr in zip(levels, quiz_results):
+            if isinstance(qr, Exception):
+                logger.error(f"分层测验生成失败 [{lvl}]: {qr}")
+                setattr(result, lvl, LayerContent())
+            else:
+                setattr(result, lvl, qr)
 
         return result
 
@@ -104,15 +119,20 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        for level_name in ["struggling", "standard", "advanced"]:
-            try:
-                layer = await self._generate_worksheet_layer(
-                    subject, grade, topic, level_name, num_questions, standards_context
-                )
-                setattr(result, level_name, layer)
-            except Exception as e:
-                logger.error(f"分层工作纸生成失败 [{level_name}]: {e}")
-                setattr(result, level_name, LayerContent())
+        levels = ["struggling", "standard", "advanced"]
+        ws_coros = [
+            self._generate_worksheet_layer(
+                subject, grade, topic, lvl, num_questions, standards_context
+            )
+            for lvl in levels
+        ]
+        ws_results = await asyncio.gather(*ws_coros, return_exceptions=True)
+        for lvl, wr in zip(levels, ws_results):
+            if isinstance(wr, Exception):
+                logger.error(f"分层工作纸生成失败 [{lvl}]: {wr}")
+                setattr(result, lvl, LayerContent())
+            else:
+                setattr(result, lvl, wr)
 
         return result
 

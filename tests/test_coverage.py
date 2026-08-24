@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from fusion_k12_teacher.ai_client import MLXClient, _HAS_FUSION_CORE
-from fusion_k12_teacher.curriculum import CurriculumEngine, LessonPlan, Quiz
+from fusion_k12_teacher.ai_client import _HAS_FUSION_CORE, MLXClient
 from fusion_k12_teacher.assessment import AssessmentEngine, GradingResult, StudentReport
-from fusion_k12_teacher.subjects import SubjectExpert, SubjectExercise
-from fusion_k12_teacher.personalization import PersonalizationEngine, LearningPath
 from fusion_k12_teacher.content import ContentGenerator, Worksheet
-
+from fusion_k12_teacher.curriculum import CurriculumEngine, LessonPlan, Quiz
+from fusion_k12_teacher.personalization import LearningPath, PersonalizationEngine
+from fusion_k12_teacher.subjects import SubjectExercise, SubjectExpert
 
 # ══════════════════════════════════════════════════════════════════════════════
 # AI Client 深度覆盖
@@ -347,6 +344,7 @@ class TestCLICoverage:
     def test_cli_help(self):
         """测试 CLI 帮助信息。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["--help"])
@@ -356,6 +354,7 @@ class TestCLICoverage:
     def test_cli_version(self):
         """测试 CLI 版本信息。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["--version"])
@@ -364,6 +363,7 @@ class TestCLICoverage:
     def test_cli_lesson_plan_help(self):
         """测试子命令帮助。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["lesson", "plan", "--help"])
@@ -372,6 +372,7 @@ class TestCLICoverage:
     def test_cli_lesson_quiz_help(self):
         """测试 quiz 子命令帮助。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["lesson", "quiz", "--help"])
@@ -380,6 +381,7 @@ class TestCLICoverage:
     def test_cli_assess_essay_help(self):
         """测试 assess essay 帮助。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["assess", "essay", "--help"])
@@ -388,6 +390,7 @@ class TestCLICoverage:
     def test_cli_subject_explain_help(self):
         """测试 subject explain 帮助。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["subject", "explain", "--help"])
@@ -396,6 +399,7 @@ class TestCLICoverage:
     def test_cli_personalize_path_help(self):
         """测试 personalize path 帮助。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["personalize", "path", "--help"])
@@ -404,6 +408,7 @@ class TestCLICoverage:
     def test_cli_content_worksheet_help(self):
         """测试 content worksheet 帮助。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["content", "worksheet", "--help"])
@@ -412,6 +417,7 @@ class TestCLICoverage:
     def test_cli_lesson_plan_run(self, tmp_path):
         """测试 lesson plan 命令执行。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["lesson", "plan", "数学", "3", "分数"])
@@ -421,6 +427,7 @@ class TestCLICoverage:
     def test_cli_lesson_quiz_run(self, tmp_path):
         """测试 lesson quiz 命令执行。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["lesson", "quiz", "数学", "3", "分数"])
@@ -429,6 +436,7 @@ class TestCLICoverage:
     def test_cli_subject_explain_run(self, tmp_path):
         """测试 subject explain 命令执行。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["subject", "explain", "科学", "5", "光合作用"])
@@ -437,6 +445,7 @@ class TestCLICoverage:
     def test_cli_content_worksheet_run(self, tmp_path):
         """测试 content worksheet 命令执行。"""
         from click.testing import CliRunner
+
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["content", "worksheet", "数学", "3", "分数"])
@@ -610,7 +619,7 @@ class TestMockSuccess:
     @pytest.mark.asyncio
     async def test_ai_client_chat_success(self):
         """测试 AI 客户端 _inner 初始化。"""
-        from fusion_k12_teacher.ai_client import MLXClient, _HAS_FUSION_CORE
+        from fusion_k12_teacher.ai_client import _HAS_FUSION_CORE, MLXClient
         client = MLXClient(model="test")
         assert (client._inner is not None) or (not _HAS_FUSION_CORE)
         # 测试 chat 失败（fusion-mlx 不可用）

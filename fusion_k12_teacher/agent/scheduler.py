@@ -1,7 +1,8 @@
-"""任务调度器 — APScheduler + SQLite 持久化。"""
+"""任务调度器 — APScheduler 内存调度 + history.json 执行历史持久化。"""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -17,20 +18,20 @@ from .tasks import build_task, list_available_tasks
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "agent.db")
 HISTORY_JSON = os.path.join(os.path.dirname(__file__), "data", "history.json")
 
 
 class TaskScheduler:
     """任务调度器 — 管理任务注册、调度、执行历史。"""
 
-    def __init__(self, db_path: str = ""):
+    def __init__(self, history_path: str = ""):
         self._tasks: dict[str, TeachingTask] = {}
         self._history: list[TaskResult] = []
         self._scheduler: AsyncIOScheduler | None = None
-        self._db_path = db_path or DEFAULT_DB_PATH
-        self._history_path = HISTORY_JSON
+        self._history_path = history_path or HISTORY_JSON
         self._running = False
+        self._run_locks: dict[str, asyncio.Lock] = {}
+        self._history_lock = asyncio.Lock()
 
     def register_task(self, task: TeachingTask) -> None:
         self._tasks[task.id] = task
@@ -77,11 +78,14 @@ class TaskScheduler:
         task = self._tasks.get(task_id)
         if not task:
             return TaskResult(task_id=task_id, status="failed", summary=f"任务不存在: {task_id}")
-        logger.info(f"开始执行任务: {task_id} ({task.name})")
-        result = await execute_task(task)
-        self._history.append(result)
-        self._save_history()
-        return result
+        lock = self._run_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            logger.info(f"开始执行任务: {task_id} ({task.name})")
+            result = await execute_task(task)
+            async with self._history_lock:
+                self._history.append(result)
+                await asyncio.to_thread(self._save_history)
+            return result
 
     def get_history(self, limit: int = 20) -> list[TaskResult]:
         return self._history[-limit:]
@@ -137,6 +141,8 @@ class TaskScheduler:
 
     def _parse_cron(self, cron_expr: str) -> dict[str, Any]:
         parts = cron_expr.split()
+        if len(parts) != 5:
+            logger.warning("cron 表达式字段数=%d (应为5): %s", len(parts), cron_expr)
         keys = ["minute", "hour", "day", "month", "day_of_week"]
         result = {}
         for i, part in enumerate(parts):
@@ -148,8 +154,10 @@ class TaskScheduler:
         try:
             os.makedirs(os.path.dirname(self._history_path), exist_ok=True)
             data = [r.to_dict() for r in self._history[-100:]]
-            with open(self._history_path, "w", encoding="utf-8") as f:
+            tmp_path = self._history_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, self._history_path)
         except Exception as e:
             logger.error(f"保存历史失败: {e}")
 

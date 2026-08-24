@@ -2,7 +2,35 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
+
 from .models import TaskStep, TeachingTask
+
+logger = logging.getLogger(__name__)
+
+
+def _load_assessments(data_path: str) -> list:
+    """按 data_path 加载学情数据，失败返回空列表。"""
+    if not data_path:
+        return []
+    try:
+        from ..analytics.loader import load_from_csv, load_from_json
+        if data_path.lower().endswith(".csv"):
+            return load_from_csv(data_path)
+        return load_from_json(data_path)
+    except Exception as e:
+        logger.warning(f"加载学情数据失败 {data_path}: {e}")
+        return []
+
+
+def _extract_responses(assessments: list) -> list[dict]:
+    """从 StudentAssessment 列表汇总全部答题记录。"""
+    responses = []
+    for a in assessments:
+        if hasattr(a, "responses") and a.responses:
+            responses.extend(a.responses)
+    return responses
 
 
 def weekly_prep(subject: str = "数学", grade: str = "3", topic: str = "本周主题") -> TeachingTask:
@@ -37,6 +65,7 @@ def weekly_prep(subject: str = "数学", grade: str = "3", topic: str = "本周�
 
 def weekly_summary(class_id: str = "C1", subject: str = "数学", grade: str = "3", data_path: str = "") -> TeachingTask:
     """每周学情汇总 — class_profile → error_analysis → report。"""
+    assessments = _load_assessments(data_path)
     return TeachingTask(
         id="weekly_summary",
         name="班级学情周报",
@@ -46,13 +75,13 @@ def weekly_summary(class_id: str = "C1", subject: str = "数学", grade: str = "
             TaskStep(
                 engine="analytics",
                 method="build_class_profile",
-                params={"class_id": class_id, "subject": subject, "grade": grade},
+                params={"class_id": class_id, "subject": subject, "grade": grade, "assessments": assessments},
                 output_key="class_profile",
             ),
             TaskStep(
                 engine="analytics",
                 method="analyze_errors",
-                params={"subject": subject, "grade": grade},
+                params={"subject": subject, "grade": grade, "responses": _extract_responses(assessments)},
                 output_key="error_analysis",
             ),
             TaskStep(
@@ -68,6 +97,8 @@ def weekly_summary(class_id: str = "C1", subject: str = "数学", grade: str = "
 
 def daily_homework_review(subject: str = "数学", grade: str = "3", data_path: str = "") -> TeachingTask:
     """每日作业错题补救 — error_analysis → remedial。"""
+    assessments = _load_assessments(data_path)
+    responses = _extract_responses(assessments)
     return TeachingTask(
         id="daily_homework_review",
         name="每日作业错题补救",
@@ -77,7 +108,7 @@ def daily_homework_review(subject: str = "数学", grade: str = "3", data_path: 
             TaskStep(
                 engine="analytics",
                 method="analyze_errors",
-                params={"subject": subject, "grade": grade},
+                params={"subject": subject, "grade": grade, "responses": responses},
                 output_key="errors",
             ),
             TaskStep(
@@ -92,7 +123,7 @@ def daily_homework_review(subject: str = "数学", grade: str = "3", data_path: 
 
 
 def monthly_report(class_id: str = "C1", subject: str = "数学", grade: str = "3") -> TeachingTask:
-    """月度教学报告 — class_profile → student_profile → report。"""
+    """月度教学报告 — class_profile → report。"""
     return TeachingTask(
         id="monthly_report",
         name="月度教学报告",
@@ -102,7 +133,7 @@ def monthly_report(class_id: str = "C1", subject: str = "数学", grade: str = "
             TaskStep(
                 engine="analytics",
                 method="build_class_profile",
-                params={"class_id": class_id, "subject": subject, "grade": grade},
+                params={"class_id": class_id, "subject": subject, "grade": grade, "assessments": []},
                 output_key="class_profile",
             ),
             TaskStep(
@@ -141,7 +172,7 @@ def batch_differentiated_materials(subject: str = "数学", grade: str = "3", to
     )
 
 
-TASK_BUILDERS: dict[str, callable] = {
+TASK_BUILDERS: dict[str, Callable] = {
     "weekly_prep": weekly_prep,
     "weekly_summary": weekly_summary,
     "daily_homework_review": daily_homework_review,

@@ -14,7 +14,6 @@ class ContentCheckResult:
     risk_level: str = "safe"
     flagged_words: list[str] = field(default_factory=list)
     age_issues: list[str] = field(default_factory=list)
-    llm_issues: list[str] = field(default_factory=list)
     filtered_text: str = ""
     summary: str = ""
 
@@ -24,7 +23,6 @@ class ContentCheckResult:
             "risk_level": self.risk_level,
             "flagged_words": self.flagged_words,
             "age_issues": self.age_issues,
-            "llm_issues": self.llm_issues,
             "filtered_text": self.filtered_text,
             "summary": self.summary,
         }
@@ -36,7 +34,6 @@ class ContentCheckResult:
             risk_level=d.get("risk_level", "safe"),
             flagged_words=d.get("flagged_words", []),
             age_issues=d.get("age_issues", []),
-            llm_issues=d.get("llm_issues", []),
             filtered_text=d.get("filtered_text", ""),
             summary=d.get("summary", ""),
         )
@@ -69,7 +66,6 @@ class FilterLevel:
     level: str = "standard"
     sensitive_words: bool = True
     age_check: bool = True
-    llm_review: bool = False
     output_check: bool = True
 
     def to_dict(self) -> dict[str, Any]:
@@ -77,6 +73,5 @@ class FilterLevel:
             "level": self.level,
             "sensitive_words": self.sensitive_words,
             "age_check": self.age_check,
-            "llm_review": self.llm_review,
             "output_check": self.output_check,
         }

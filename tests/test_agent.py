@@ -1,19 +1,21 @@
 """Agent 模块测试 — models / executor / tasks / scheduler。"""
 
 import asyncio
-import json
 import os
 import tempfile
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fusion_k12_teacher.agent.models import TaskStep, TeachingTask, TaskResult
-from fusion_k12_teacher.agent.executor import EngineRegistry, execute_step, execute_task, register_all_engines, registry
-from fusion_k12_teacher.agent.tasks import build_task, list_available_tasks, TASK_BUILDERS
+from fusion_k12_teacher.agent.executor import (
+    EngineRegistry,
+    execute_step,
+    execute_task,
+    registry,
+)
+from fusion_k12_teacher.agent.models import TaskResult, TaskStep, TeachingTask
 from fusion_k12_teacher.agent.scheduler import TaskScheduler
-
+from fusion_k12_teacher.agent.tasks import build_task, list_available_tasks
 
 # ─── Models ────────────────────────────────────────────
 
@@ -99,7 +101,7 @@ class TestExecuteStep:
 
         step = TaskStep(engine="_test_eng", method="some_method", params={"x": 1}, output_key="out")
         context = {}
-        result = asyncio.get_event_loop().run_until_complete(execute_step(step, context))
+        result = asyncio.run(execute_step(step, context))
         assert result == {"result": "ok"}
         assert context["out"] == {"result": "ok"}
         del registry._engines["_test_eng"]
@@ -111,7 +113,7 @@ class TestExecuteStep:
 
         step = TaskStep(engine="_test_eng2", method="process", params={"data": "$prev_result"}, output_key="out")
         context = {"prev_result": "some_data"}
-        asyncio.get_event_loop().run_until_complete(execute_step(step, context))
+        asyncio.run(execute_step(step, context))
         mock_engine.process.assert_called_once_with(data="some_data")
         del registry._engines["_test_eng2"]
 
@@ -119,7 +121,7 @@ class TestExecuteStep:
         step = TaskStep(engine="_missing", method="foo", params={}, output_key="out")
         context = {}
         with pytest.raises(ValueError, match="引擎未注册"):
-            asyncio.get_event_loop().run_until_complete(execute_step(step, context))
+            asyncio.run(execute_step(step, context))
 
 
 class TestExecuteTask:
@@ -130,7 +132,7 @@ class TestExecuteTask:
 
         step = TaskStep(engine="_test_eng3", method="do_work", params={}, output_key="result")
         task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
-        result = asyncio.get_event_loop().run_until_complete(execute_task(task))
+        result = asyncio.run(execute_task(task))
         assert result.status == "success"
         del registry._engines["_test_eng3"]
 
@@ -141,14 +143,14 @@ class TestExecuteTask:
 
         step = TaskStep(engine="_test_eng4", method="fail_method", params={}, output_key="out")
         task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
-        result = asyncio.get_event_loop().run_until_complete(execute_task(task))
+        result = asyncio.run(execute_task(task))
         assert result.status == "failed"
         del registry._engines["_test_eng4"]
 
     def test_execute_task_depends_on_unmet(self):
         step = TaskStep(engine="x", method="y", params={}, output_key="o", depends_on=["missing_dep"])
         task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
-        result = asyncio.get_event_loop().run_until_complete(execute_task(task))
+        result = asyncio.run(execute_task(task))
         assert result.status == "failed"
 
 
@@ -217,7 +219,7 @@ class TestTaskScheduler:
 
     def test_run_task_not_found(self):
         s = TaskScheduler()
-        result = asyncio.get_event_loop().run_until_complete(s.run_task("missing"))
+        result = asyncio.run(s.run_task("missing"))
         assert result.status == "failed"
 
     def test_run_task_success(self):
@@ -228,7 +230,7 @@ class TestTaskScheduler:
 
         with patch("fusion_k12_teacher.agent.scheduler.execute_task", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = TaskResult(task_id="t1", status="success", summary="done")
-            result = asyncio.get_event_loop().run_until_complete(s.run_task("t1"))
+            result = asyncio.run(s.run_task("t1"))
             assert result.status == "success"
 
     def test_get_history(self):
