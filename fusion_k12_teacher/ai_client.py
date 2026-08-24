@@ -7,8 +7,10 @@ No direct mlx or mlx-lm imports — every call is routed via fusion-mlx.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,10 @@ DEFAULT_MLX_BASE_URL = os.environ.get(
     "FUSION_MLX_URL", "http://localhost:11432/v1"
 )
 DEFAULT_MODEL = os.environ.get("FUSION_MLX_MODEL", "Qwen3.5-9B-4bit")
+_CONNECT_TIMEOUT = float(os.environ.get("FUSION_MLX_CONNECT_TIMEOUT", "10"))
+_READ_TIMEOUT = float(os.environ.get("FUSION_MLX_READ_TIMEOUT", "120"))
+_MAX_RETRIES = int(os.environ.get("FUSION_MLX_MAX_RETRIES", "2"))
+_MODELS_CACHE_TTL = float(os.environ.get("FUSION_MLX_MODELS_TTL", "30"))
 
 # 自动选择时的优先聊天模型候选（按优先级）
 _PREFERRED_CHAT_MODELS = (
@@ -53,6 +59,9 @@ class MLXClient:
         self.model = model
         self._inner: Any = None
         self._httpx_client: Any = None
+        self._auto_select_lock = asyncio.Lock()
+        self._models_cache: list[dict[str, Any]] | None = None
+        self._models_cache_ts: float = 0.0
         if _HAS_FUSION_CORE and _FusionMLXClient is not None:
             self._inner = _FusionMLXClient(base_url=self.base_url)
         logger.info(
@@ -60,13 +69,20 @@ class MLXClient:
             self.base_url, self.model or "(auto)", _HAS_FUSION_CORE,
         )
 
+    async def __aenter__(self) -> MLXClient:
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
     @property
     def httpx_client(self):
         if self._httpx_client is None:
             import httpx
 
             self._httpx_client = httpx.AsyncClient(
-                base_url=self.base_url, timeout=120.0,
+                base_url=self.base_url,
+                timeout=httpx.Timeout(_READ_TIMEOUT, connect=_CONNECT_TIMEOUT),
                 headers={"Authorization": f"Bearer {os.environ.get('FUSION_MLX_API_KEY', 'local')}"},
             )
         return self._httpx_client
@@ -100,52 +116,79 @@ class MLXClient:
         temperature: float,
         max_tokens: int,
     ) -> str:
+        import httpx
+
         payload = {
             "model": model or DEFAULT_MODEL,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        resp = await self.httpx_client.post("/chat/completions", json=payload)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                resp = await self.httpx_client.post("/chat/completions", json=payload)
+                resp.raise_for_status()
+                return resp.json()["choices"][0]["message"]["content"]
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
+                last_exc = e
+                if attempt < _MAX_RETRIES:
+                    logger.warning("chat 重试 %d/%d: %s", attempt + 1, _MAX_RETRIES, e)
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                raise
+        raise last_exc if last_exc else RuntimeError("chat failed")
 
     async def list_models(self) -> list[dict[str, Any]]:
-        """列出 fusion-mlx 可用模型。"""
+        """列出 fusion-mlx 可用模型 — 带 TTL 缓存。"""
+        now = time.monotonic()
+        if self._models_cache is not None and (now - self._models_cache_ts) < _MODELS_CACHE_TTL:
+            return self._models_cache
         if _HAS_FUSION_CORE and self._inner is not None:
             try:
-                return await self._inner.list_models()
+                models = await self._inner.list_models()
+                self._models_cache = models
+                self._models_cache_ts = now
+                return models
             except Exception as e:
                 logger.warning("fusion_core list_models 失败，回退 httpx: %s", e)
         resp = await self.httpx_client.get("/models")
         resp.raise_for_status()
-        return resp.json().get("data", [])
+        models = resp.json().get("data", [])
+        self._models_cache = models
+        self._models_cache_ts = now
+        return models
 
     async def _auto_select_model(self) -> str:
         """自动选择可用聊天模型 — 优先匹配已知聊天模型，跳过非聊天模型。"""
-        try:
-            models = await self.list_models()
-        except Exception:
-            logger.warning("list_models 失败，回退默认模型 %s", DEFAULT_MODEL)
+        async with self._auto_select_lock:
+            if self.model:
+                return self.model
+            try:
+                models = await self.list_models()
+            except Exception:
+                logger.warning("list_models 失败，回退默认模型 %s", DEFAULT_MODEL)
+                return DEFAULT_MODEL
+            if not models:
+                return DEFAULT_MODEL
+            ids = {m.get("id", m.get("model", "")) for m in models}
+            # 1) 优先精确匹配预定义聊天模型
+            for pref in _PREFERRED_CHAT_MODELS:
+                if pref in ids:
+                    logger.info("自动选择聊天模型: %s", pref)
+                    self.model = pref
+                    return pref
+            # 2) 模糊匹配聊天模型关键词，跳过非聊天模型
+            for mid in sorted(ids):
+                low = mid.lower()
+                if any(k in low for k in _NON_CHAT_KEYWORDS):
+                    continue
+                if "qwen" in low or "llama" in low or "gemma" in low or "deepseek" in low:
+                    logger.info("自动选择聊天模型(模糊): %s", mid)
+                    self.model = mid
+                    return mid
+            logger.warning("未找到聊天模型，回退默认 %s", DEFAULT_MODEL)
             return DEFAULT_MODEL
-        if not models:
-            return DEFAULT_MODEL
-        ids = {m.get("id", m.get("model", "")) for m in models}
-        # 1) 优先精确匹配预定义聊天模型
-        for pref in _PREFERRED_CHAT_MODELS:
-            if pref in ids:
-                logger.info("自动选择聊天模型: %s", pref)
-                return pref
-        # 2) 模糊匹配聊天模型关键词，跳过非聊天模型
-        for mid in sorted(ids):
-            low = mid.lower()
-            if any(k in low for k in _NON_CHAT_KEYWORDS):
-                continue
-            if "qwen" in low or "llama" in low or "gemma" in low or "deepseek" in low:
-                logger.info("自动选择聊天模型(模糊): %s", mid)
-                return mid
-        logger.warning("未找到聊天模型，回退默认 %s", DEFAULT_MODEL)
-        return DEFAULT_MODEL
 
     async def close(self) -> None:
         if self._httpx_client is not None:

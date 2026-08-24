@@ -3,17 +3,19 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MASK_FIELDS = [
+    "student_name", "name", "phone", "email", "address", "id_number"
+]
+
 
 @dataclass
 class DesensitizeConfig:
     name_mode: str = "id"
     id_prefix: str = "S"
-    fields_to_mask: list[str] = field(default_factory=lambda: [
-        "student_name", "name", "phone", "email", "address", "id_number"
-    ])
+    fields_to_mask: list[str] = field(default_factory=lambda: list(DEFAULT_MASK_FIELDS))
     mask_char: str = "*"
     mask_keep_chars: int = 1
-    id_counter_start: int = 1
+    salt: str = "fusion-k12"
 
     def to_dict(self) -> dict:
         return {
@@ -22,7 +24,7 @@ class DesensitizeConfig:
             "fields_to_mask": self.fields_to_mask,
             "mask_char": self.mask_char,
             "mask_keep_chars": self.mask_keep_chars,
-            "id_counter_start": self.id_counter_start,
+            "salt": self.salt,
         }
 
     @classmethod
@@ -30,12 +32,10 @@ class DesensitizeConfig:
         return cls(
             name_mode=data.get("name_mode", "id"),
             id_prefix=data.get("id_prefix", "S"),
-            fields_to_mask=data.get("fields_to_mask", [
-                "student_name", "name", "phone", "email", "address", "id_number"
-            ]),
+            fields_to_mask=data.get("fields_to_mask", list(DEFAULT_MASK_FIELDS)),
             mask_char=data.get("mask_char", "*"),
             mask_keep_chars=data.get("mask_keep_chars", 1),
-            id_counter_start=data.get("id_counter_start", 1),
+            salt=data.get("salt", "fusion-k12"),
         )
 
 
@@ -46,13 +46,15 @@ class AnonymizeResult:
     name_map: dict[str, str] = field(default_factory=dict)
     masked_fields: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
-        return {
+    def to_dict(self, include_map: bool = False) -> dict:
+        data = {
             "original_count": self.original_count,
             "anonymized_count": self.anonymized_count,
-            "name_map": self.name_map,
             "masked_fields": self.masked_fields,
         }
+        if include_map:
+            data["name_map"] = self.name_map
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "AnonymizeResult":

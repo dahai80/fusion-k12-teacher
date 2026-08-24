@@ -5,13 +5,12 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from fusion_k12_teacher.serve import app
-from fusion_k12_teacher.curriculum import CurriculumEngine
 from fusion_k12_teacher.assessment import AssessmentEngine
-from fusion_k12_teacher.subjects import SubjectExpert
-from fusion_k12_teacher.personalization import PersonalizationEngine
 from fusion_k12_teacher.content import ContentGenerator
-
+from fusion_k12_teacher.curriculum import CurriculumEngine
+from fusion_k12_teacher.personalization import PersonalizationEngine
+from fusion_k12_teacher.serve import app
+from fusion_k12_teacher.subjects import SubjectExpert
 
 MOCK_LESSON_PLAN = '{"title": "分数入门", "objectives": ["理解分数"], "materials": ["课本"], "procedures": [{"step": 1, "activity": "导入"}], "assessment": "提问", "homework": "练习"}'
 MOCK_MATH_GRADE = '{"score": 10, "total": 10, "correct": true, "feedback": "正确", "mistakes": []}'
@@ -88,7 +87,7 @@ class TestSubjectExplain:
         from fusion_k12_teacher import serve as srv
         srv.subject_expert.mlx.chat = _mock_chat(MOCK_CONCEPT)
         resp = await client.post("/api/subject/explain", json={
-            "question": "分数", "grade": "3",
+            "subject": "数学", "grade": "3", "concept": "分数",
         })
         assert resp.status_code == 200
         data = resp.json()

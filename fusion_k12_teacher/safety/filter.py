@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 
 from .age_checker import AgeChecker
 from .models import ContentCheckResult, FilterLevel
@@ -15,7 +16,6 @@ DEFAULT_FILTER_LEVEL = FilterLevel(
     level="standard",
     sensitive_words=True,
     age_check=True,
-    llm_review=False,
     output_check=True,
 )
 
@@ -26,9 +26,18 @@ SAFETY_PROMPT_SUFFIX = (
     "请确保内容安全、积极、适龄，不含暴力、色情、政治敏感等不当内容。"
 )
 
+_RISK_ORDER = {"safe": 0, "medium": 1, "high": 2, "critical": 3}
+
+_BYPASS_CLASS = r"[\s​-‍⁠･・\-_]*"
+
+
+def _bypass_pattern(word: str) -> re.Pattern:
+    chars = [re.escape(c) for c in word]
+    return re.compile(_BYPASS_CLASS.join(chars), re.IGNORECASE | re.UNICODE)
+
 
 class ContentFilter:
-    """内容过滤器 — 敏感词 + 适龄 + LLM自审查 + 输出校验。"""
+    """内容过滤器 — 敏感词 + 适龄 + 输出校验。"""
 
     def __init__(
         self,
@@ -41,10 +50,17 @@ class ContentFilter:
         self.age_checker = age_checker or AgeChecker()
         self.mlx = mlx
         self.filter_level = filter_level or DEFAULT_FILTER_LEVEL
-        logger.info(f"ContentFilter 初始化, 词库: {self.wordlist.count} 词, 等级: {self.filter_level.level}")
+        logger.info(
+            f"ContentFilter 初始化, 词库: {self.wordlist.count} 词, "
+            f"等级: {self.filter_level.level}"
+        )
+
+    @staticmethod
+    def _escalate(result: ContentCheckResult, level: str) -> None:
+        if _RISK_ORDER.get(level, 0) > _RISK_ORDER.get(result.risk_level, 0):
+            result.risk_level = level
 
     def check_text(self, text: str, grade: str = "3") -> ContentCheckResult:
-        """完整内容检查（输入侧）。"""
         result = ContentCheckResult(filtered_text=text)
 
         if self.filter_level.sensitive_words:
@@ -53,7 +69,7 @@ class ContentFilter:
                 result.flagged_words = flagged
                 result.filtered_text = self._replace_words(text, flagged)
                 result.is_safe = False
-                result.risk_level = "high"
+                self._escalate(result, "high")
                 logger.warning(f"敏感词检出: {flagged}")
 
         if self.filter_level.age_check:
@@ -61,15 +77,13 @@ class ContentFilter:
             if age_issues:
                 result.age_issues = age_issues
                 result.is_safe = False
-                if result.risk_level == "safe":
-                    result.risk_level = "medium"
+                self._escalate(result, "medium")
                 logger.warning(f"适龄问题: {age_issues}")
 
         result.summary = self._build_summary(result)
         return result
 
     def check_output(self, text: str, grade: str = "3") -> ContentCheckResult:
-        """输出侧二次检查。"""
         result = ContentCheckResult(filtered_text=text)
 
         if self.filter_level.output_check:
@@ -78,52 +92,20 @@ class ContentFilter:
                 result.flagged_words = flagged
                 result.filtered_text = self._replace_words(text, flagged)
                 result.is_safe = False
-                result.risk_level = "high"
+                self._escalate(result, "high")
+                logger.warning(f"输出敏感词检出: {flagged}")
 
             age_issues = self.age_checker.check_content(text, grade)
             if age_issues:
                 result.age_issues = age_issues
                 result.is_safe = False
-                if result.risk_level == "safe":
-                    result.risk_level = "medium"
+                self._escalate(result, "medium")
+                logger.warning(f"输出适龄问题: {age_issues}")
 
         result.summary = self._build_summary(result)
         return result
 
-    async def llm_review(self, text: str, grade: str = "3") -> ContentCheckResult:
-        """LLM 自审查 — 通过模型判断内容是否安全。"""
-        if not self.mlx:
-            return ContentCheckResult(
-                is_safe=True, filtered_text=text, summary="LLM审查不可用，跳过"
-            )
-
-        try:
-            prompt = (
-                f"请审查以下面向{grade}年级K-12学生的内容是否安全、适龄。"
-                f"如有不当内容，请列出问题并返回JSON: "
-                f'{{"safe": true/false, "issues": ["问题1", ...]}}\n\n内容:\n{text}'
-            )
-            resp = await self.mlx.chat(
-                [{"role": "user", "content": prompt}], temperature=0.1
-            )
-            import json
-            data = json.loads(self._strip_json(resp))
-            issues = data.get("issues", [])
-            return ContentCheckResult(
-                is_safe=data.get("safe", True),
-                risk_level="medium" if issues else "safe",
-                llm_issues=issues,
-                filtered_text=text,
-                summary="; ".join(issues) if issues else "LLM审查通过",
-            )
-        except Exception as e:
-            logger.error(f"LLM审查失败: {e}")
-            return ContentCheckResult(
-                is_safe=True, filtered_text=text, summary=f"LLM审查异常: {e}"
-            )
-
     def filter_sensitive(self, text: str) -> str:
-        """仅执行敏感词替换。"""
         flagged = self.wordlist.check(text)
         if not flagged:
             return text
@@ -135,7 +117,9 @@ class ContentFilter:
     def _replace_words(self, text: str, words: list[str]) -> str:
         result = text
         for w in words:
-            pattern = re.compile(re.escape(w), re.IGNORECASE)
+            if not w:
+                continue
+            pattern = _bypass_pattern(w)
             result = pattern.sub(REPLACEMENT * len(w), result)
         return result
 
@@ -145,16 +129,20 @@ class ContentFilter:
             parts.append(f"敏感词: {', '.join(result.flagged_words)}")
         if result.age_issues:
             parts.append(f"适龄问题: {'; '.join(result.age_issues)}")
-        if result.llm_issues:
-            parts.append(f"LLM问题: {'; '.join(result.llm_issues)}")
         if not parts:
             parts.append("内容安全")
         status = "安全" if result.is_safe else "不安全"
         return f"[{status}] {' | '.join(parts)}"
 
     def _strip_json(self, text: str) -> str:
-        text = text.strip()
+        text = unicodedata.normalize("NFKC", text).strip()
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            return match.group(0)
         if text.startswith("```"):
             lines = text.split("\n")
-            text = "\n".join(lines[1:-1])
+            if len(lines) >= 2:
+                text = "\n".join(lines[1:])
+                if text.rstrip().endswith("```"):
+                    text = text.rstrip()[:-3]
         return text.strip()

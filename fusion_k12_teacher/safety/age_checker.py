@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import unicodedata
 
 from .models import AgeRating
 
@@ -17,11 +19,18 @@ GRADE_ORDER = [
     "7", "8", "9", "10", "11", "12",
 ]
 
+_BYPASS_RE = re.compile(r"[\s​-‍⁠﻿·・\-_]")
+
+
+def _normalize(text: str) -> str:
+    return _BYPASS_RE.sub("", unicodedata.normalize("NFKC", text))
+
 
 def _grade_index(grade: str) -> int:
     try:
         return GRADE_ORDER.index(grade)
     except ValueError:
+        logger.warning(f"非法年级值: {grade!r}, 回退到最严格档(1年级)")
         return 0
 
 
@@ -62,8 +71,9 @@ class AgeChecker:
     def check_content(self, text: str, grade: str) -> list[str]:
         issues = []
         rating = self.get_rating(grade)
+        text_norm = _normalize(text)
         for restricted in rating.restricted_topics:
-            if restricted in text:
+            if _normalize(restricted) in text_norm:
                 issues.append(f"受限主题: {restricted}")
         return issues
 

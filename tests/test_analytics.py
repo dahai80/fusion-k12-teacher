@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from fusion_k12_teacher.analytics.engine import AnalyticsEngine
+from fusion_k12_teacher.analytics.loader import load_from_csv, load_from_json, normalize_assessments
 from fusion_k12_teacher.analytics.models import (
     ClassProfile,
     ErrorAnalysis,
@@ -16,9 +19,6 @@ from fusion_k12_teacher.analytics.models import (
     StudentProfile,
     WeakPoint,
 )
-from fusion_k12_teacher.analytics.loader import load_from_json, load_from_csv, normalize_assessments
-from fusion_k12_teacher.analytics.engine import AnalyticsEngine
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Models 测试

@@ -65,7 +65,8 @@ class ContentGenerator:
             ], temperature=0.3)
             data = self._parse_json(response)
             return data if isinstance(data, list) else []
-        except Exception:
+        except Exception as e:
+            logger.error(f"闪卡生成失败: {e}")
             return []
 
     async def generate_lesson_slides(self, subject: str, grade: str, topic: str, num_slides: int = 8) -> list[dict[str, str]]:
@@ -80,7 +81,8 @@ class ContentGenerator:
             ], temperature=0.3)
             data = self._parse_json(response)
             return data if isinstance(data, list) else []
-        except Exception:
+        except Exception as e:
+            logger.error(f"课件大纲生成失败: {e}")
             return []
 
     async def generate_educational_game(self, subject: str, grade: str, topic: str, game_type: str = "quiz") -> dict[str, Any]:
@@ -95,7 +97,8 @@ class ContentGenerator:
             ], temperature=0.4)
             return self._parse_json(response) or {"title": f"{topic}游戏"}
         except Exception as e:
-            return {"error": str(e)}
+            logger.error(f"教育游戏生成失败: {e}")
+            return {"title": f"{topic}游戏"}
 
     async def generate_parent_communication(self, student: str, grade: str, subject: str, topic: str) -> str:
         """生成家校沟通模板。"""

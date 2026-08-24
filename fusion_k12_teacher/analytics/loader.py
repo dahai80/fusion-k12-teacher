@@ -58,31 +58,35 @@ def load_from_csv(path: str | Path) -> list[StudentAssessment]:
         with open(path, encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                sid = row.get("student_id", "").strip()
-                aid = row.get("assessment_id", "").strip()
-                key = f"{sid}::{aid}"
-                if key not in grouped:
-                    grouped[key] = {
-                        "student_id": sid,
-                        "student_name": row.get("student_name", ""),
-                        "assessment_id": aid,
-                        "date": row.get("date", ""),
-                        "subject": row.get("subject", ""),
-                        "grade": row.get("grade", ""),
-                        "total_score": float(row.get("total_score", 0)),
-                        "max_score": float(row.get("max_score", 100)),
-                        "responses": [],
+                try:
+                    sid = row.get("student_id", "").strip()
+                    aid = row.get("assessment_id", "").strip()
+                    key = f"{sid}::{aid}"
+                    if key not in grouped:
+                        grouped[key] = {
+                            "student_id": sid,
+                            "student_name": row.get("student_name", ""),
+                            "assessment_id": aid,
+                            "date": row.get("date", ""),
+                            "subject": row.get("subject", ""),
+                            "grade": row.get("grade", ""),
+                            "total_score": float(row.get("total_score") or 0),
+                            "max_score": float(row.get("max_score") or 100),
+                            "responses": [],
+                        }
+                    resp = {
+                        "question_id": row.get("question_id", ""),
+                        "question": row.get("question", ""),
+                        "student_answer": row.get("student_answer", ""),
+                        "correct_answer": row.get("correct_answer", ""),
+                        "points": float(row.get("points") or 0),
+                        "max_points": float(row.get("max_points") or 0),
                     }
-                resp = {
-                    "question_id": row.get("question_id", ""),
-                    "question": row.get("question", ""),
-                    "student_answer": row.get("student_answer", ""),
-                    "correct_answer": row.get("correct_answer", ""),
-                    "points": float(row.get("points", 0)),
-                    "max_points": float(row.get("max_points", 0)),
-                }
-                grouped[key]["responses"].append(resp)
-    except (OSError, csv.Error, ValueError) as e:
+                    grouped[key]["responses"].append(resp)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"跳过无效 CSV 行: {e} — {row}")
+                    continue
+    except (OSError, csv.Error) as e:
         logger.error(f"CSV 读取失败: {path} — {e}")
         return []
 

@@ -3,27 +3,25 @@
 from __future__ import annotations
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
+import pytest
+
+from fusion_k12_teacher.differentiation import (
+    LEVEL_CONFIGS,
+    DifferentiatedContent,
+    DifferentiationEngine,
+    GroupTask,
+    LayerContent,
+)
 from fusion_k12_teacher.standards import (
-    KnowledgePoint,
-    CurriculumStandard,
     AlignmentContext,
-    CoverageReport,
+    CurriculumStandard,
+    KnowledgePoint,
+    StandardsAligner,
     StandardsLoader,
     StandardsQuery,
-    StandardsAligner,
 )
-from fusion_k12_teacher.differentiation import (
-    DifferentiationEngine,
-    DifferentiatedContent,
-    LayerContent,
-    GroupTask,
-    LEVEL_CONFIGS,
-)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Standards Models
@@ -398,7 +396,6 @@ class TestDifferentiationEngineMock:
     @pytest.mark.asyncio
     async def test_standards_context_injected(self):
         call_args = []
-        original_chat = self.engine.mlx.chat
 
         async def capture_chat(messages, **kwargs):
             call_args.append(messages)

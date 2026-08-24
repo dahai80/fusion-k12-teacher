@@ -46,13 +46,17 @@ class AssessmentEngine:
 
     async def grade_essay(self, essay: str, rubric: dict[str, int] | None = None) -> GradingResult:
         """批改作文/论述题。"""
-        rubric_str = json.dumps(rubric) if rubric else '{"内容": 40, "结构": 20, "语言": 20, "创意": 20}'
+        rubric_str = json.dumps(rubric, ensure_ascii=False) if rubric else '{"内容": 40, "结构": 20, "语言": 20, "创意": 20}'
+        essay_text = essay[:2000]
+        if len(essay) > 2000:
+            logger.warning("作文超过2000字, 已截断前2000字批改 (原文%d字)", len(essay))
         prompt = f"""请批改以下学生作文，给出评分和详细反馈。
 
 评分标准: {rubric_str}
-学生作文: {essay[:2000]}
+学生作文: {essay_text}
 
 返回JSON: {{"score": 总分, "total": 总分值, "rubric_scores": {{"维度": 得分}}, "feedback": "详细反馈", "strengths": ["优点1"], "improvements": ["改进建议1"]}}"""
+        err_msg = ""
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位经验丰富的语文教师，公正、细致地批改学生作文。"},
@@ -60,13 +64,16 @@ class AssessmentEngine:
             ], temperature=0.2)
             data = self._parse_json(response)
             if data:
+                total = float(data.get("total", 100) or 100)
+                score = float(data.get("score", 0) or 0)
                 return GradingResult(
-                    score=data.get("score", 0), total=data.get("total", 100),
-                    percentage=data.get("score", 0) / max(data.get("total", 100), 1) * 100,
+                    score=score, total=total,
+                    percentage=score / max(total, 1) * 100,
                     feedback=data.get("feedback", ""), strengths=data.get("strengths", []),
                     improvements=data.get("improvements", []),
                     rubric_scores=data.get("rubric_scores", {}),
                 )
+            err_msg = "LLM返回为空或非JSON"
         except Exception as exc:
             logger.error(f"批改失败: {exc}")
             err_msg = str(exc)
@@ -80,20 +87,27 @@ class AssessmentEngine:
 学生答案: {answer}
 参考答案: {solution}
 
-判断是否正确，给出评分和反馈。返回JSON: {{"score": 得分, "total": 满分, "correct": true/false, "feedback": "反馈", "mistakes": ["错误分析"]}}"""
+判断是否正确，给出评分和反馈。满分10分。返回JSON: {{"score": 得分, "total": 10, "correct": true/false, "feedback": "反馈", "mistakes": ["错误分析"]}}"""
+        err_msg = ""
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": "你是一位数学老师，严格但友好地批改数学作业。"},
+                {"role": "system", "content": "你是一位数学老师，严格但友好地批改数学作业。满分10分。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.2)
             data = self._parse_json(response)
             if data:
+                total = float(data.get("total", 10) or 10)
+                score = float(data.get("score", 0) or 0)
+                if total > 100:
+                    logger.warning("数学满分异常(total=%s), 回退到10", total)
+                    total = 10
                 return GradingResult(
-                    score=data.get("score", 0), total=data.get("total", 10),
-                    percentage=data.get("score", 0) / 10 * 100,
+                    score=score, total=total,
+                    percentage=score / max(total, 1) * 100,
                     feedback=data.get("feedback", ""),
                     improvements=data.get("mistakes", []),
                 )
+            err_msg = "LLM返回为空或非JSON"
         except Exception as exc:
             logger.error(f"批改失败: {exc}")
             err_msg = str(exc)

@@ -4,8 +4,16 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import unicodedata
 
 logger = logging.getLogger(__name__)
+
+_BYPASS_RE = re.compile(r"[\s​-‍⁠﻿·・\-_]")
+
+
+def _normalize(text: str) -> str:
+    return _BYPASS_RE.sub("", unicodedata.normalize("NFKC", text).lower())
 
 DEFAULT_WORDLIST_PATH = os.path.join(os.path.dirname(__file__), "data", "sensitive_words.txt")
 
@@ -26,10 +34,11 @@ class SensitiveWordList:
         with open(self._path, encoding="utf-8") as f:
             lines = f.readlines()
         self._words = {
-            line.strip().lower()
+            _normalize(line.strip())
             for line in lines
             if line.strip() and not line.startswith("#")
         }
+        self._words.discard("")
         logger.info(f"敏感词库加载: {len(self._words)} 个词")
 
     def save(self) -> None:
@@ -41,17 +50,19 @@ class SensitiveWordList:
         logger.info(f"敏感词库保存: {len(self._words)} 个词")
 
     def add(self, word: str) -> None:
-        self._words.add(word.strip().lower())
+        w = _normalize(word.strip())
+        if w:
+            self._words.add(w)
 
     def remove(self, word: str) -> None:
-        self._words.discard(word.strip().lower())
+        self._words.discard(_normalize(word.strip()))
 
     def list_words(self) -> list[str]:
         return sorted(self._words)
 
     def check(self, text: str) -> list[str]:
-        text_lower = text.lower()
-        return [w for w in self._words if w in text_lower]
+        text_norm = _normalize(text)
+        return [w for w in self._words if w and w in text_norm]
 
     @property
     def count(self) -> int:

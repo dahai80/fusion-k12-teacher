@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
-from .agent import list_available_tasks, register_all_engines, scheduler
+from . import __version__
+from .agent import list_available_tasks, scheduler
 from .ai_client import MLXClient
 from .analytics import AnalyticsEngine, load_from_csv, load_from_json
 from .analytics.models import StudentAssessment, WeakPoint
@@ -18,12 +22,27 @@ from .content import ContentGenerator
 from .curriculum import CurriculumEngine
 from .desensitize import DataAnonymizer, DesensitizeConfig
 from .differentiation import DifferentiationEngine
+from .engines import build_engines
 from .personalization import PersonalizationEngine
 from .safety import ContentFilter, SensitiveWordList
 from .standards import StandardsLoader, StandardsQuery
 from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
+
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+_API_KEY = os.environ.get("FUSION_K12_API_KEY", "")
+
+
+async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
+    if not _API_KEY:
+        return ""
+    if not api_key or api_key != _API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing or invalid X-API-Key",
+        )
+    return api_key
 
 mlx_client: MLXClient | None = None
 curriculum_engine: CurriculumEngine | None = None
@@ -45,27 +64,17 @@ async def lifespan(app: FastAPI):
     global subject_expert, personalization_engine, content_generator
     global differentiation_engine, standards_query, standards_loader
     global analytics_engine, content_filter, sensitive_wordlist
-    mlx_client = MLXClient()
-    curriculum_engine = CurriculumEngine(mlx_client)
-    assessment_engine = AssessmentEngine(mlx_client)
-    subject_expert = SubjectExpert(mlx_client)
-    personalization_engine = PersonalizationEngine(mlx_client)
-    content_generator = ContentGenerator(mlx_client)
-    standards_loader = StandardsLoader()
-    standards_loader.load_all()
-    standards_query = StandardsQuery(standards_loader)
-    differentiation_engine = DifferentiationEngine(mlx_client, standards_query)
-    analytics_engine = AnalyticsEngine(mlx_client, standards_query)
-    register_all_engines(
-        curriculum=curriculum_engine,
-        assessment=assessment_engine,
-        subjects=subject_expert,
-        personalization=personalization_engine,
-        content=content_generator,
-        differentiation=differentiation_engine,
-        analytics=analytics_engine,
-        standards_query=standards_query,
-    )
+    bundle = build_engines()
+    mlx_client = bundle.mlx
+    curriculum_engine = bundle.curriculum
+    assessment_engine = bundle.assessment
+    subject_expert = bundle.subjects
+    personalization_engine = bundle.personalization
+    content_generator = bundle.content
+    differentiation_engine = bundle.differentiation
+    standards_query = bundle.standards_query
+    standards_loader = bundle.standards_loader
+    analytics_engine = bundle.analytics
     content_filter = ContentFilter()
     sensitive_wordlist = SensitiveWordList()
     scheduler.load_default_tasks()
@@ -74,11 +83,20 @@ async def lifespan(app: FastAPI):
     logger.info("Fusion-K12-Teacher API started, MLXClient initialized")
     yield
     logger.info("Fusion-K12-Teacher API shutting down")
+    try:
+        scheduler.stop()
+    except Exception as e:
+        logger.warning("scheduler.stop 失败: %s", e)
+    if mlx_client is not None:
+        try:
+            await mlx_client.close()
+        except Exception as e:
+            logger.warning("mlx_client.close 失败: %s", e)
 
 
 app = FastAPI(
     title="Fusion-K12-Teacher API",
-    version="1.0.3",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -86,34 +104,35 @@ app = FastAPI(
 # ── Request/Response Models ──
 
 class CurriculumPlanRequest(BaseModel):
-    grade: str = Field(..., description="年级")
-    subject: str = Field(..., description="学科")
-    topic: str = Field(..., description="主题")
+    grade: str = Field(..., max_length=4, description="年级")
+    subject: str = Field(..., max_length=20, description="学科")
+    topic: str = Field(..., max_length=100, description="主题")
 
 class AssessmentGradeRequest(BaseModel):
-    question: str = Field(..., description="题目")
-    answer: str = Field(..., description="学生答案")
-    standard: str = Field("", description="参考答案/评分标准")
+    question: str = Field(..., max_length=2000, description="题目")
+    answer: str = Field(..., max_length=2000, description="学生答案")
+    standard: str = Field("", max_length=2000, description="参考答案/评分标准")
 
 class SubjectExplainRequest(BaseModel):
-    question: str = Field(..., description="概念/问题")
-    grade: str = Field("", description="年级")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field("", max_length=4, description="年级")
+    concept: str = Field(..., max_length=500, description="概念/问题")
 
 class PersonalizePathRequest(BaseModel):
-    student_id: str = Field(..., description="学生ID")
+    student_id: str = Field(..., max_length=50, description="学生ID")
     progress: dict[str, Any] = Field(default_factory=dict, description="学习进度")
 
 class ContentGenerateRequest(BaseModel):
-    topic: str = Field(..., description="主题")
-    grade: str = Field("", description="年级")
-    style: str = Field("interactive", description="生成风格")
+    topic: str = Field(..., max_length=100, description="主题")
+    grade: str = Field("", max_length=4, description="年级")
+    style: str = Field("interactive", max_length=20, description="生成风格")
 
 
 # ── Health ──
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.3"}
+    return {"status": "ok", "version": __version__}
 
 
 # ── Curriculum ──
@@ -148,9 +167,9 @@ async def assessment_grade(req: AssessmentGradeRequest):
 
 @app.post("/api/subject/explain")
 async def subject_explain(req: SubjectExplainRequest):
-    logger.info("subject/explain: question=%s...", req.question[:30])
+    logger.info("subject/explain: subject=%s concept=%s...", req.subject, req.concept[:30])
     result = await subject_expert.explain_concept(
-        subject=req.question, grade=req.grade or "3", concept=req.question,
+        subject=req.subject, grade=req.grade or "3", concept=req.concept,
     )
     return result
 
@@ -213,21 +232,21 @@ async def content_generate(req: ContentGenerateRequest):
 # ── Request Models (v0.3) ──
 
 class DifferentiatedPlanRequest(BaseModel):
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    topic: str = Field(..., description="主题")
-    duration: int = Field(45, description="课时(分钟)")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field(..., max_length=100, description="主题")
+    duration: int = Field(45, ge=5, le=240, description="课时(分钟)")
 
 class DifferentiatedQuizRequest(BaseModel):
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    topic: str = Field(..., description="主题")
-    num_questions: int = Field(5, description="每层题目数量")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field(..., max_length=100, description="主题")
+    num_questions: int = Field(5, ge=1, le=50, description="每层题目数量")
 
 class StandardsQueryRequest(BaseModel):
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    topic: str = Field("", description="主题关键词")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field("", max_length=100, description="主题关键词")
 
 
 # ── Standards (v0.3) ──
@@ -289,69 +308,78 @@ async def curriculum_quiz_diff(req: DifferentiatedQuizRequest):
 # ── Request Models (v0.4) ──
 
 class ClassProfileRequest(BaseModel):
-    class_id: str = Field(..., description="班级ID")
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    data_path: str = Field("", description="评估数据文件路径(JSON/CSV)")
+    class_id: str = Field(..., max_length=50, description="班级ID")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class StudentProfileRequest(BaseModel):
-    student_id: str = Field(..., description="学生ID")
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    data_path: str = Field("", description="评估数据文件路径(JSON/CSV)")
+    student_id: str = Field(..., max_length=50, description="学生ID")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class ErrorAnalysisRequest(BaseModel):
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    data_path: str = Field("", description="评估数据文件路径(JSON/CSV)")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class RemedialPlanRequest(BaseModel):
-    student_id: str = Field(..., description="学生ID")
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    data_path: str = Field("", description="评估数据文件路径(JSON/CSV)")
+    student_id: str = Field(..., max_length=50, description="学生ID")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class ClassReportRequest(BaseModel):
-    class_id: str = Field(..., description="班级ID")
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    data_path: str = Field("", description="评估数据文件路径(JSON/CSV)")
+    class_id: str = Field(..., max_length=50, description="班级ID")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class AnalyticsUploadRequest(BaseModel):
-    data: list[dict[str, Any]] = Field(..., description="评估数据(JSON数组)")
-    format: str = Field("json", description="数据格式: json")
+    data: list[dict[str, Any]] = Field(..., max_length=1000, description="评估数据(JSON数组)")
+    format: str = Field("json", max_length=10, description="数据格式: json")
 
 class ContentWorksheetDiffRequest(BaseModel):
-    subject: str = Field(..., description="学科")
-    grade: str = Field(..., description="年级")
-    topic: str = Field(..., description="主题")
-    num_questions: int = Field(8, description="每层题目数量")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field(..., max_length=100, description="主题")
+    num_questions: int = Field(8, ge=1, le=50, description="每层题目数量")
 
 
-_ALLOWED_DATA_DIRS: list[str] = []
+_ALLOWED_DATA_DIRS: list[Path] = []
 
 
 def _init_allowed_dirs():
     global _ALLOWED_DATA_DIRS
-    from pathlib import Path
     project_root = Path(__file__).resolve().parent.parent
     _ALLOWED_DATA_DIRS = [
-        str(project_root / "data"),
-        str(project_root / "examples"),
-        str(Path.cwd() / "data"),
+        (project_root / "data").resolve(),
+        (project_root / "examples").resolve(),
+        (Path.cwd() / "data").resolve(),
     ]
+    logger.info("allowed data dirs: %s", [str(d) for d in _ALLOWED_DATA_DIRS])
 
 
 def _load_assessments(path: str):
     if not path:
         return []
-    from pathlib import Path
     resolved = Path(path).resolve()
     if _ALLOWED_DATA_DIRS:
-        allowed = any(str(resolved).startswith(d) for d in _ALLOWED_DATA_DIRS)
+        allowed = False
+        for d in _ALLOWED_DATA_DIRS:
+            try:
+                if resolved.is_relative_to(d):
+                    allowed = True
+                    break
+            except (ValueError, OSError):
+                continue
         if not allowed:
             logger.warning("_load_assessments: path outside allowed dirs: %s", resolved)
-            return []
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"data path not allowed: {resolved}",
+            )
     if path.endswith(".csv"):
         return load_from_csv(path)
     return load_from_json(path)
@@ -467,12 +495,12 @@ async def content_worksheet_diff(req: ContentWorksheetDiffRequest):
 # ── Request Models (v0.5) ──
 
 class AgentRunRequest(BaseModel):
-    task_id: str = Field(..., description="任务ID")
-    subject: str = Field("数学", description="学科")
-    grade: str = Field("3", description="年级")
+    task_id: str = Field(..., max_length=50, description="任务ID")
+    subject: str = Field("数学", max_length=20, description="学科")
+    grade: str = Field("3", max_length=4, description="年级")
 
 class AgentScheduleRequest(BaseModel):
-    task_id: str = Field(..., description="任务ID")
+    task_id: str = Field(..., max_length=50, description="任务ID")
     enable: bool = Field(True, description="启用/禁用")
 
 
@@ -520,15 +548,15 @@ async def agent_history(limit: int = 20):
 # ── Request Models (v0.6) ──
 
 class SafetyCheckRequest(BaseModel):
-    text: str = Field(..., description="待检查文本")
-    grade: str = Field("3", description="目标年级")
+    text: str = Field(..., max_length=10000, description="待检查文本")
+    grade: str = Field("3", max_length=4, description="目标年级")
 
 class SafetyFilterRequest(BaseModel):
-    text: str = Field(..., description="待过滤文本")
+    text: str = Field(..., max_length=10000, description="待过滤文本")
 
 class SafetyWordlistRequest(BaseModel):
-    word: str = Field(..., description="敏感词")
-    action: str = Field("add", description="add 或 remove")
+    word: str = Field(..., max_length=100, description="敏感词")
+    action: str = Field("add", max_length=10, description="add 或 remove")
 
 
 # ── Safety (v0.6) ──
@@ -550,7 +578,10 @@ async def safety_filter(req: SafetyFilterRequest):
 
 
 @app.post("/api/safety/wordlist")
-async def safety_wordlist(req: SafetyWordlistRequest):
+async def safety_wordlist(
+    req: SafetyWordlistRequest,
+    _: str = Depends(require_api_key),
+):
     """管理敏感词库。"""
     logger.info("safety/wordlist: action=%s word=%s", req.action, req.word)
     if req.action == "add":
@@ -573,19 +604,22 @@ async def safety_wordlist_list():
 # ── Request Models (v0.6 desensitize) ──
 
 class DesensitizeAnonRequest(BaseModel):
-    records: list[dict[str, Any]] = Field(..., description="待脱敏记录列表")
-    name_mode: str = Field("id", description="匿名模式: id/mask")
-    id_prefix: str = Field("S", description="ID前缀")
+    records: list[dict[str, Any]] = Field(..., max_length=1000, description="待脱敏记录列表")
+    name_mode: str = Field("id", max_length=10, description="匿名模式: id/mask")
+    id_prefix: str = Field("S", max_length=10, description="ID前缀")
 
 class DesensitizeExportRequest(BaseModel):
-    records: list[dict[str, Any]] = Field(..., description="待脱敏记录列表")
-    name_mode: str = Field("id", description="匿名模式: id/mask")
+    records: list[dict[str, Any]] = Field(..., max_length=1000, description="待脱敏记录列表")
+    name_mode: str = Field("id", max_length=10, description="匿名模式: id/mask")
 
 
 # ── Desensitize (v0.6) ──
 
 @app.post("/api/desensitize/anonymize")
-async def desensitize_anonymize(req: DesensitizeAnonRequest):
+async def desensitize_anonymize(
+    req: DesensitizeAnonRequest,
+    _: str = Depends(require_api_key),
+):
     """对记录列表进行脱敏。"""
     logger.info("desensitize/anonymize: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode, id_prefix=req.id_prefix)
@@ -599,14 +633,16 @@ async def desensitize_anonymize(req: DesensitizeAnonRequest):
 
 
 @app.post("/api/desensitize/export")
-async def desensitize_export(req: DesensitizeExportRequest):
+async def desensitize_export(
+    req: DesensitizeExportRequest,
+    _: str = Depends(require_api_key),
+):
     """导出脱敏数据。"""
     logger.info("desensitize/export: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode)
     anon = DataAnonymizer(cfg)
     desensitized = anon.export_desensitized(req.records)
-    name_map = anon.get_name_map()
     return {
         "desensitized": desensitized,
-        "name_map": name_map,
+        "name_count": len(anon.get_name_map()),
     }
