@@ -18,12 +18,16 @@ class ContentCheckResult:
     summary: str = ""
 
     def to_dict(self) -> dict[str, Any]:
+        decision = "allow" if self.is_safe else "block"
+        filtered = self.filtered_text if not self.is_safe and self.filtered_text else ""
         return {
             "is_safe": self.is_safe,
+            "decision": decision,
             "risk_level": self.risk_level,
             "flagged_words": self.flagged_words,
             "age_issues": self.age_issues,
             "filtered_text": self.filtered_text,
+            "forced_filtered_text": filtered,
             "summary": self.summary,
         }
 

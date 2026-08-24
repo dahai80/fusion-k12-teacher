@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..safety.filter import sanitize_input
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +36,10 @@ class LessonPlan:
     standards_aligned: list[str] = field(default_factory=list)
     differentiation: dict[str, str] = field(default_factory=dict)
     created_at: str = ""
+    error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in self.__dict__.items() if v}
+        return {k: v for k, v in self.__dict__.items() if v or k == "error"}
 
 
 @dataclass
@@ -47,6 +52,7 @@ class Quiz:
     total_points: int = 0
     time_limit_minutes: int = 0
     answer_key: str = ""
+    error: str = ""
 
 
 class CurriculumEngine:
@@ -72,12 +78,19 @@ class CurriculumEngine:
         standards: list[str] | None = None,
     ) -> LessonPlan:
         """生成标准对齐的教案。"""
-        standards_str = ", ".join(standards) if standards else "Common Core"
+        subject_s = sanitize_input(subject, 20)
+        grade_s = sanitize_input(grade, 4)
+        topic_s = sanitize_input(topic)
+        if subject_s not in SUBJECTS:
+            logger.warning("非标准学科: %s", subject_s)
+        if grade_s not in GRADE_LEVELS:
+            logger.warning("非标准年级: %s", grade_s)
+        standards_str = ", ".join(sanitize_input(s, 100) for s in standards) if standards else "Common Core"
         prompt = f"""你是一位经验丰富的K-12教师。请为以下课程生成完整教案：
 
-学科: {subject}
-年级: {grade}
-主题: {topic}
+学科: {subject_s}
+年级: {grade_s}
+主题: {topic_s}
 课时: {duration}分钟
 课程标准: {standards_str}
 
@@ -105,10 +118,9 @@ class CurriculumEngine:
             ], temperature=0.3)
             data = self._parse_json(response)
             if data:
-                import time
                 plan = LessonPlan(
-                    id=f"lp_{int(time.time())}",
-                    subject=subject, grade=grade, title=data.get("title", topic),
+                    id=f"lp_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}",
+                    subject=subject_s, grade=grade_s, title=data.get("title", topic_s),
                     duration_minutes=duration, objectives=data.get("objectives", []),
                     materials=data.get("materials", []),
                     procedures=data.get("procedures", []),
@@ -116,13 +128,15 @@ class CurriculumEngine:
                     homework=data.get("homework", ""),
                     standards_aligned=standards or [],
                     differentiation=data.get("differentiation", {}),
-                    created_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+                    created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 self._plans[plan.id] = plan
                 return plan
+            logger.error("教案生成失败: LLM 返回空或无法解析")
+            return LessonPlan(title=topic_s, subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")
         except Exception as e:
             logger.error(f"教案生成失败: {e}")
-        return LessonPlan(title=topic, subject=subject, grade=grade)
+            return LessonPlan(title=topic_s, subject=subject_s, grade=grade_s, error=str(e))
 
     async def generate_quiz(
         self,
@@ -133,8 +147,11 @@ class CurriculumEngine:
         question_types: list[str] | None = None,
     ) -> Quiz:
         """生成测验。"""
+        subject_s = sanitize_input(subject, 20)
+        grade_s = sanitize_input(grade, 4)
+        topic_s = sanitize_input(topic)
         types = question_types or ["multiple_choice", "short_answer", "true_false"]
-        prompt = f"""为{grade}年级{subject}课程生成关于"{topic}"的测验：
+        prompt = f"""为{grade_s}年级{subject_s}课程生成关于"{topic_s}"的测验：
 
 题目数量: {num_questions}
 题目类型: {', '.join(types)}
@@ -148,36 +165,53 @@ class CurriculumEngine:
             questions = self._parse_json(response)
             if isinstance(questions, list):
                 return Quiz(
-                    title=f"{topic}测验", subject=subject, grade=grade,
+                    title=f"{topic_s}测验", subject=subject_s, grade=grade_s,
                     questions=questions,
                     total_points=sum(q.get("points", 1) for q in questions),
                     answer_key="[详见每道题目的answer字段]",
                 )
+            logger.error("测验生成失败: LLM 返回空或无法解析")
+            return Quiz(title=f"{topic_s}测验", subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")
         except Exception as e:
             logger.error(f"测验生成失败: {e}")
-        return Quiz(title=f"{topic}测验", subject=subject, grade=grade)
+            return Quiz(title=f"{topic_s}测验", subject=subject_s, grade=grade_s, error=str(e))
 
     async def generate_unit_plan(self, subject: str, grade: str, unit_title: str, weeks: int = 4) -> dict[str, Any]:
         """生成单元教学计划。"""
-        prompt = f"""为{grade}年级{subject}设计一个为期{weeks}周的教学单元：
-单元主题: {unit_title}
+        subject_s = sanitize_input(subject, 20)
+        grade_s = sanitize_input(grade, 4)
+        unit_s = sanitize_input(unit_title)
+        prompt = f"""为{grade_s}年级{subject_s}设计一个为期{weeks}周的教学单元：
+单元主题: {unit_s}
 请返回JSON格式，包含每周的教学主题、学习目标、主要活动和评估方式。"""
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位课程设计专家，设计完整的单元教学计划。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
-            return self._parse_json(response) or {"unit_title": unit_title}
+            data = self._parse_json(response)
+            if isinstance(data, dict):
+                if "unit_title" not in data:
+                    data["unit_title"] = unit_s
+                return data
+            logger.error("单元计划生成失败: LLM 返回空或无法解析")
+            return {"unit_title": unit_s, "error": "LLM 返回空或无法解析"}
         except Exception as e:
             logger.error(f"单元计划生成失败: {e}")
-            return {"unit_title": unit_title}
+            return {"unit_title": unit_s, "error": str(e)}
 
-    def _parse_json(self, text: str) -> Any:
+    def _parse_json(self, text: Any) -> Any:
+        """解析 LLM 返回的 JSON — 容忍 None/空串/代码块围栏 (ENG-5/6)。"""
+        if not isinstance(text, str) or not text.strip():
+            return None
         text = text.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+        else:
+            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+            if obj_match:
+                text = obj_match.group(0)
         try:
             return json.loads(text)
         except json.JSONDecodeError:

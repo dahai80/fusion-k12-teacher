@@ -103,15 +103,16 @@ class TestDataAnonymizer:
 
     def test_mask_field_phone(self):
         anon = DataAnonymizer()
-        assert anon.mask_field("13812345678", "phone") == "*******5678"
-        assert anon.mask_field("1234", "phone") == "****"
+        # SEC-3: 不保留长度, 固定掩码 + 末 4 位
+        assert anon.mask_field("13812345678", "phone") == "****5678"
+        assert anon.mask_field("1234", "phone") == "********"
 
     def test_mask_field_email(self):
         anon = DataAnonymizer()
+        # SEC-3: 不泄露域名, 哈希成不可逆伪邮箱
         masked = anon.mask_field("student@school.edu.cn", "email")
-        assert masked.startswith("s")
-        assert "@" in masked
-        assert masked.endswith("@school.edu.cn")
+        assert masked.startswith("***@")
+        assert masked.endswith(".invalid")
 
     def test_mask_field_id_number(self):
         anon = DataAnonymizer()
@@ -121,7 +122,8 @@ class TestDataAnonymizer:
 
     def test_mask_field_generic(self):
         anon = DataAnonymizer()
-        assert anon.mask_field("某地址", "address") == "***"
+        # SEC-3: 固定 8 位掩码, 不保留长度
+        assert anon.mask_field("某地址", "address") == "********"
 
     def test_mask_field_empty(self):
         anon = DataAnonymizer()
@@ -137,7 +139,7 @@ class TestDataAnonymizer:
         }
         result = anon.anonymize_record(record)
         assert result["student_name"] == _expected_id("张三")
-        assert result["phone"] == "*******5678"
+        assert result["phone"] == "****5678"
         assert result["score"] == 85
 
     def test_anonymize_record_preserves_original(self):
@@ -176,8 +178,8 @@ class TestDataAnonymizer:
         result = anon.export_desensitized(records)
         assert result[0]["student_name"] == _expected_id("张三")
         assert result[1]["student_name"] == _expected_id("李四")
-        assert result[0]["phone"] == "*******5678"
-        assert result[1]["phone"] == "*******4321"
+        assert result[0]["phone"] == "****5678"
+        assert result[1]["phone"] == "****4321"
 
     def test_get_name_map(self):
         anon = DataAnonymizer()

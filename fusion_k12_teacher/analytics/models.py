@@ -106,6 +106,7 @@ class ClassProfile:
     strong_knowledge_points: list[str] = field(default_factory=list)
     student_risk_levels: dict[str, str] = field(default_factory=dict)
     generated_at: str = ""
+    error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -120,6 +121,7 @@ class ClassProfile:
             "strong_knowledge_points": self.strong_knowledge_points,
             "student_risk_levels": self.student_risk_levels,
             "generated_at": self.generated_at,
+            "error": self.error,
         }
 
     @classmethod
@@ -137,6 +139,7 @@ class ClassProfile:
             strong_knowledge_points=data.get("strong_knowledge_points", []),
             student_risk_levels=data.get("student_risk_levels", {}),
             generated_at=data.get("generated_at", ""),
+            error=data.get("error", ""),
         )
 
 
@@ -152,6 +155,7 @@ class StudentProfile:
     learning_trend: str = "stable"
     risk_indicators: list[str] = field(default_factory=list)
     recommended_actions: list[str] = field(default_factory=list)
+    error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -164,6 +168,7 @@ class StudentProfile:
             "learning_trend": self.learning_trend,
             "risk_indicators": self.risk_indicators,
             "recommended_actions": self.recommended_actions,
+            "error": self.error,
         }
 
     @classmethod
@@ -178,6 +183,7 @@ class StudentProfile:
             learning_trend=data.get("learning_trend", "stable"),
             risk_indicators=data.get("risk_indicators", []),
             recommended_actions=data.get("recommended_actions", []),
+            error=data.get("error", ""),
         )
 
 
@@ -227,6 +233,7 @@ class RemedialPlan:
     timeline: str = ""
     exercises: list[dict[str, Any]] = field(default_factory=list)
     estimated_duration: str = ""
+    error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -238,6 +245,7 @@ class RemedialPlan:
             "timeline": self.timeline,
             "exercises": self.exercises,
             "estimated_duration": self.estimated_duration,
+            "error": self.error,
         }
 
     @classmethod
@@ -252,4 +260,5 @@ class RemedialPlan:
             timeline=data.get("timeline", ""),
             exercises=data.get("exercises", []),
             estimated_duration=data.get("estimated_duration", ""),
+            error=data.get("error", ""),
         )

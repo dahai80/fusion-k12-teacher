@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
@@ -32,6 +35,37 @@ logger = logging.getLogger(__name__)
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _API_KEY = os.environ.get("FUSION_K12_API_KEY", "")
+_RATE_WINDOW = int(os.environ.get("FUSION_K12_RATE_WINDOW", "60"))
+_RATE_MAX = int(os.environ.get("FUSION_K12_RATE_MAX", "60"))
+
+
+class _RateLimiter:
+    """进程内滑动窗口限流 (SRV-2) — 按 client IP 限速。"""
+
+    def __init__(self, window: int, max_req: int):
+        self._window = window
+        self._max = max_req
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = asyncio.Lock()
+
+    async def check(self, key: str) -> bool:
+        now = time.monotonic()
+        async with self._lock:
+            dq = self._hits[key]
+            cutoff = now - self._window
+            while dq and dq[0] < cutoff:
+                dq.popleft()
+            if len(dq) >= self._max:
+                return False
+            dq.append(now)
+            return True
+
+
+_rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX)
+
+
+async def _client_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
@@ -79,6 +113,7 @@ async def lifespan(app: FastAPI):
     sensitive_wordlist = SensitiveWordList()
     scheduler.load_default_tasks()
     scheduler.load_history()
+    scheduler.start()
     _init_allowed_dirs()
     logger.info("Fusion-K12-Teacher API started, MLXClient initialized")
     yield
@@ -99,6 +134,19 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """SRV-2: 滑动窗口限流，防止单个客户端拖垮本地推理资源。"""
+    if request.url.path.startswith("/api/"):
+        key = await _client_key(request)
+        if not await _rate_limiter.check(key):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"rate limit exceeded ({_RATE_MAX}/{_RATE_WINDOW}s)",
+            )
+    return await call_next(request)
 
 
 # ── Request/Response Models ──
@@ -215,7 +263,9 @@ async def content_generate(req: ContentGenerateRequest):
         result = await content_generator.generate_educational_game(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
-        return {"type": "game", "game_type": result.get("type", ""), **{k: v for k, v in result.items() if k != "type"}}
+        # CNT-1: 白名单字段透传, 内部 error 不外泄; LLM 的 type 不覆盖响应 type
+        safe = {k: v for k, v in result.items() if k not in ("error", "type")}
+        return {"type": "game", "game_type": result.get("type", ""), **safe}
     else:
         ws = await content_generator.generate_worksheet(
             subject="综合", grade=req.grade or "3", topic=req.topic,
@@ -226,6 +276,7 @@ async def content_generate(req: ContentGenerateRequest):
             "sections": ws.sections,
             "answer_key": ws.answer_key,
             "instructions": ws.instructions,
+            "error": ws.error,
         }
 
 
@@ -361,9 +412,8 @@ def _init_allowed_dirs():
     logger.info("allowed data dirs: %s", [str(d) for d in _ALLOWED_DATA_DIRS])
 
 
-def _load_assessments(path: str):
-    if not path:
-        return []
+def _check_allowed_path(path: str) -> Path:
+    """校验 data_path 在允许目录内 (SRV-5: is_relative_to 精确匹配，非前缀)。"""
     resolved = Path(path).resolve()
     if _ALLOWED_DATA_DIRS:
         allowed = False
@@ -380,9 +430,17 @@ def _load_assessments(path: str):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"data path not allowed: {resolved}",
             )
+    return resolved
+
+
+async def _load_assessments(path: str):
+    """SRV-4: 同步文件 I/O 放线程池，避免阻塞 event loop。"""
+    if not path:
+        return []
+    _check_allowed_path(path)
     if path.endswith(".csv"):
-        return load_from_csv(path)
-    return load_from_json(path)
+        return await asyncio.to_thread(load_from_csv, path)
+    return await asyncio.to_thread(load_from_json, path)
 
 
 # ── Analytics (v0.4) ──
@@ -391,7 +449,7 @@ def _load_assessments(path: str):
 async def analytics_class_profile(req: ClassProfileRequest):
     """生成班级学情画像。"""
     logger.info("analytics/class-profile: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
-    assessments = _load_assessments(req.data_path)
+    assessments = await _load_assessments(req.data_path)
     profile = await analytics_engine.build_class_profile(
         class_id=req.class_id, subject=req.subject, grade=req.grade, assessments=assessments,
     )
@@ -402,7 +460,7 @@ async def analytics_class_profile(req: ClassProfileRequest):
 async def analytics_student_profile(req: StudentProfileRequest):
     """生成学生个体画像。"""
     logger.info("analytics/student-profile: student=%s subject=%s grade=%s", req.student_id, req.subject, req.grade)
-    all_assessments = _load_assessments(req.data_path)
+    all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
     profile = await analytics_engine.build_student_profile(
         student_id=req.student_id, subject=req.subject, grade=req.grade, history=history,
@@ -414,7 +472,7 @@ async def analytics_student_profile(req: StudentProfileRequest):
 async def analytics_error_analysis(req: ErrorAnalysisRequest):
     """错题归因分析。"""
     logger.info("analytics/error-analysis: subject=%s grade=%s", req.subject, req.grade)
-    all_assessments = _load_assessments(req.data_path)
+    all_assessments = await _load_assessments(req.data_path)
     responses = []
     for a in all_assessments:
         responses.extend(a.responses)
@@ -428,7 +486,7 @@ async def analytics_error_analysis(req: ErrorAnalysisRequest):
 async def analytics_remedial(req: RemedialPlanRequest):
     """生成补救教学方案。"""
     logger.info("analytics/remedial: student=%s subject=%s grade=%s", req.student_id, req.subject, req.grade)
-    all_assessments = _load_assessments(req.data_path)
+    all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
     student_profile = await analytics_engine.build_student_profile(
         student_id=req.student_id, subject=req.subject, grade=req.grade, history=history,
@@ -447,7 +505,7 @@ async def analytics_remedial(req: RemedialPlanRequest):
 async def analytics_class_report(req: ClassReportRequest):
     """生成班级学情报告(Markdown)。"""
     logger.info("analytics/class-report: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
-    assessments = _load_assessments(req.data_path)
+    assessments = await _load_assessments(req.data_path)
     profile = await analytics_engine.build_class_profile(
         class_id=req.class_id, subject=req.subject, grade=req.grade, assessments=assessments,
     )
@@ -457,8 +515,16 @@ async def analytics_class_report(req: ClassReportRequest):
 
 @app.post("/api/analytics/upload")
 async def analytics_upload(req: AnalyticsUploadRequest):
-    """上传学情数据。"""
+    """上传学情数据 — 持久化到允许目录并返回路径，供后续 analytics 调用使用 (SRV-6)。
+
+    不再"假装接受"，校验+落盘+返回可用的 data_path。
+    """
     logger.info("analytics/upload: %d records, format=%s", len(req.data), req.format)
+    if req.format != "json":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="only json format supported",
+        )
     assessments = []
     for item in req.data:
         try:
@@ -477,7 +543,23 @@ async def analytics_upload(req: AnalyticsUploadRequest):
             assessments.append(a)
         except Exception as e:
             logger.warning("analytics/upload: skip bad record: %s", e)
-    return {"accepted": len(assessments), "total": len(req.data)}
+    import json as _json
+    dest_dir = _ALLOWED_DATA_DIRS[0] if _ALLOWED_DATA_DIRS else Path.cwd() / "data"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    import time as _time
+    dest = dest_dir / f"upload_{int(_time.time())}.json"
+
+    def _write():
+        with open(dest, "w", encoding="utf-8") as f:
+            _json.dump([a.to_dict() for a in assessments], f, ensure_ascii=False, indent=2)
+
+    await asyncio.to_thread(_write)
+    logger.info("analytics/upload: persisted %d records to %s", len(assessments), dest)
+    return {
+        "accepted": len(assessments),
+        "total": len(req.data),
+        "data_path": str(dest),
+    }
 
 
 # ── Content worksheet-diff (v1.0) ──
@@ -498,6 +580,7 @@ class AgentRunRequest(BaseModel):
     task_id: str = Field(..., max_length=50, description="任务ID")
     subject: str = Field("数学", max_length=20, description="学科")
     grade: str = Field("3", max_length=4, description="年级")
+    data_path: str = Field("", max_length=500, description="评估数据文件路径(每次执行重新加载, 避免过期数据)")
 
 class AgentScheduleRequest(BaseModel):
     task_id: str = Field(..., max_length=50, description="任务ID")
@@ -519,11 +602,16 @@ async def agent_list_tasks():
 
 @app.post("/api/agent/run")
 async def agent_run_task(req: AgentRunRequest):
-    """立即执行任务。"""
+    """立即执行任务 — 每次按请求参数即时构建，避免共享 _tasks 跨请求污染 (SRV-7)。
+
+    data_path 每次传入并重新加载数据，避免任务构建时烘焙过期数据 (AGT-5)。
+    """
     logger.info("agent/run: task_id=%s subject=%s grade=%s", req.task_id, req.subject, req.grade)
-    if not scheduler.get_task(req.task_id):
-        scheduler.load_default_tasks(subject=req.subject, grade=req.grade)
-    result = await scheduler.run_task(req.task_id)
+    run_kwargs = {"subject": req.subject, "grade": req.grade}
+    if req.data_path:
+        _check_allowed_path(req.data_path)
+        run_kwargs["data_path"] = req.data_path
+    result = await scheduler.run_task(req.task_id, **run_kwargs)
     return result.to_dict()
 
 
@@ -549,7 +637,7 @@ async def agent_history(limit: int = 20):
 
 class SafetyCheckRequest(BaseModel):
     text: str = Field(..., max_length=10000, description="待检查文本")
-    grade: str = Field("3", max_length=4, description="目标年级")
+    grade: str = Field("3", pattern=r"^[1-9]$|^1[0-2]$", description="目标年级 1-12")
 
 class SafetyFilterRequest(BaseModel):
     text: str = Field(..., max_length=10000, description="待过滤文本")
@@ -586,11 +674,11 @@ async def safety_wordlist(
     logger.info("safety/wordlist: action=%s word=%s", req.action, req.word)
     if req.action == "add":
         sensitive_wordlist.add(req.word)
-        sensitive_wordlist.save()
+        await asyncio.to_thread(sensitive_wordlist.save)
         return {"action": "add", "word": req.word, "count": sensitive_wordlist.count}
     elif req.action == "remove":
         sensitive_wordlist.remove(req.word)
-        sensitive_wordlist.save()
+        await asyncio.to_thread(sensitive_wordlist.save)
         return {"action": "remove", "word": req.word, "count": sensitive_wordlist.count}
     return {"error": "unknown action"}
 

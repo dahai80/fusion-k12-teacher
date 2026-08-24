@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..safety.filter import sanitize_input
 from ..standards.query import StandardsQuery
 from .models import (
     ClassProfile,
@@ -19,6 +21,31 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_float(val: Any, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_int(val: Any, default: int = 0) -> int:
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        try:
+            return int(float(val))
+        except (TypeError, ValueError):
+            return default
+
+
+def _coerce_str_list(val: Any) -> list[str]:
+    if isinstance(val, list):
+        return [str(x) for x in val]
+    if isinstance(val, str):
+        return [val]
+    return []
 
 
 class AnalyticsEngine:
@@ -57,31 +84,38 @@ class AnalyticsEngine:
             score_distribution, weak_points, risk_levels,
         )
 
+        llm_err = ""
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位资深教学分析师，擅长从数据中提炼教学洞察。"},
                 {"role": "user", "content": summary},
             ], temperature=0.3)
             data = self._parse_json(response)
-            if data:
-                llm_weak = [
-                    WeakPoint(
-                        knowledge_point_id=wp.get("knowledge_point_id", ""),
-                        knowledge_point_name=wp.get("knowledge_point_name", ""),
-                        error_rate=wp.get("error_rate", 0.0),
-                        affected_students=wp.get("affected_students", []),
-                        common_mistakes=wp.get("common_mistakes", []),
-                        suggested_remedial=wp.get("suggested_remedial", ""),
-                    )
-                    for wp in data.get("weak_knowledge_points", [])
-                ]
+            if isinstance(data, dict):
+                llm_weak = []
+                for wp in data.get("weak_knowledge_points", []):
+                    if not isinstance(wp, dict):
+                        continue
+                    llm_weak.append(WeakPoint(
+                        knowledge_point_id=str(wp.get("knowledge_point_id", "")),
+                        knowledge_point_name=str(wp.get("knowledge_point_name", "")),
+                        error_rate=max(0.0, min(_coerce_float(wp.get("error_rate")), 1.0)),
+                        affected_students=_coerce_str_list(wp.get("affected_students")),
+                        common_mistakes=_coerce_str_list(wp.get("common_mistakes")),
+                        suggested_remedial=str(wp.get("suggested_remedial", "")),
+                    ))
                 if llm_weak:
                     weak_points = llm_weak
                 llm_risk = data.get("student_risk_levels", {})
-                if llm_risk:
-                    risk_levels = llm_risk
+                if isinstance(llm_risk, dict) and all(
+                    isinstance(k, str) and isinstance(v, str) for k, v in llm_risk.items()
+                ):
+                    risk_levels = {str(k): str(v) for k, v in llm_risk.items()}
+            else:
+                llm_err = "LLM 返回空或无法解析"
         except Exception as e:
             logger.error(f"LLM 班级画像增强失败: {e}")
+            llm_err = str(e)
 
         return ClassProfile(
             class_id=class_id,
@@ -95,6 +129,7 @@ class AnalyticsEngine:
             strong_knowledge_points=strong_points,
             student_risk_levels=risk_levels,
             generated_at=datetime.now().isoformat(),
+            error=llm_err,
         )
 
     async def build_student_profile(
@@ -150,26 +185,40 @@ class AnalyticsEngine:
     "recommended_actions": ["建议1"]
 }}"""
 
+        llm_err = ""
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位教育数据分析师，善于从学情数据中提炼洞察。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             data = self._parse_json(response)
-            if data:
+            if isinstance(data, dict):
+                llm_level = data.get("overall_level", overall_level)
+                if llm_level not in ("struggling", "standard", "advanced"):
+                    llm_level = overall_level
+                llm_mastery = data.get("knowledge_mastery", knowledge_mastery)
+                if not isinstance(llm_mastery, dict):
+                    llm_mastery = knowledge_mastery
+                else:
+                    llm_mastery = {str(k): _coerce_float(v) for k, v in llm_mastery.items()}
+                llm_trend = data.get("learning_trend", trend)
+                if llm_trend not in ("improving", "stable", "declining"):
+                    llm_trend = trend
                 return StudentProfile(
                     student_id=student_id,
                     name=student_name,
                     grade=grade,
                     subject=subject,
-                    overall_level=data.get("overall_level", overall_level),
-                    knowledge_mastery=data.get("knowledge_mastery", knowledge_mastery),
-                    learning_trend=data.get("learning_trend", trend),
-                    risk_indicators=data.get("risk_indicators", risk_indicators),
-                    recommended_actions=data.get("recommended_actions", []),
+                    overall_level=llm_level,
+                    knowledge_mastery=llm_mastery,
+                    learning_trend=llm_trend,
+                    risk_indicators=_coerce_str_list(data.get("risk_indicators", risk_indicators)),
+                    recommended_actions=_coerce_str_list(data.get("recommended_actions")),
                 )
+            llm_err = "LLM 返回空或无法解析"
         except Exception as e:
             logger.error(f"LLM 学生画像增强失败: {e}")
+            llm_err = str(e)
 
         return StudentProfile(
             student_id=student_id,
@@ -180,6 +229,7 @@ class AnalyticsEngine:
             knowledge_mastery=knowledge_mastery,
             learning_trend=trend,
             risk_indicators=risk_indicators,
+            error=llm_err,
         )
 
     async def analyze_errors(
@@ -196,15 +246,17 @@ class AnalyticsEngine:
         if not wrong:
             return []
 
+        subject_s = sanitize_input(subject, 20)
+        grade_s = sanitize_input(grade, 4)
         standards_hint = ""
         if self._standards:
-            points = self._standards.get_knowledge_points(subject, grade)
+            points = self._standards.get_knowledge_points(subject_s, grade_s)
             if points:
                 standards_hint = f"\n课标知识点参考: {', '.join(p.topic for p in points[:10])}"
 
         prompt = f"""分析以下错题数据，进行归因分析：
 
-学科: {subject} | 年级: {grade}
+学科: {subject_s} | 年级: {grade_s}
 错题数: {len(wrong)}
 {standards_hint}
 
@@ -231,18 +283,24 @@ class AnalyticsEngine:
             ], temperature=0.3)
             data = self._parse_json(response)
             if isinstance(data, list):
-                return [
-                    ErrorAnalysis(
-                        error_id=e.get("error_id", ""),
-                        knowledge_point_id=e.get("knowledge_point_id", ""),
-                        error_type=e.get("error_type", "unknown"),
-                        frequency=e.get("frequency", 1),
-                        sample_responses=e.get("sample_responses", []),
-                        root_cause=e.get("root_cause", ""),
-                        remediation=e.get("remediation", ""),
-                    )
-                    for e in data
-                ]
+                out = []
+                for e in data:
+                    if not isinstance(e, dict):
+                        continue
+                    out.append(ErrorAnalysis(
+                        error_id=str(e.get("error_id", "")),
+                        knowledge_point_id=str(e.get("knowledge_point_id", "")),
+                        error_type=str(e.get("error_type", "unknown")),
+                        frequency=_coerce_int(e.get("frequency", 1), 1),
+                        sample_responses=_coerce_str_list(e.get("sample_responses")),
+                        root_cause=str(e.get("root_cause", "")),
+                        remediation=str(e.get("remediation", "")),
+                    ))
+                if out:
+                    return out
+                logger.error("错题归因: LLM 返回空数组或无法解析，回退")
+            else:
+                logger.error("错题归因: LLM 返回空或无法解析，回退")
         except Exception as e:
             logger.error(f"LLM 错题归因失败: {e}")
 
@@ -250,7 +308,7 @@ class AnalyticsEngine:
             error_id="err-fallback",
             error_type="unknown",
             frequency=len(wrong),
-            sample_responses=[r.get("student_answer", "") for r in wrong[:3]],
+            sample_responses=[str(r.get("student_answer", "")) for r in wrong[:3]],
             root_cause="分析失败，需人工检查",
             remediation="建议人工复核错题",
         )]
@@ -263,8 +321,11 @@ class AnalyticsEngine:
         weak_points: list[WeakPoint],
     ) -> RemedialPlan:
         """生成补救教学方案。"""
+        subject_s = sanitize_input(subject, 20)
+        grade_s = sanitize_input(grade, 4)
+        sid_s = sanitize_input(student_id, 50)
         if not weak_points:
-            return RemedialPlan(student_id=student_id, subject=subject, grade=grade)
+            return RemedialPlan(student_id=sid_s, subject=subject_s, grade=grade_s)
 
         standards_hint = ""
         if self._standards:
@@ -278,9 +339,9 @@ class AnalyticsEngine:
             ensure_ascii=False,
         )
 
-        prompt = f"""为学生 {student_id} 生成补救教学方案：
+        prompt = f"""为学生 {sid_s} 生成补救教学方案：
 
-学科: {subject} | 年级: {grade}
+学科: {subject_s} | 年级: {grade_s}
 薄弱知识点: {wp_summary}
 {standards_hint}
 
@@ -291,32 +352,36 @@ class AnalyticsEngine:
     "estimated_duration": "预计补救时长"
 }}"""
 
+        llm_err = ""
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位经验丰富的教师，擅长设计针对性补救方案。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             data = self._parse_json(response)
-            if data:
+            if isinstance(data, dict):
                 return RemedialPlan(
-                    student_id=student_id,
-                    subject=subject,
-                    grade=grade,
+                    student_id=sid_s,
+                    subject=subject_s,
+                    grade=grade_s,
                     weak_points=weak_points,
-                    strategies=data.get("strategies", []),
-                    timeline=data.get("timeline", ""),
-                    exercises=data.get("exercises", []),
-                    estimated_duration=data.get("estimated_duration", ""),
+                    strategies=_coerce_str_list(data.get("strategies")),
+                    timeline=str(data.get("timeline", "")),
+                    exercises=data.get("exercises", []) if isinstance(data.get("exercises"), list) else [],
+                    estimated_duration=str(data.get("estimated_duration", "")),
                 )
+            llm_err = "LLM 返回空或无法解析"
         except Exception as e:
             logger.error(f"LLM 补救方案生成失败: {e}")
+            llm_err = str(e)
 
         return RemedialPlan(
-            student_id=student_id,
-            subject=subject,
-            grade=grade,
+            student_id=sid_s,
+            subject=subject_s,
+            grade=grade_s,
             weak_points=weak_points,
             strategies=["复习基础知识", "针对性练习", "定期检测"],
+            error=llm_err,
         )
 
     async def generate_class_report(self, class_profile: ClassProfile) -> str:
@@ -393,7 +458,7 @@ class AnalyticsEngine:
 
         weak = []
         for qid, stats in topic_stats.items():
-            if stats["total"] == 0:
+            if stats["total"] < 2:
                 continue
             error_rate = stats["wrong"] / stats["total"]
             if error_rate >= 0.3:
@@ -450,13 +515,13 @@ class AnalyticsEngine:
         return {k: round(sum(v) / len(v), 1) for k, v in mastery.items()}
 
     def _calc_trend(self, history: list[StudentAssessment]) -> str:
-        if len(history) < 2:
+        if len(history) < 4:
             return "stable"
         sorted_h = sorted(history, key=lambda a: a.date)
         pcts = [a.percentage for a in sorted_h]
         mid = len(pcts) // 2
-        first_half = sum(pcts[:mid]) / max(mid, 1)
-        second_half = sum(pcts[mid:]) / max(len(pcts) - mid, 1)
+        first_half = sum(pcts[:mid]) / mid
+        second_half = sum(pcts[mid:]) / (len(pcts) - mid)
         diff = second_half - first_half
         if diff > 5:
             return "improving"
@@ -543,12 +608,17 @@ class AnalyticsEngine:
 - 关注高风险学生，安排一对一辅导
 """
 
-    def _parse_json(self, text: str) -> Any:
+    def _parse_json(self, text: Any) -> Any:
+        if not isinstance(text, str) or not text.strip():
+            return None
         text = text.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+        else:
+            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+            if obj_match:
+                text = obj_match.group(0)
         try:
             return json.loads(text)
         except json.JSONDecodeError:

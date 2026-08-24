@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
-  <img src="https://img.shields.io/badge/tests-272%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-284%20passed-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -219,16 +219,16 @@ Components:
 
 ### 11. Data Desensitization (`desensitize/`) — v1.0
 
-Student data privacy: name anonymization, field masking, reversible mapping.
+Student data privacy: salted-hash name anonymization, fixed-width field masking, reversible mapping (kept in-memory only, never serialized by default).
 
 | Command | Description |
 |---------|-------------|
 | `desensitize anon <file.json> --mode id --prefix S --output out.json` | Anonymize student records |
-| `desensitize export <file.json> --output out.json` | Export desensitized data + name map |
-| `DataAnonymizer.anonymize_records()` | Batch anonymize with name→ID mapping |
-| `DataAnonymizer.mask_field()` | Mask phone/email/address fields |
-| `DataAnonymizer.export_desensitized()` | Full export with reversible name_map |
-| `DataAnonymizer.deanonymize_record()` | Reverse anonymization |
+| `desensitize export <file.json> --output out.json` | Export desensitized data |
+| `DataAnonymizer.anonymize_records()` | Batch anonymize; returns stats + desensitized records |
+| `DataAnonymizer.mask_field()` | Mask phone/email/address/id_number (fixed-width, no length/domain leak) |
+| `DataAnonymizer.export_desensitized()` | Export desensitized records (without name_map) |
+| `DataAnonymizer.deanonymize_record()` | Reverse anonymization (requires in-memory name_map) |
 
 ### 12. HTTP API (`serve.py`)
 
@@ -312,7 +312,11 @@ pytest tests/ -v
 - **Data Sovereignty** — All processing on local machine
 - **Compliant with Chinese regulations** — No cross-border data transfer
 - **Student Privacy** — All student data stays on device
-- **Data Desensitization** — Automatic name anonymization & field masking
+- **Data Desensitization** — Salted-hash name→ID (non-deterministic, non-reversible), fixed-width field masking (no length/domain leakage, GB/T 35273 aligned). `name_map` never serialized by default.
+- **Input Sanitization** — `sanitize_input()` truncates length, strips control chars, isolates prompt-injection attempts before every engine call.
+- **Output Filtering** — Generated content (worksheets, parent letters) passes through `ContentFilter.check_output()` (sensitive words + age-appropriate) before reaching students/parents.
+- **API Hardening** — Optional `X-API-Key` auth, per-IP sliding-window rate limit, allowed-directory path validation (`is_relative_to`, no prefix bypass), async file I/O off the event loop.
+- **Graceful-but-Visible Failure** — Engine failures set an `error` flag on result dataclasses instead of raising; parent-communication failure returns empty (never leaks internal error strings).
 
 ---
 

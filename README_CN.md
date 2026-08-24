@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
-  <img src="https://img.shields.io/badge/tests-272%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-284%20passed-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -220,14 +220,15 @@ Multi-layer content filtering: sensitive word detection, age-appropriate check, 
 
 ### 11. Data Desensitization / 数据脱敏 (`desensitize/`) — v1.0
 
-Student data privacy: name anonymization, field masking, reversible mapping.
-学生数据隐私保护：姓名匿名化、字段脱敏、可逆映射。
+Student data privacy: salted-hash name anonymization, fixed-width field masking, reversible mapping (in-memory only, never serialized by default).
+学生数据隐私保护：加盐哈希姓名匿名化、定宽字段脱敏、可逆映射（仅存内存，默认不序列化）。
 
 | Command | Description |
 |---------|-------------|
 | `desensitize anon <file.json> --mode id` | Anonymize student records / 匿名化学生记录 |
 | `desensitize export <file.json> --output out.json` | Export desensitized data / 导出脱敏数据 |
-| `DataAnonymizer.anonymize_records()` | Batch name→ID mapping / 批量姓名→ID映射 |
+| `DataAnonymizer.anonymize_records()` | Batch anonymize, returns stats + records / 批量匿名化，返回统计与脱敏记录 |
+| `DataAnonymizer.mask_field()` | Fixed-width mask, no length/domain leak / 定宽脱敏，不泄露长度与域名 |
 | `DataAnonymizer.deanonymize_record()` | Reverse anonymization / 反向匿名化 |
 
 ### 12. HTTP API / HTTP 接口 (`serve.py`)
@@ -287,7 +288,11 @@ pytest tests/ -v
 - **Data Sovereignty / 数据主权** — All processing on local machine / 所有处理在本地完成
 - **Compliant with Chinese regulations / 符合国内法规** — No cross-border data transfer / 无跨境数据传输
 - **Student Privacy / 学生隐私** — All student data stays on device / 所有学生数据留在设备上
-- **Data Desensitization / 数据脱敏** — Automatic name anonymization & field masking / 自动姓名匿名化与字段脱敏
+- **Data Desensitization / 数据脱敏** — Salted-hash name→ID (non-deterministic, non-reversible), fixed-width field masking (no length/domain leakage, GB/T 35273 aligned); name_map never serialized by default / 加盐哈希姓名→ID（非确定性、不可逆）、定宽字段脱敏（不泄露长度与域名，对齐 GB/T 35273）；name_map 默认不序列化
+- **Input Sanitization / 输入消毒** — `sanitize_input()` truncates length, strips control chars, isolates prompt-injection attempts before every engine call / 各引擎调用前统一截断长度、剥离控制字符、隔离提示注入企图
+- **Output Filtering / 输出过滤** — Generated content (worksheets, parent letters) passes `ContentFilter.check_output()` (sensitive words + age-appropriate) before reaching students/parents / 生成内容（工作纸、家长信）送达前过敏感词+适龄检查
+- **API Hardening / API 加固** — Optional `X-API-Key` auth, per-IP sliding-window rate limit, allowed-directory path validation (`is_relative_to`), async file I/O off the event loop / 可选 X-API-Key 鉴权、按 IP 滑窗限流、允许目录路径精确校验、文件 I/O 移出事件循环
+- **Graceful-but-Visible Failure / 失败可见** — Engine failures set an `error` flag instead of raising; parent-communication failure returns empty (never leaks internal error strings) / 引擎失败置 error 标志而非抛异常；家长信失败返回空（不外泄内部错误串）
 
 ---
 

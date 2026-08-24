@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from types import MappingProxyType
 
 from .models import CurriculumStandard, KnowledgePoint
 
@@ -19,6 +20,7 @@ class StandardsLoader:
         self._standards: dict[str, CurriculumStandard] = {}
         self._points_index: dict[str, KnowledgePoint] = {}
         self._loaded = False
+        self._failed_files: list[str] = []
 
     def load_all(self) -> dict[str, CurriculumStandard]:
         """加载 data 目录下所有 JSON 课标文件。"""
@@ -34,11 +36,21 @@ class StandardsLoader:
             try:
                 self._load_file(json_file)
             except Exception as e:
+                self._failed_files.append(str(json_file))
                 logger.error(f"加载课标文件失败 {json_file}: {e}")
 
         self._loaded = True
-        logger.info(f"课标加载完成: {len(self._standards)} 个标准, {len(self._points_index)} 个知识点")
+        logger.info(
+            f"课标加载完成: {len(self._standards)} 个标准, {len(self._points_index)} 个知识点"
+            + (f", 失败文件: {len(self._failed_files)}" if self._failed_files else "")
+        )
+        if self._failed_files:
+            logger.warning("以下课标文件加载失败(已跳过): %s", self._failed_files)
         return self._standards
+
+    @property
+    def failed_files(self) -> list[str]:
+        return list(self._failed_files)
 
     def _load_file(self, path: Path) -> None:
         """加载单个 JSON 课标文件。"""
@@ -88,17 +100,17 @@ class StandardsLoader:
             self.load_all()
         return self._points_index.get(point_id)
 
-    def all_points(self) -> dict[str, KnowledgePoint]:
-        """返回所有知识点索引。"""
+    def all_points(self) -> MappingProxyType[str, KnowledgePoint]:
+        """返回所有知识点索引的只读视图(零拷贝, STD-3)。"""
         if not self._loaded:
             self.load_all()
-        return dict(self._points_index)
+        return MappingProxyType(self._points_index)
 
-    def all_standards(self) -> dict[str, CurriculumStandard]:
-        """返回所有课标。"""
+    def all_standards(self) -> MappingProxyType[str, CurriculumStandard]:
+        """返回所有课标的只读视图(零拷贝, STD-3)。"""
         if not self._loaded:
             self.load_all()
-        return dict(self._standards)
+        return MappingProxyType(self._standards)
 
     def list_subjects(self) -> list[str]:
         """列出已加载的学科。"""

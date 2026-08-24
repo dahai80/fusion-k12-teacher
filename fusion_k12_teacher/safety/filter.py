@@ -28,7 +28,29 @@ SAFETY_PROMPT_SUFFIX = (
 
 _RISK_ORDER = {"safe": 0, "medium": 1, "high": 2, "critical": 3}
 
-_BYPASS_CLASS = r"[\s​-‍⁠･・\-_]*"
+_BYPASS_CLASS = r"[\s.​-‍⁠･・、。・\-_/|]*"
+
+_MAX_INPUT_LEN = 500
+_INJECTION_PATTERNS = re.compile(
+    r"忽略(以上|前面|之前|所有)|忽略指令|直接返回|系统指令|system\s*prompt|DROP\s|DELETE\s",
+    re.IGNORECASE,
+)
+
+
+def sanitize_input(text: str, max_len: int = _MAX_INPUT_LEN) -> str:
+    """清洗用户输入 — 截断长度、标记注入企图、剥离控制字符 (ENG-1)。
+
+    各引擎调用前统一清洗 subject/grade/topic/essay/problem 等用户可控字段，
+    避免提示注入与超长输入。
+    """
+    if not isinstance(text, str):
+        text = str(text)
+    text = text[:max_len]
+    text = "".join(c for c in text if c == "\n" or ord(c) >= 0x20)
+    if _INJECTION_PATTERNS.search(text):
+        logger.warning("检测到疑似提示注入输入，已包裹隔离标记: %s", text[:60])
+        text = f"[用户输入开始]{text}[用户输入结束]"
+    return text
 
 
 def _bypass_pattern(word: str) -> re.Pattern:
