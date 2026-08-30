@@ -142,8 +142,6 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     except TimeoutError:
         logger.warning("步骤超时, 协程已取消(后端请求可能仍在跑): %s.%s", step.engine, step.method)
         raise RuntimeError(f"步骤超时({int(_STEP_TIMEOUT)}s): {step.engine}.{step.method}")
-    except Exception:
-        raise
 
     if step.output_key:
         context[step.output_key] = result

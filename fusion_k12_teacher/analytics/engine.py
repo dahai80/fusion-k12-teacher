@@ -609,7 +609,9 @@ class AnalyticsEngine:
             if trend == "declining":
                 indicators.append("成绩呈下降趋势")
         low_scoring = [a for a in history if a.percentage < 50]
-        if len(low_scoring) > len(history) * 0.3:
+        # ENG-21: 小样本误报 — 3 条里 1 低分(1>0.9) 即报"多次低分"。
+        # 要求 len(history)>=3 且绝对低分>=2, 杜绝 1 次偶发被判"多次"。
+        if len(history) >= 3 and len(low_scoring) >= 2 and len(low_scoring) > len(history) * 0.3:
             indicators.append("多次低分")
         return indicators
 

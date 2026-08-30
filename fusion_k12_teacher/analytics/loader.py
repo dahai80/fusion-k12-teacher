@@ -155,8 +155,10 @@ def load_from_csv(path: str | Path) -> list[StudentAssessment]:
                         "question": _sanitize_cell(row.get("question", "")),
                         "student_answer": _sanitize_cell(row.get("student_answer", "")),
                         "correct_answer": _sanitize_cell(row.get("correct_answer", "")),
-                        "points": _parse_num(row.get("points"), 0.0) or 0.0,
-                        "max_points": _parse_num(row.get("max_points"), 0.0) or 0.0,
+                        # ENG-22: 去 `or 0.0` — _parse_num 空返 None, `None or 0.0` 抹掉
+                        # ENG-7 设计的空/零区分(真实 0 分 vs 未答)。留 None, 消费点处理。
+                        "points": _parse_num(row.get("points")),
+                        "max_points": _parse_num(row.get("max_points")),
                     }
                     grouped[key]["responses"].append(resp)
                 except (ValueError, TypeError) as e:

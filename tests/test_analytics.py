@@ -234,8 +234,9 @@ class TestLoader:
             os.path.dirname(__file__), "..",
             "fusion_k12_teacher", "analytics", "data", "sample_assessments.json",
         )
-        if not os.path.exists(sample_path):
-            pytest.skip("sample_assessments.json not found")
+        # TEST-9: 样本文件是已提交前置数据, 非可选; 缺失即 fail-loud,
+        # 不再 pytest.skip 静默丢失覆盖信号(删除即误判全绿)。
+        assert os.path.exists(sample_path), f"样本数据文件缺失: {sample_path}"
         result = load_from_json(sample_path)
         assert len(result) >= 3
         assert result[0].student_id == "S001"

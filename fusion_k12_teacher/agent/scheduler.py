@@ -26,8 +26,9 @@ from .tasks import build_task, list_available_tasks
 logger = logging.getLogger(__name__)
 
 HISTORY_JSON = os.path.join(os.path.dirname(__file__), "data", "history.json")
-MAX_HISTORY = int(os.environ.get("FUSION_AGENT_HISTORY_CAP", "500"))
-MAX_CONCURRENCY = int(os.environ.get("FUSION_AGENT_MAX_CONCURRENCY", "2"))
+# AGT-11: env 仅 import 时读 → 运行期改 env 无效; 下移到 __init__ 实例属性。
+_DEFAULT_HISTORY_CAP = 500
+_DEFAULT_CONCURRENCY = 2
 _CRON_KEYS = ("minute", "hour", "day", "month", "day_of_week")
 
 
@@ -39,6 +40,9 @@ class TaskScheduler:
         self._history: list[TaskResult] = []
         self._scheduler: AsyncIOScheduler | None = None
         self._history_path = history_path or HISTORY_JSON
+        # AGT-11: __init__ 内读 env, 每实例独立; 运行期重建实例即可生效新配置。
+        self._max_history = int(os.environ.get("FUSION_AGENT_HISTORY_CAP", _DEFAULT_HISTORY_CAP))
+        self._max_concurrency = int(os.environ.get("FUSION_AGENT_MAX_CONCURRENCY", _DEFAULT_CONCURRENCY))
         self._running = False
         # AGT-4/CLI-7: 不在 __init__(导入期)建 Lock/Semaphore, 绑定首个 loop 后
         # 第二次 asyncio.run 会复用已关闭 loop 的原语 → RuntimeError。改惰性建。
@@ -114,7 +118,7 @@ class TaskScheduler:
         if self._history_lock is None or _bound(self._history_lock) is not loop:
             self._history_lock = asyncio.Lock()
         if self._concurrency is None or _bound(self._concurrency) is not loop:
-            self._concurrency = asyncio.Semaphore(MAX_CONCURRENCY)
+            self._concurrency = asyncio.Semaphore(self._max_concurrency)
         if self._run_locks is None:
             self._run_locks = {}
         # 清掉绑定其它 loop 的 per-task 锁
@@ -145,14 +149,14 @@ class TaskScheduler:
                 self._inflight.discard(coro_task)
             async with self._history_lock:
                 self._history.append(result)
-                if len(self._history) > MAX_HISTORY:
-                    del self._history[: len(self._history) - MAX_HISTORY]
+                if len(self._history) > self._max_history:
+                    del self._history[: len(self._history) - self._max_history]
                 await asyncio.to_thread(self._save_history)
             return result
 
     def get_history(self, limit: int = 20) -> list[TaskResult]:
         if limit <= 0:
-            limit = MAX_HISTORY
+            limit = self._max_history
         return self._history[-limit:]
 
     def start(self) -> None:
@@ -248,7 +252,7 @@ class TaskScheduler:
     def _save_history(self) -> None:
         try:
             os.makedirs(os.path.dirname(self._history_path), exist_ok=True)
-            data = [r.to_dict() for r in self._history[-MAX_HISTORY:]]
+            data = [r.to_dict() for r in self._history[-self._max_history:]]
             tmp_path = self._history_path + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

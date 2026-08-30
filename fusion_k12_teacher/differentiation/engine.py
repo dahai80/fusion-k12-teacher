@@ -79,6 +79,16 @@ class DifferentiationEngine:
             return check.filtered_text
         return text
 
+    @staticmethod
+    def _set_layer(result: DifferentiatedContent, lvl: str, content: LayerContent) -> None:
+        """ENG-23: 显式校验字段存在再写 — setattr 依赖字段名精确匹配, 改名即静默写不存在属性。
+        hasattr 守门, 字段缺失记 warning 不写, 避免静默丢失或创建幽灵属性。
+        """
+        if not hasattr(result, lvl):
+            logger.warning("DifferentiatedContent 无字段 %s, 跳过赋值(可能字段已改名)", lvl)
+            return
+        setattr(result, lvl, content)
+
     async def generate_differentiated_lesson(
         self,
         subject: str,
@@ -113,9 +123,9 @@ class DifferentiationEngine:
         for lvl, lr in zip(levels, layer_results):
             if isinstance(lr, Exception):
                 logger.error(f"分层教案生成失败 [{lvl}]: {lr}")
-                setattr(result, lvl, LayerContent())
+                self._set_layer(result, lvl, LayerContent())
             else:
-                setattr(result, lvl, lr)
+                self._set_layer(result, lvl, lr)
 
         if isinstance(group_tasks, Exception):
             logger.error(f"分组任务生成失败: {group_tasks}")
@@ -153,9 +163,9 @@ class DifferentiationEngine:
         for lvl, qr in zip(levels, quiz_results):
             if isinstance(qr, Exception):
                 logger.error(f"分层测验生成失败 [{lvl}]: {qr}")
-                setattr(result, lvl, LayerContent())
+                self._set_layer(result, lvl, LayerContent())
             else:
-                setattr(result, lvl, qr)
+                self._set_layer(result, lvl, qr)
 
         return result
 
@@ -187,9 +197,9 @@ class DifferentiationEngine:
         for lvl, wr in zip(levels, ws_results):
             if isinstance(wr, Exception):
                 logger.error(f"分层工作纸生成失败 [{lvl}]: {wr}")
-                setattr(result, lvl, LayerContent())
+                self._set_layer(result, lvl, LayerContent())
             else:
-                setattr(result, lvl, wr)
+                self._set_layer(result, lvl, wr)
 
         return result
 

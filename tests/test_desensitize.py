@@ -136,8 +136,9 @@ class TestDataAnonymizer:
     def test_mask_field_id_number(self):
         anon = _anon()
         masked = anon.mask_field("110101199001011234", "id_number")
+        # SEC-21: 全长 HMAC 不截断 — ID + 64 hex = 66, 杜绝 salt 泄露后枚举。
         assert masked.startswith("ID")
-        assert len(masked) == 12
+        assert len(masked) == 66
 
     def test_mask_field_generic(self):
         anon = _anon()
