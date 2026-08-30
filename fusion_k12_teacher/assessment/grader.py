@@ -69,6 +69,7 @@ class GradingResult:
     improvements: list[str] = field(default_factory=list)
     rubric_scores: dict[str, float] = field(default_factory=dict)
     partial: bool = False
+    error: str = ""
 
 
 @dataclass
@@ -140,7 +141,7 @@ class AssessmentEngine:
             logger.error(f"批改失败: {exc}")
             rethrow_if_fatal(exc)
             err_msg = str(exc)
-        return GradingResult(score=0, total=100, percentage=0.0, feedback=f"批改失败: {err_msg}", partial=partial)
+        return GradingResult(score=0, total=100, percentage=0.0, feedback=f"批改失败: {err_msg}", partial=partial, error=err_msg)
 
     async def grade_math(self, problem: str, answer: str, solution: str = "") -> GradingResult:
         """批改数学题。"""
@@ -178,7 +179,7 @@ class AssessmentEngine:
             logger.error(f"批改失败: {exc}")
             rethrow_if_fatal(exc)
             err_msg = str(exc)
-        return GradingResult(score=0, total=10, percentage=0.0, feedback=f"批改失败: {err_msg}")
+        return GradingResult(score=0, total=10, percentage=0.0, feedback=f"批改失败: {err_msg}", error=err_msg)
 
     async def generate_report(self, student: str, subject: str, grade: str, history: list[dict]) -> StudentReport:
         """生成学期/单元学习报告。"""

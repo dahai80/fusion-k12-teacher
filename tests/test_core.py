@@ -11,6 +11,9 @@ from fusion_k12_teacher.curriculum import CurriculumEngine, LessonPlan, Quiz
 from fusion_k12_teacher.personalization import LearningPath, PersonalizationEngine
 from fusion_k12_teacher.subjects import SubjectExercise, SubjectExpert
 
+# live = 需 fusion-mlx 真实加载模型 (CI 无 mlx 时 skip)
+pytestmark_live = pytest.mark.live
+
 
 class TestMLXClient:
     def test_init(self):
@@ -41,6 +44,7 @@ class TestCurriculumEngine:
         assert d["id"] == "lp1"
         assert d["objectives"] == ["理解分数概念"]
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_lesson_plan(self):
         engine = CurriculumEngine()
@@ -48,12 +52,14 @@ class TestCurriculumEngine:
         assert plan.subject == "数学"
         assert plan.grade == "3"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_quiz(self):
         engine = CurriculumEngine()
         quiz = await engine.generate_quiz("数学", "3", "分数", num_questions=3)
         assert quiz.subject == "数学"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_unit_plan(self):
         engine = CurriculumEngine()
@@ -74,6 +80,7 @@ class TestAssessmentEngine:
         assert report.student_name == "张三"
         assert report.overall_score == 0.0
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_grade_essay(self):
         engine = AssessmentEngine()
@@ -81,18 +88,21 @@ class TestAssessmentEngine:
         assert result.total == 100
         assert result.percentage >= 0
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_grade_math(self):
         engine = AssessmentEngine()
         result = await engine.grade_math("2+2=?", "4", "4")
         assert result.total == 10
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_report(self):
         engine = AssessmentEngine()
         report = await engine.generate_report("张三", "数学", "3", [])
         assert report.student_name == "张三"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_rubric(self):
         engine = AssessmentEngine()
@@ -106,12 +116,14 @@ class TestSubjectExpert:
         assert ex.question == "1+1=?"
         assert ex.difficulty == "medium"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_explain_concept(self):
         expert = SubjectExpert()
         result = await expert.explain_concept("数学", "3", "分数")
         assert "error" in result or "simple_explanation" in result or "concept" in result
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_exercise(self):
         expert = SubjectExpert()
@@ -119,12 +131,14 @@ class TestSubjectExpert:
         # fusion-mlx 不可用时返回带错误信息的对象
         assert ex.topic == "加法"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_stem_project(self):
         expert = SubjectExpert()
         result = await expert.stem_project("5", "水循环")
         assert "title" in result or "error" in result
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_language_activity(self):
         expert = SubjectExpert()
@@ -138,18 +152,21 @@ class TestPersonalizationEngine:
         assert path.student_id == "s1"
         assert path.units == []
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_create_learning_path(self):
         engine = PersonalizationEngine()
         path = await engine.create_learning_path("张三", "3", "数学", "掌握分数运算")
         assert path.student_id == "张三"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_diagnose_skills(self):
         engine = PersonalizationEngine()
         result = await engine.diagnose_skills("数学", "3", [])
         assert "overall_level" in result or "error" in result
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_recommend_resources(self):
         engine = PersonalizationEngine()
@@ -163,30 +180,35 @@ class TestContentGenerator:
         assert ws.subject == "数学"
         assert ws.sections == []
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_worksheet(self):
         gen = ContentGenerator()
         ws = await gen.generate_worksheet("数学", "3", "分数")
         assert ws.subject == "数学"
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_flashcards(self):
         gen = ContentGenerator()
         cards = await gen.generate_flashcards("数学", "3", "分数", count=3)
         assert isinstance(cards, list)
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_lesson_slides(self):
         gen = ContentGenerator()
         slides = await gen.generate_lesson_slides("数学", "3", "分数", num_slides=3)
         assert isinstance(slides, list)
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_educational_game(self):
         gen = ContentGenerator()
         result = await gen.generate_educational_game("数学", "3", "分数")
         assert "title" in result or "error" in result
 
+    @pytest.mark.live
     @pytest.mark.asyncio
     async def test_generate_parent_communication(self):
         gen = ContentGenerator()
@@ -197,7 +219,7 @@ class TestContentGenerator:
 class TestModuleIntegrity:
     def test_all_modules_importable(self):
         import fusion_k12_teacher
-        assert fusion_k12_teacher.__version__ == "1.2.0"
+        assert fusion_k12_teacher.__version__ == "1.3.0"
 
     def test_cli_importable(self):
         from fusion_k12_teacher import cli

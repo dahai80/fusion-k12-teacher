@@ -31,9 +31,12 @@ def _bound_str_list(val: Any) -> list[str]:
     return [_bound_str(x) for x in val[:_MAX_LIST]]
 
 
-def _bound_exercises(val: Any) -> list[Any]:
+def _bound_exercises(val: Any, grade: str = "", filter_fn=None) -> list[Any]:
+    # P1-6: 分层练习题 (question/answer/hint) 直达学生, 须经安全过滤。
+    # filter_fn = engine._filter_output(text, grade), 命中不当内容替换掩码。
     if not isinstance(val, list):
         return []
+    _filter_keys = ("question", "answer", "hint", "explanation", "options")
     out = []
     for ex in val[:_MAX_LIST]:
         if not isinstance(ex, dict):
@@ -41,7 +44,15 @@ def _bound_exercises(val: Any) -> list[Any]:
         item = {}
         for k, v in ex.items():
             if isinstance(v, str):
-                item[k] = v[:_MAX_STR]
+                bounded = v[:_MAX_STR]
+                if filter_fn and k in _filter_keys:
+                    bounded = filter_fn(bounded, grade)
+                item[k] = bounded
+            elif isinstance(v, list) and filter_fn and k in _filter_keys:
+                item[k] = [
+                    filter_fn(x[:_MAX_STR], grade) if isinstance(x, str) else x
+                    for x in v[:_MAX_LIST]
+                ]
             else:
                 item[k] = v
         out.append(item)
@@ -128,6 +139,8 @@ class DifferentiationEngine:
 
         for lvl, lr in zip(levels, layer_results):
             if isinstance(lr, Exception):
+                # P1-7: NonDegradableError (401/403/5xx) 不被 gather 吞成空层 — 须上抛暴露。
+                rethrow_if_fatal(lr)
                 logger.error(f"分层教案生成失败 [{lvl}]: {lr}")
                 # R12: 失败层记入 layer_errors, 不再静默降级空层让教师拿无感知空内容。
                 result.layer_errors[lvl] = str(lr)
@@ -136,6 +149,7 @@ class DifferentiationEngine:
                 self._set_layer(result, lvl, lr)
 
         if isinstance(group_tasks, Exception):
+            rethrow_if_fatal(group_tasks)  # P1-7
             logger.error(f"分组任务生成失败: {group_tasks}")
             result.group_tasks = []
         else:
@@ -171,6 +185,7 @@ class DifferentiationEngine:
         quiz_results = await asyncio.gather(*quiz_coros, return_exceptions=True)
         for lvl, qr in zip(levels, quiz_results):
             if isinstance(qr, Exception):
+                rethrow_if_fatal(qr)  # P1-7
                 logger.error(f"分层测验生成失败 [{lvl}]: {qr}")
                 # R12: 失败层记入 layer_errors 透出
                 result.layer_errors[lvl] = str(qr)
@@ -208,6 +223,7 @@ class DifferentiationEngine:
         ws_results = await asyncio.gather(*ws_coros, return_exceptions=True)
         for lvl, wr in zip(levels, ws_results):
             if isinstance(wr, Exception):
+                rethrow_if_fatal(wr)  # P1-7
                 logger.error(f"分层工作纸生成失败 [{lvl}]: {wr}")
                 # R12: 失败层记入 layer_errors 透出
                 result.layer_errors[lvl] = str(wr)
@@ -254,7 +270,7 @@ class DifferentiationEngine:
         if data:
             return LayerContent(
                 explanation=self._filter_output(_bound_str(data.get("explanation", "")), grade),
-                exercises=_bound_exercises(data.get("exercises", [])),
+                exercises=_bound_exercises(data.get("exercises", []), grade, self._filter_output),
                 hints=[self._filter_output(s, grade) for s in _bound_str_list(data.get("hints", []))],
                 extension=self._filter_output(_bound_str(data.get("extension", "")), grade),
             )
@@ -300,7 +316,7 @@ class DifferentiationEngine:
             return LayerContent(
                 explanation=self._filter_output(_bound_str(data.get("explanation", "")), grade),
                 examples=[self._filter_output(s, grade) for s in _bound_str_list(data.get("examples", []))],
-                exercises=_bound_exercises(data.get("exercises", [])),
+                exercises=_bound_exercises(data.get("exercises", []), grade, self._filter_output),
                 hints=[self._filter_output(s, grade) for s in _bound_str_list(data.get("hints", []))],
                 extension=self._filter_output(_bound_str(data.get("extension", "")), grade),
             )
@@ -336,7 +352,7 @@ class DifferentiationEngine:
         if isinstance(questions, list):
             return LayerContent(
                 explanation=f"{config['label']}测验",
-                exercises=_bound_exercises(questions),
+                exercises=_bound_exercises(questions, grade, self._filter_output),
             )
         return LayerContent()
 

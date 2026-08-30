@@ -20,6 +20,12 @@ def _mock_chat(response_text):
     return chat
 
 
+async def _mock_list_models(self=None):
+    # P1-10: health 端点探测 list_models, 测试 mock 须提供, 否则 AttributeError→503。
+    # type() 实例的函数属性会被绑定为方法 (隐式传 self), 故显式收 self。
+    return [{"id": "Qwen3.5-9B-4bit"}]
+
+
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
@@ -55,6 +61,7 @@ def mock_engines():
         "api_key_env": os.environ.get("FUSION_K12_API_KEY"),
         "ready": srv._ready,
         "allowed_dirs": list(srv._ALLOWED_DATA_DIRS),
+        "standards_aligner": srv.standards_aligner,
     }
     # SRV-1: 受保护端点 fail-closed, 测试须注入 key
     # R1: require_api_key 每请求读 FUSION_K12_API_KEY env, 注入到 os.environ
@@ -64,7 +71,11 @@ def mock_engines():
     # TEST-3: ASGITransport 不触发 lifespan, 显式初始化允许目录, 覆盖路径校验
     srv._init_allowed_dirs()
     # TEST-5: 构建完整引擎束(含 analytics/differentiation/standards), 非仅 6 引擎
-    srv.mlx_client = type("M", (), {"chat": _mock_chat(MOCK_LESSON_PLAN), "model": ""})()
+    srv.mlx_client = type("M", (), {
+        "chat": _mock_chat(MOCK_LESSON_PLAN),
+        "model": "",
+        "list_models": _mock_list_models,
+    })()
     bundle = build_engines(mlx=srv.mlx_client)
     srv.curriculum_engine = bundle.curriculum
     srv.assessment_engine = bundle.assessment
@@ -74,6 +85,9 @@ def mock_engines():
     srv.differentiation_engine = bundle.differentiation
     srv.standards_query = bundle.standards_query
     srv.standards_loader = bundle.standards_loader
+    # P3: 新增 align/coverage 路由依赖 standards_aligner, fixture 须注入
+    from fusion_k12_teacher.standards import StandardsAligner
+    srv.standards_aligner = StandardsAligner(query=bundle.standards_query)
     srv.analytics_engine = bundle.analytics
     srv.content_filter = ContentFilter()
     srv.sensitive_wordlist = SensitiveWordList()
@@ -98,7 +112,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "1.2.0"
+        assert data["version"] == "1.3.0"
 
 
 class TestCurriculumPlan:
@@ -263,6 +277,29 @@ class TestStandardsEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_standards_align(self, client):
+        # P3: 新增课标对齐路由
+        resp = await client.post("/api/standards/align", json={
+            "subject": "数学", "grade": "3", "topic": "分数",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["subject"] == "数学"
+        assert "knowledge_points" in data
+        assert "must_cover" in data
+
+    @pytest.mark.asyncio
+    async def test_standards_coverage(self, client):
+        # P3: 新增课标覆盖报告路由
+        resp = await client.post("/api/standards/coverage", json={
+            "subject": "数学", "grade": "3", "objectives": ["理解分数的意义"],
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "coverage_ratio" in data
+        assert "missing_points" in data
 
 
 class TestAnalyticsEndpoints:

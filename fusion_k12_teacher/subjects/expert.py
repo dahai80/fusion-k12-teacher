@@ -26,6 +26,8 @@ class SubjectExercise:
     explanation: str = ""
     topic: str = ""
     skills: list[str] = field(default_factory=list)
+    # P3: 与其他引擎一致加 .error — 空输出降级时设置, 路由 _check_engine_error 可触发 502, 不再恒 200。
+    error: str = ""
 
 
 class SubjectExpert:
@@ -116,7 +118,7 @@ class SubjectExpert:
             logger.error(f"习题生成失败: {exc}")
             rethrow_if_fatal(exc)
             err_msg = str(exc)
-        return SubjectExercise(question=f"生成失败: {err_msg}", topic=topic)
+        return SubjectExercise(question=f"生成失败: {err_msg}", topic=topic, error=err_msg)
 
     async def stem_project(self, grade: str, topic: str, duration: str = "2课时") -> dict[str, Any]:
         """生成STEM项目式学习方案。"""

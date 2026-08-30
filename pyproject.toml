@@ -1,12 +1,13 @@
 [project]
 name = "fusion-k12-teacher"
-version = "1.2.0"
+version = "1.3.0"
 description = "Fusion-K12-Teacher — Local AI-powered K-12 education assistant. macOS Apple Silicon native, 100% offline, powered by fusion-mlx."
 license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
-    "httpx>=0.27.0",
-    "pydantic>=2.0.0",
+    # P3: 加上限 pin, 防 0.x/1.x 主版本意外升级引入破坏性变更 (本地离线工具稳定性优先)
+    "httpx>=0.27.0,<1.0.0",
+    "pydantic>=2.0.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -19,7 +20,7 @@ test = [
     "uvicorn>=0.24.0",
     "apscheduler>=3.10.0",
 ]
-web = ["fastapi>=0.104.0", "uvicorn>=0.24.0"]
+web = ["fastapi>=0.104.0", "uvicorn>=0.24.0", "apscheduler>=3.10.0", "sqlalchemy>=2.0.0"]
 
 [project.scripts]
 fusion-k12 = "fusion_k12_teacher.cli:main"

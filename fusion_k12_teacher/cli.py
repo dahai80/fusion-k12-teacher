@@ -279,9 +279,12 @@ async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
 
 @cli.command()
 @click.option("--host", default="127.0.0.1", help="监听地址(仅本地回环, 外部绑定请用反向代理+鉴权)")
-@click.option("--port", default=11448, help="监听端口")
+@click.option("--port", default=0, help="监听端口 (0=读 FUSION_K12_PORT env, 默认 11448)")
 def serve(host, port):
     """启动 HTTP API 服务。"""
+    # P3: FUSION_K12_PORT env 生效 — deploy.md 原文档提及但 serve 未读, CMD 硬编码 11448 误导运维。
+    if port == 0:
+        port = int(os.environ.get("FUSION_K12_PORT", "11448"))
     if host not in ("127.0.0.1", "localhost", "::1"):
         click.echo("❌ 禁止监听非回环地址; 请用反向代理+鉴权暴露服务, 避免裸奔")
         raise SystemExit(1)
