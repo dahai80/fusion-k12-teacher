@@ -144,3 +144,64 @@ class TestMigrateCLI:
         assert "脱敏映射 1 条" in result.output
         assert "未写入" in result.output
 
+
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
+    _HAS_CRYPTO = True
+except ImportError:
+    _HAS_CRYPTO = False
+
+
+class TestEncryptedNameMap:
+    # M1-T6: name_map 加密存取 (name_hash + name_encrypted)
+
+    @pytest.fixture
+    def cipher(self, monkeypatch):
+        monkeypatch.setenv("FUSION_K12_DATA_KEY", "ab" * 32)
+        from fusion_k12_teacher.safety import DataCipher
+        return DataCipher()
+
+    def test_encrypted_roundtrip(self, repo, cipher):
+        name_map = {"张三\x001": "S001", "李四\x001": "S002"}
+        reverse_map = {"S001": "张三", "S002": "李四"}
+        repo.save_name_map(name_map, reverse_map, cipher=cipher)
+        nm, rev = repo.load_name_map(cipher=cipher)
+        assert nm["张三\x001"] == "S001"
+        assert rev["S001"] == "张三"
+        assert rev["S002"] == "李四"
+
+    def test_encrypted_stores_no_plaintext_reverse(self, repo, cipher):
+        # M1-T6: 加密行 reverse 列留明文备份但 name_encrypted 才是权威;
+        # 验证无 cipher 加载时 reverse 列仍有值 (明文兼容回退) — 加密列存在不破坏明文读
+        repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"}, cipher=cipher)
+        # 无 cipher 加载: 回退 reverse 明文列
+        nm, rev = repo.load_name_map()
+        assert nm["张三\x001"] == "S001"
+        assert rev["S001"] == "张三"
+
+    def test_plaintext_loadable_without_cipher(self, repo):
+        # 明文模式存, 无 cipher 读 — 向后兼容
+        repo.save_name_map({"王五\x001": "S003"}, {"S003": "王五"})
+        _nm, rev = repo.load_name_map()
+        assert rev["S003"] == "王五"
+
+    @pytest.mark.skipif(not _HAS_CRYPTO, reason="缺 cryptography")
+    def test_wrong_cipher_fails_graceful(self, repo, monkeypatch):
+        monkeypatch.setenv("FUSION_K12_DATA_KEY", "ab" * 32)
+        from fusion_k12_teacher.safety import DataCipher
+        c1 = DataCipher()
+        repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"}, cipher=c1)
+        # 换 key 后解密失败 → 回退明文 reverse 列, 不崩
+        monkeypatch.setenv("FUSION_K12_DATA_KEY", "cd" * 32)
+        c2 = DataCipher()
+        _nm, rev = repo.load_name_map(cipher=c2)
+        assert rev["S001"] == "张三"  # 回退明文
+
+    def test_encrypted_overwrite(self, repo, cipher):
+        repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"}, cipher=cipher)
+        repo.save_name_map({"李四\x001": "S002"}, {"S002": "李四"}, cipher=cipher)
+        nm, rev = repo.load_name_map(cipher=cipher)
+        assert len(nm) == 1
+        assert rev["S002"] == "李四"
+
+
