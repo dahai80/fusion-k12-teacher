@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,29 @@ from .models import StudentAssessment
 logger = logging.getLogger(__name__)
 
 _CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+# A8: 加载结果按 (resolved_path, mtime) 缓存 — 同文件未变更不重复 open+parse,
+# 大数据集(1000+ 条)每请求重解析会阻塞。mtime 变更即失效重载。
+_LOAD_CACHE: dict[str, tuple[float, list[StudentAssessment]]] = {}
+
+
+def _cached_load(path: str | Path, parser) -> list[StudentAssessment]:
+    # A8: 统一缓存层 — parser 为 load_from_json/_load_from_csv 的纯解析函数(不查缓存)。
+    # 查 mtime: 文件不存在或读失败由 parser 返 [] (parser 已处理), 不缓存空避免误导。
+    resolved = str(Path(path).resolve())
+    try:
+        mtime = os.path.getmtime(resolved)
+    except OSError:
+        return parser(path)
+    entry = _LOAD_CACHE.get(resolved)
+    if entry and entry[0] == mtime:
+        logger.debug("学情数据缓存命中: %s", resolved)
+        return entry[1]
+    result = parser(path)
+    # 仅缓存非空成功结果; 空结果(文件不存在/解析失败)不缓存, 下次重试
+    if result:
+        _LOAD_CACHE[resolved] = (mtime, result)
+    return result
 
 # AGT-2: 数据文件允许目录 — CLI/tasks 与 serve 共用同一白名单, 杜绝任意路径读取
 def _allowed_data_dirs() -> list[Path]:
@@ -65,13 +89,18 @@ def _parse_num(val: Any, default: float = 0.0) -> float | None:
 
 
 def load_from_json(path: str | Path) -> list[StudentAssessment]:
-    """从 JSON 文件加载学情数据。
+    """从 JSON 文件加载学情数据 (A8: mtime 缓存, 未变更不重解析)。
 
     支持两种格式:
     1. 数组: [{student_id, ...}, ...]
     2. 对象: {assessments: [...]} 或 {records: [...]}
        值为按学号键的 dict 时, 自动展开为记录列表 (ENG-9)。
     """
+    return _cached_load(path, _parse_json_file)
+
+
+def _parse_json_file(path: str | Path) -> list[StudentAssessment]:
+    """JSON 文件纯解析 (A8: 被 _cached_load 包裹, 不自查缓存)。"""
     path = Path(path)
     if not path.exists():
         logger.error(f"学情文件不存在: {path}")
@@ -108,13 +137,18 @@ def load_from_json(path: str | Path) -> list[StudentAssessment]:
 
 
 def load_from_csv(path: str | Path) -> list[StudentAssessment]:
-    """从 CSV 文件加载学情数据。
+    """从 CSV 文件加载学情数据 (A8: mtime 缓存, 未变更不重解析)。
 
     期望列: student_id, student_name, assessment_id, date, subject, grade,
             total_score, max_score, question_id, question, student_answer, correct_answer, points, max_points
     每行一条答题记录，按 student_id+assessment_id 聚合。
     空单元格不静默零填 — total_score 空则跳过该测评记录 (ENG-7)。
     """
+    return _cached_load(path, _parse_csv_file)
+
+
+def _parse_csv_file(path: str | Path) -> list[StudentAssessment]:
+    """CSV 文件纯解析 (A8: 被 _cached_load 包裹, 不自查缓存)。"""
     path = Path(path)
     if not path.exists():
         logger.error(f"学情文件不存在: {path}")

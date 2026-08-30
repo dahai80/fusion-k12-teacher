@@ -33,6 +33,8 @@ async def client():
 @pytest.fixture(autouse=True)
 def mock_engines():
     # TEST-1: 保存原值, 测试后还原, 避免单例污染跨模块
+    import os
+
     from fusion_k12_teacher import serve as srv
     from fusion_k12_teacher.engines import build_engines
     from fusion_k12_teacher.safety import ContentFilter, SensitiveWordList
@@ -49,12 +51,14 @@ def mock_engines():
         "analytics_engine": srv.analytics_engine,
         "content_filter": srv.content_filter,
         "sensitive_wordlist": srv.sensitive_wordlist,
-        "api_key": srv._API_KEY,
+        # R1: API key 改每请求读 env, 保存/还原环境变量而非模块常量
+        "api_key_env": os.environ.get("FUSION_K12_API_KEY"),
         "ready": srv._ready,
         "allowed_dirs": list(srv._ALLOWED_DATA_DIRS),
     }
-    # SRV-1: 受保护端点 fail-closed, 测试需注入 key
-    srv._API_KEY = "test-key"
+    # SRV-1: 受保护端点 fail-closed, 测试须注入 key
+    # R1: require_api_key 每请求读 FUSION_K12_API_KEY env, 注入到 os.environ
+    os.environ["FUSION_K12_API_KEY"] = "test-key"
     # SRV-4: 模拟 lifespan 就绪, 否则 _ready=False 拦截所有请求返 503
     srv._ready = True
     # TEST-3: ASGITransport 不触发 lifespan, 显式初始化允许目录, 覆盖路径校验
@@ -77,6 +81,12 @@ def mock_engines():
     for k, v in saved.items():
         if k == "allowed_dirs":
             srv._ALLOWED_DATA_DIRS = v
+        elif k == "api_key_env":
+            # R1: 还原 FUSION_K12_API_KEY env (None → del, 否则设回原值)
+            if v is None:
+                os.environ.pop("FUSION_K12_API_KEY", None)
+            else:
+                os.environ["FUSION_K12_API_KEY"] = v
         else:
             setattr(srv, k, v)
 
@@ -88,7 +98,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "1.0.8"
+        assert data["version"] == "1.1.0"
 
 
 class TestCurriculumPlan:

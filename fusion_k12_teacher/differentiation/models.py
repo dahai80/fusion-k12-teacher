@@ -40,6 +40,8 @@ class DifferentiatedContent:
     advanced: LayerContent = field(default_factory=LayerContent)
     group_tasks: list[GroupTask] = field(default_factory=list)
     standards_aligned: list[str] = field(default_factory=list)
+    # R12: 分层生成失败时透出失败层与错误原因, 不再静默降级空层让教师拿无感知空内容。
+    layer_errors: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,4 +53,5 @@ class DifferentiatedContent:
             "advanced": self.advanced.to_dict(),
             "group_tasks": [gt.to_dict() for gt in self.group_tasks],
             "standards_aligned": self.standards_aligned,
+            "layer_errors": self.layer_errors,
         }

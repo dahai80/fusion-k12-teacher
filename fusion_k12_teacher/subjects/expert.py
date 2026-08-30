@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ class SubjectExpert:
                 return self._filter_dict(data, grade)
             return {"concept": concept}
         except Exception as e:
+            rethrow_if_fatal(e)
             return {"error": str(e)}
 
     async def generate_exercise(self, subject: str, grade: str, topic: str, difficulty: str = "medium") -> SubjectExercise:
@@ -112,6 +114,7 @@ class SubjectExpert:
                 )
         except Exception as exc:
             logger.error(f"习题生成失败: {exc}")
+            rethrow_if_fatal(exc)
             err_msg = str(exc)
         return SubjectExercise(question=f"生成失败: {err_msg}", topic=topic)
 
@@ -137,6 +140,7 @@ class SubjectExpert:
                 return self._filter_dict(data, grade)
             return {"title": topic}
         except Exception as e:
+            rethrow_if_fatal(e)
             return {"error": str(e)}
 
     async def language_activity(self, grade: str, language: str, skill: str, theme: str) -> dict[str, Any]:
@@ -162,6 +166,7 @@ class SubjectExpert:
                 return self._filter_dict(data, grade)
             return {"title": f"{skill}练习"}
         except Exception as e:
+            rethrow_if_fatal(e)
             return {"error": str(e)}
 
     def _parse_json(self, text: str) -> Any:

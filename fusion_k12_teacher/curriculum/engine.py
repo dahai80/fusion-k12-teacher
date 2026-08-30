@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,7 @@ class CurriculumEngine:
             return LessonPlan(title=topic_s, subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")
         except Exception as e:
             logger.error(f"教案生成失败: {e}")
+            rethrow_if_fatal(e)
             return LessonPlan(title=topic_s, subject=subject_s, grade=grade_s, error=str(e))
 
     async def generate_quiz(
@@ -211,6 +213,7 @@ class CurriculumEngine:
             return Quiz(title=f"{topic_s}测验", subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")
         except Exception as e:
             logger.error(f"测验生成失败: {e}")
+            rethrow_if_fatal(e)
             return Quiz(title=f"{topic_s}测验", subject=subject_s, grade=grade_s, error=str(e))
 
     async def generate_unit_plan(self, subject: str, grade: str, unit_title: str, weeks: int = 4) -> dict[str, Any]:
@@ -239,6 +242,7 @@ class CurriculumEngine:
             return {"unit_title": unit_s, "error": "LLM 返回空或无法解析"}
         except Exception as e:
             logger.error(f"单元计划生成失败: {e}")
+            rethrow_if_fatal(e)
             return {"unit_title": unit_s, "error": str(e)}
 
     def _parse_json(self, text: Any) -> Any:

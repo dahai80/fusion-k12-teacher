@@ -281,8 +281,21 @@ def serve(host, port):
     if host not in ("127.0.0.1", "localhost", "::1"):
         click.echo("❌ 禁止监听非回环地址; 请用反向代理+鉴权暴露服务, 避免裸奔")
         raise SystemExit(1)
+    # A2: 引擎池为进程内模块级全局, 多 worker 各持一套致状态分区/内存翻倍。
+    # 本地优先约束无进程外共享服务 → 强制单 worker + fcntl 单实例锁, 拒第二实例。
+    # 若需横向扩展, 须先上外部共享状态(Redis/DB) + 引擎池外置, 非本架构支持。
+    import fcntl
+    lock_path = os.path.join(os.path.dirname(__file__), ".serve.lock")
+    _serve_lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        fcntl.flock(_serve_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        click.echo(f"❌ fusion-k12 serve 已在运行 (锁占用 {lock_path}) — 架构为单实例, 拒第二进程")
+        raise SystemExit(1)
+    logger.info("A2: 单实例锁已获 (%s), 单 worker 模式", lock_path)
     import uvicorn
-    uvicorn.run("fusion_k12_teacher.serve:app", host=host, port=port)
+    uvicorn.run("fusion_k12_teacher.serve:app", host=host, port=port, workers=1)
+
 
 
 # ── 课标查询 ──

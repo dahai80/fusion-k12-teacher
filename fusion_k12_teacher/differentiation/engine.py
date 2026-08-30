@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 from ..standards.aligner import StandardsAligner
 from ..standards.query import StandardsQuery
@@ -113,7 +114,7 @@ class DifferentiationEngine:
             )
             for lvl in levels
         ]
-        group_coro = self._generate_group_tasks(subject_s, grade_s, topic_s, duration)
+        group_coro = self._generate_group_tasks(subject_s, grade_s, topic_s, duration, standards_context)
         layer_results, group_tasks = await asyncio.gather(
             asyncio.gather(*layer_coros, return_exceptions=True),
             group_coro,
@@ -123,6 +124,8 @@ class DifferentiationEngine:
         for lvl, lr in zip(levels, layer_results):
             if isinstance(lr, Exception):
                 logger.error(f"分层教案生成失败 [{lvl}]: {lr}")
+                # R12: 失败层记入 layer_errors, 不再静默降级空层让教师拿无感知空内容。
+                result.layer_errors[lvl] = str(lr)
                 self._set_layer(result, lvl, LayerContent())
             else:
                 self._set_layer(result, lvl, lr)
@@ -163,6 +166,8 @@ class DifferentiationEngine:
         for lvl, qr in zip(levels, quiz_results):
             if isinstance(qr, Exception):
                 logger.error(f"分层测验生成失败 [{lvl}]: {qr}")
+                # R12: 失败层记入 layer_errors 透出
+                result.layer_errors[lvl] = str(qr)
                 self._set_layer(result, lvl, LayerContent())
             else:
                 self._set_layer(result, lvl, qr)
@@ -197,6 +202,8 @@ class DifferentiationEngine:
         for lvl, wr in zip(levels, ws_results):
             if isinstance(wr, Exception):
                 logger.error(f"分层工作纸生成失败 [{lvl}]: {wr}")
+                # R12: 失败层记入 layer_errors 透出
+                result.layer_errors[lvl] = str(wr)
                 self._set_layer(result, lvl, LayerContent())
             else:
                 self._set_layer(result, lvl, wr)
@@ -332,8 +339,10 @@ class DifferentiationEngine:
         grade: str,
         topic: str,
         duration: int,
+        standards_context: str = "",
     ) -> list[GroupTask]:
         """生成分组课堂任务单。"""
+        # A7: 接收并注入 standards_context, 分组任务与课标对齐, 非与课标脱钩。
         prompt = f"""为{grade}年级{subject}课程"{topic}"设计三组分层课堂任务：
 
 A组(基础): 面向学困生，任务简单，重在巩固基础
@@ -341,6 +350,8 @@ B组(标准): 面向中等生，任务适中，重在理解应用
 C组(挑战): 面向优等生，任务有挑战，重在拓展探究
 
 总时长: {duration}分钟
+
+{standards_context}
 
 返回JSON格式：
 [
@@ -356,6 +367,7 @@ C组(挑战): 面向优等生，任务有挑战，重在拓展探究
             ], temperature=0.3)
         except Exception as e:
             logger.error(f"分组任务 LLM 调用失败: {e}")
+            rethrow_if_fatal(e)
             return []
 
         data = self._parse_json(response)
