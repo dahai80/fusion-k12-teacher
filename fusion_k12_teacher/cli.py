@@ -710,7 +710,9 @@ def desensitize_export(input_file, output, mode):
     """导出脱敏数据到文件。"""
     import json as _json
     try:
-        with open(input_file, encoding="utf-8") as f:
+        # SRV-3: O_NOFOLLOW 防符号链接劫持读取
+        fd_in = os.open(input_file, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd_in, encoding="utf-8") as f:
             records = _json.load(f)
     except Exception as e:
         click.echo(f"❌ 读取文件失败: {e}")
@@ -720,7 +722,9 @@ def desensitize_export(input_file, output, mode):
     cfg = DesensitizeConfig(name_mode=mode)
     anon = DataAnonymizer(cfg)
     desensitized = anon.export_desensitized(records)
-    with open(output, "w", encoding="utf-8") as f:
+    # SRV-3: 输出文件 O_NOFOLLOW, 勿跟随已有符号链接
+    fd_out = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd_out, "w", encoding="utf-8") as f:
         _json.dump(desensitized, f, ensure_ascii=False, indent=2)
     name_map = anon.get_name_map()
     keys_dir = os.path.expanduser("~/.fusion-k12/keys")
@@ -728,7 +732,8 @@ def desensitize_export(input_file, output, mode):
     os.chmod(keys_dir, 0o700)
     base_name = os.path.basename(output).replace(".json", "")
     map_path = os.path.join(keys_dir, f"{base_name}_map.json")
-    fd = os.open(map_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # SRV-3: 映射表 O_NOFOLLOW (含敏感还原信息)
+    fd = os.open(map_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         _json.dump(name_map, f, ensure_ascii=False, indent=2)
     if os.path.exists(map_path):

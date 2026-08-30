@@ -24,6 +24,24 @@ def _clamp_score(score: float, total: float) -> tuple[float, float, float]:
     return score, total, percentage
 
 
+def _to_float(value: Any, default: float = 0.0) -> float:
+    # ENG-6/ENG-14: 安全转 float — 剥离非数字后缀("85分"→85), 失败回退 default;
+    # 不用 `value or default` (会把合法 0 抹成 default), 直接判 None/空串。
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = str(value).strip()
+    if not s:
+        return default
+    # 提取首个数值 (整数/小数/负号)
+    m = re.search(r"-?\d+(?:\.\d+)?", s)
+    if not m:
+        logger.warning("_to_float 无法解析数值: %r, 回退 %s", value, default)
+        return default
+    return float(m.group(0))
+
+
 @dataclass
 class GradingResult:
     """批改结果。"""
@@ -80,8 +98,8 @@ class AssessmentEngine:
             ], temperature=0.2)
             data = self._parse_json(response)
             if data:
-                total = float(data.get("total", 100) or 100)
-                score = float(data.get("score", 0) or 0)
+                total = _to_float(data.get("total", 100), 100)
+                score = _to_float(data.get("score", 0), 0)
                 score, total, percentage = _clamp_score(score, total)
                 return GradingResult(
                     score=score, total=total, percentage=percentage, partial=partial,
@@ -115,8 +133,8 @@ class AssessmentEngine:
             ], temperature=0.2)
             data = self._parse_json(response)
             if data:
-                total = float(data.get("total", 10) or 10)
-                score = float(data.get("score", 0) or 0)
+                total = _to_float(data.get("total", 10), 10)
+                score = _to_float(data.get("score", 0), 0)
                 if total > 100 or total <= 0:
                     logger.warning("数学满分异常(total=%s), 回退到10", total)
                     total = 10

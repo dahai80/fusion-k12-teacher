@@ -28,19 +28,37 @@ def _mock_chat(response_text):
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport, base_url="http://test",
+        headers={"X-API-Key": "test-key"},
+    ) as ac:
         yield ac
 
 
 @pytest.fixture(autouse=True)
 def mock_engines():
+    # TEST-1: 保存原值, 测试后还原, 避免单例污染跨模块
     from fusion_k12_teacher import serve as srv
+    saved = {
+        "mlx_client": srv.mlx_client,
+        "curriculum_engine": srv.curriculum_engine,
+        "assessment_engine": srv.assessment_engine,
+        "subject_expert": srv.subject_expert,
+        "personalization_engine": srv.personalization_engine,
+        "content_generator": srv.content_generator,
+        "api_key": srv._API_KEY,
+    }
+    # SRV-1: 受保护端点 fail-closed, 测试需注入 key
+    srv._API_KEY = "test-key"
     srv.mlx_client = type("M", (), {"chat": _mock_chat(MOCK_LESSON_PLAN)})()
     srv.curriculum_engine = CurriculumEngine(srv.mlx_client)
     srv.assessment_engine = AssessmentEngine(srv.mlx_client)
     srv.subject_expert = SubjectExpert(srv.mlx_client)
     srv.personalization_engine = PersonalizationEngine(srv.mlx_client)
     srv.content_generator = ContentGenerator(srv.mlx_client)
+    yield
+    for k, v in saved.items():
+        setattr(srv, k, v)
 
 
 class TestHealth:
@@ -50,7 +68,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "1.0.6"
+        assert data["version"] == "1.0.7"
 
 
 class TestCurriculumPlan:

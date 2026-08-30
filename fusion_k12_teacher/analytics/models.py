@@ -9,6 +9,38 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _coerce_float(val: Any, default: float = 0.0) -> float:
+    # ENG-3: 防御字符串/null/None 传入下游统计
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_str(val: Any) -> str:
+    if val is None:
+        return ""
+    return str(val)
+
+
+def _coerce_str_dict(val: Any) -> dict[str, float]:
+    if not isinstance(val, dict):
+        return {}
+    out: dict[str, float] = {}
+    for k, v in val.items():
+        try:
+            out[str(k)] = float(v)
+        except (TypeError, ValueError):
+            out[str(k)] = 0.0
+    return out
+
+
+def _coerce_dict_list(val: Any) -> list[dict[str, Any]]:
+    if not isinstance(val, list):
+        return []
+    return [x for x in val if isinstance(x, dict)]
+
+
 @dataclass
 class StudentAssessment:
     """学生测评记录 — 学情数据输入单元。"""
@@ -46,17 +78,18 @@ class StudentAssessment:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StudentAssessment:
+        # ENG-3: 全字段强转, 防止 JSON 字符串数值/null 进下游统计触发 TypeError
         return cls(
-            student_id=data.get("student_id", ""),
-            student_name=data.get("student_name", ""),
-            assessment_id=data.get("assessment_id", ""),
-            date=data.get("date", ""),
-            subject=data.get("subject", ""),
-            grade=data.get("grade", ""),
-            scores=data.get("scores", {}),
-            responses=data.get("responses", []),
-            total_score=data.get("total_score", 0.0),
-            max_score=data.get("max_score", 100.0),
+            student_id=_coerce_str(data.get("student_id", "")),
+            student_name=_coerce_str(data.get("student_name", "")),
+            assessment_id=_coerce_str(data.get("assessment_id", "")),
+            date=_coerce_str(data.get("date", "")),
+            subject=_coerce_str(data.get("subject", "")),
+            grade=_coerce_str(data.get("grade", "")),
+            scores=_coerce_str_dict(data.get("scores", {})),
+            responses=_coerce_dict_list(data.get("responses", [])),
+            total_score=_coerce_float(data.get("total_score", 0.0), 0.0),
+            max_score=_coerce_float(data.get("max_score", 100.0), 100.0),
         )
 
 

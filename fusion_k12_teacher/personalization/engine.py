@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..safety.filter import sanitize_input
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,11 @@ class PersonalizationEngine:
 
     async def create_learning_path(self, student: str, grade: str, subject: str, goal: str) -> LearningPath:
         """创建个性化学习路径。"""
+        # ENG-2: 用户可控字段统一 sanitize
+        student = sanitize_input(student, max_len=50)
+        grade = sanitize_input(grade, max_len=8)
+        subject = sanitize_input(subject, max_len=20)
+        goal = sanitize_input(goal)
         prompt = f"""为{grade}年级学生{student}制定个性化{subject}学习计划。
 
 学习目标: {goal}
@@ -57,6 +63,9 @@ class PersonalizationEngine:
 
     async def diagnose_skills(self, subject: str, grade: str, responses: list[dict]) -> dict[str, Any]:
         """诊断学生能力水平。"""
+        # ENG-2: 用户可控字段统一 sanitize
+        subject = sanitize_input(subject, max_len=20)
+        grade = sanitize_input(grade, max_len=8)
         prompt = f"""基于以下学生答题情况，诊断{grade}年级{subject}能力水平：
 
 答题记录: {json.dumps(responses[:10], ensure_ascii=False)}
@@ -73,6 +82,11 @@ class PersonalizationEngine:
 
     async def recommend_resources(self, student: str, grade: str, subject: str, weakness: str) -> dict[str, Any]:
         """推荐个性化学习资源。"""
+        # ENG-2: 用户可控字段统一 sanitize
+        student = sanitize_input(student, max_len=50)
+        grade = sanitize_input(grade, max_len=8)
+        subject = sanitize_input(subject, max_len=20)
+        weakness = sanitize_input(weakness)
         prompt = f"""为{grade}年级学生{student}推荐针对"{weakness}"的学习资源。
 
 返回JSON: {{"resources": [{{"type": "视频/文章/练习/游戏", "title": "资源名", "description": "说明", "duration": "时长", "difficulty": "难度"}}], "practice_plan": "练习计划", "parent_tips": "家长辅导建议"}}"""
@@ -86,6 +100,9 @@ class PersonalizationEngine:
             return {"error": str(e)}
 
     def _parse_json(self, text: str) -> Any:
+        # ENG-7: None/非字符串守卫
+        if not isinstance(text, str) or not text:
+            return None
         text = text.strip()
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0].strip()

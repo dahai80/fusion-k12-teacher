@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import secrets
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -69,9 +70,14 @@ async def _client_key(request: Request) -> str:
 
 
 async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
+    # SRV-1: 未配置 API key 时 fail-closed — 拒绝所有受保护端点, 不再默认放行
     if not _API_KEY:
-        return ""
-    if not api_key or api_key != _API_KEY:
+        logger.error("FUSION_K12_API_KEY 未配置, 拒绝受保护端点 (fail-closed)")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="API key not configured; set FUSION_K12_API_KEY",
+        )
+    if not api_key or not secrets.compare_digest(api_key, _API_KEY):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="missing or invalid X-API-Key",
@@ -186,7 +192,7 @@ async def health():
 # ── Curriculum ──
 
 @app.post("/api/curriculum/plan")
-async def curriculum_plan(req: CurriculumPlanRequest):
+async def curriculum_plan(req: CurriculumPlanRequest, _: str = Depends(require_api_key)):
     logger.info("curriculum/plan: grade=%s subject=%s topic=%s", req.grade, req.subject, req.topic)
     plan = await curriculum_engine.generate_lesson_plan(
         subject=req.subject, grade=req.grade, topic=req.topic,
@@ -197,7 +203,7 @@ async def curriculum_plan(req: CurriculumPlanRequest):
 # ── Assessment ──
 
 @app.post("/api/assessment/grade")
-async def assessment_grade(req: AssessmentGradeRequest):
+async def assessment_grade(req: AssessmentGradeRequest, _: str = Depends(require_api_key)):
     logger.info("assessment/grade: question=%s...", req.question[:30])
     result = await assessment_engine.grade_math(
         problem=req.question, answer=req.answer, solution=req.standard,
@@ -214,7 +220,7 @@ async def assessment_grade(req: AssessmentGradeRequest):
 # ── Subject ──
 
 @app.post("/api/subject/explain")
-async def subject_explain(req: SubjectExplainRequest):
+async def subject_explain(req: SubjectExplainRequest, _: str = Depends(require_api_key)):
     logger.info("subject/explain: subject=%s concept=%s...", req.subject, req.concept[:30])
     result = await subject_expert.explain_concept(
         subject=req.subject, grade=req.grade or "3", concept=req.concept,
@@ -225,7 +231,7 @@ async def subject_explain(req: SubjectExplainRequest):
 # ── Personalize ──
 
 @app.post("/api/personalize/path")
-async def personalize_path(req: PersonalizePathRequest):
+async def personalize_path(req: PersonalizePathRequest, _: str = Depends(require_api_key)):
     logger.info("personalize/path: student=%s", req.student_id)
     grade = req.progress.get("grade", "3")
     subject = req.progress.get("subject", "数学")
@@ -247,7 +253,7 @@ async def personalize_path(req: PersonalizePathRequest):
 # ── Content ──
 
 @app.post("/api/content/generate")
-async def content_generate(req: ContentGenerateRequest):
+async def content_generate(req: ContentGenerateRequest, _: str = Depends(require_api_key)):
     logger.info("content/generate: topic=%s grade=%s style=%s", req.topic, req.grade, req.style)
     if req.style == "flashcards":
         result = await content_generator.generate_flashcards(
@@ -321,7 +327,7 @@ async def standards_list(subject: str = "", grade: str = ""):
 
 
 @app.post("/api/standards/query")
-async def standards_query_endpoint(req: StandardsQueryRequest):
+async def standards_query_endpoint(req: StandardsQueryRequest, _: str = Depends(require_api_key)):
     """查询课标知识点。"""
     logger.info("standards/query: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     if req.topic:
@@ -337,7 +343,7 @@ async def standards_query_endpoint(req: StandardsQueryRequest):
 # ── Differentiation (v0.3) ──
 
 @app.post("/api/curriculum/plan-diff")
-async def curriculum_plan_diff(req: DifferentiatedPlanRequest):
+async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(require_api_key)):
     """生成三层分层教案。"""
     logger.info("curriculum/plan-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_lesson(
@@ -347,7 +353,7 @@ async def curriculum_plan_diff(req: DifferentiatedPlanRequest):
 
 
 @app.post("/api/curriculum/quiz-diff")
-async def curriculum_quiz_diff(req: DifferentiatedQuizRequest):
+async def curriculum_quiz_diff(req: DifferentiatedQuizRequest, _: str = Depends(require_api_key)):
     """生成三层分层测验。"""
     logger.info("curriculum/quiz-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_quiz(
@@ -446,7 +452,7 @@ async def _load_assessments(path: str):
 # ── Analytics (v0.4) ──
 
 @app.post("/api/analytics/class-profile")
-async def analytics_class_profile(req: ClassProfileRequest):
+async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(require_api_key)):
     """生成班级学情画像。"""
     logger.info("analytics/class-profile: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
     assessments = await _load_assessments(req.data_path)
@@ -457,7 +463,7 @@ async def analytics_class_profile(req: ClassProfileRequest):
 
 
 @app.post("/api/analytics/student-profile")
-async def analytics_student_profile(req: StudentProfileRequest):
+async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends(require_api_key)):
     """生成学生个体画像。"""
     logger.info("analytics/student-profile: student=%s subject=%s grade=%s", req.student_id, req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
@@ -469,7 +475,7 @@ async def analytics_student_profile(req: StudentProfileRequest):
 
 
 @app.post("/api/analytics/error-analysis")
-async def analytics_error_analysis(req: ErrorAnalysisRequest):
+async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(require_api_key)):
     """错题归因分析。"""
     logger.info("analytics/error-analysis: subject=%s grade=%s", req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
@@ -483,7 +489,7 @@ async def analytics_error_analysis(req: ErrorAnalysisRequest):
 
 
 @app.post("/api/analytics/remedial")
-async def analytics_remedial(req: RemedialPlanRequest):
+async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_api_key)):
     """生成补救教学方案。"""
     logger.info("analytics/remedial: student=%s subject=%s grade=%s", req.student_id, req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
@@ -502,7 +508,7 @@ async def analytics_remedial(req: RemedialPlanRequest):
 
 
 @app.post("/api/analytics/class-report")
-async def analytics_class_report(req: ClassReportRequest):
+async def analytics_class_report(req: ClassReportRequest, _: str = Depends(require_api_key)):
     """生成班级学情报告(Markdown)。"""
     logger.info("analytics/class-report: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
     assessments = await _load_assessments(req.data_path)
@@ -514,7 +520,7 @@ async def analytics_class_report(req: ClassReportRequest):
 
 
 @app.post("/api/analytics/upload")
-async def analytics_upload(req: AnalyticsUploadRequest):
+async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require_api_key)):
     """上传学情数据 — 持久化到允许目录并返回路径，供后续 analytics 调用使用 (SRV-6)。
 
     不再"假装接受"，校验+落盘+返回可用的 data_path。
@@ -565,7 +571,7 @@ async def analytics_upload(req: AnalyticsUploadRequest):
 # ── Content worksheet-diff (v1.0) ──
 
 @app.post("/api/content/worksheet-diff")
-async def content_worksheet_diff(req: ContentWorksheetDiffRequest):
+async def content_worksheet_diff(req: ContentWorksheetDiffRequest, _: str = Depends(require_api_key)):
     """生成三层分层工作纸。"""
     logger.info("content/worksheet-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_worksheet(
@@ -601,7 +607,7 @@ async def agent_list_tasks():
 
 
 @app.post("/api/agent/run")
-async def agent_run_task(req: AgentRunRequest):
+async def agent_run_task(req: AgentRunRequest, _: str = Depends(require_api_key)):
     """立即执行任务 — 每次按请求参数即时构建，避免共享 _tasks 跨请求污染 (SRV-7)。
 
     data_path 每次传入并重新加载数据，避免任务构建时烘焙过期数据 (AGT-5)。
@@ -616,7 +622,7 @@ async def agent_run_task(req: AgentRunRequest):
 
 
 @app.post("/api/agent/schedule")
-async def agent_schedule_task(req: AgentScheduleRequest):
+async def agent_schedule_task(req: AgentScheduleRequest, _: str = Depends(require_api_key)):
     """启用/禁用任务调度。"""
     logger.info("agent/schedule: task_id=%s enable=%s", req.task_id, req.enable)
     if req.enable:
@@ -650,7 +656,7 @@ class SafetyWordlistRequest(BaseModel):
 # ── Safety (v0.6) ──
 
 @app.post("/api/safety/check")
-async def safety_check(req: SafetyCheckRequest):
+async def safety_check(req: SafetyCheckRequest, _: str = Depends(require_api_key)):
     """检查内容安全性。"""
     logger.info("safety/check: grade=%s text=%s...", req.grade, req.text[:30])
     result = content_filter.check_text(req.text, req.grade)
@@ -658,7 +664,7 @@ async def safety_check(req: SafetyCheckRequest):
 
 
 @app.post("/api/safety/filter")
-async def safety_filter(req: SafetyFilterRequest):
+async def safety_filter(req: SafetyFilterRequest, _: str = Depends(require_api_key)):
     """过滤敏感词。"""
     logger.info("safety/filter: text=%s...", req.text[:30])
     filtered = content_filter.filter_sensitive(req.text)
