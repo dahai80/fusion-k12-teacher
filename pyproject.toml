@@ -21,6 +21,8 @@ test = [
     "apscheduler>=3.10.0",
 ]
 web = ["fastapi>=0.104.0", "uvicorn>=0.24.0", "apscheduler>=3.10.0", "sqlalchemy>=2.0.0"]
+# M1-T2: cluster 模式 Postgres 后端 — asyncpg 可选, 缺失则 factory 回退 SQLite。
+cluster = ["asyncpg>=0.29.0,<1.0.0"]
 
 [project.scripts]
 fusion-k12 = "fusion_k12_teacher.cli:main"
