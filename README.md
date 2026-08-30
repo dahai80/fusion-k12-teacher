@@ -276,6 +276,18 @@ M3 (v2.0.0rc) adds audit, metrics, hot-reload config, and graceful drain for pro
 - **Graceful drain** (T19): SIGTERM → `_draining` flag rejects new business requests (503 + `Connection: close`, probes exempt) → `_drain_inflight()` waits in-flight requests to zero or `FUSION_K12_DRAIN_TIMEOUT` (default 30s) → lifespan shutdown closes resources. In-flight counter tracked in `audit_middleware`.
   - Env: `FUSION_K12_DRAIN_TIMEOUT` (default 30s).
 
+### 11d. Cluster Deployment & Gateway Integration (`deploy/`) — v2.0 M4
+
+M4 (v2.0.0) adds cluster deployment templates and fusion-gateway integration for commercial multi-node rollout.
+
+- **Docker image** (T20): `deploy/Dockerfile` — multi-stage build, non-root `k12` user, `HEALTHCHECK` via `/api/health`.
+- **Docker Compose** (T20): `deploy/docker-compose.yml` — `k12` (replicas + resource limits + healthcheck + `stop_grace_period`) + `postgres` + `redis` + `fusion-gateway` (upstream). Scale: `docker compose up -d --scale k12=4`.
+- **K8s templates** (T20): `deploy/k8s/` — `namespace`, `config-secret` (ConfigMap + Secret), `deployment` (startup/liveness/readiness probes on `/api/ready` + `/api/health`, resource limits, `terminationGracePeriodSeconds=45` > drain 30s, `envFrom` config+secret), `service` (+ ServiceMonitor for `/api/metrics`), `hpa` (minReplicas=2 scale-down protection, CPU 30% + custom p95 metric, 300s cooldown) + PDB (`minAvailable=1`).
+- **Env reference** (T20): `deploy/.env.example` — full env catalog with required markers (auth keys, gateway URL/Bearer, Postgres DSN, Redis, salt, drain timeout, replicas).
+- **Gateway integration** (T21): `deploy/fusion-gateway-integration.md` — dual-layer auth (caller → `X-API-Key` → k12 → `Bearer` gateway-key → gateway → mlx), capability split table, k12-side + gateway-side config, cluster topology, integration verification checklist. Gateway is an upstream Go project — this repo only configures integration; upstream gaps follow issue→PR. `ai_client._auth_headers()` omits `Authorization` when no key (P1-20), avoiding 401 against auth-required gateways.
+- **Cluster integration tests + load baseline** (T22): `tests/test_cluster_deploy.py` (15 tests — deploy template structure, gateway integration config, multi-instance consistency, failover/drain, perf baseline) + `deploy/benchmark.py` (httpx concurrent load on probe endpoints, outputs RPS/p50/p95/p99/error_rate to `bench-baseline.json`).
+  - Env: `FUSION_K12_REPLICAS`, `FUSION_K12_MIN_REPLICAS`, `K12_IMAGE`.
+
 ### 12. HTTP API (`serve.py`)
 
 REST API for programmatic access (default port 11448).
@@ -372,16 +384,18 @@ pytest tests/ -v
 
 ## 🐳 Deployment
 
-See [docs/deploy.md](docs/deploy.md) for full deployment guide:
+v2.0 ships cluster-ready deployment templates under [`deploy/`](deploy/) (see §11d for details):
 
-- **Individual teacher** — `pip install -e .` + CLI/API
-- **School intranet** — Docker Compose (`docker-compose up -d`)
-- **Commercial institution** — K8s + algorithm registration + compliance config
+- **Individual teacher** — `pip install -e .` + CLI/API (`standalone` mode, default)
+- **School intranet** — Docker Compose: `cd deploy && docker compose --env-file .env up -d`
+- **Commercial institution** — K8s: `kubectl apply -f deploy/k8s/` (+ Postgres/Redis/gateway)
+
+Gateway integration guide: [`deploy/fusion-gateway-integration.md`](deploy/fusion-gateway-integration.md).
 
 Quick Docker start:
 ```bash
-docker build -t fusion-k12-teacher:latest .
-docker-compose up -d
+docker build -t fusion-k12-teacher:2.0 -f deploy/Dockerfile .
+docker compose -f deploy/docker-compose.yml up -d
 curl http://localhost:11448/api/health
 ```
 

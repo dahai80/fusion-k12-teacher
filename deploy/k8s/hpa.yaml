@@ -1,0 +1,62 @@
+# HPA — 指标驱动横向扩缩容 (§4.6)
+# 扩容信号: request p95 > 2s (来自 /api/metrics 的 k12_request_duration_seconds)
+#           或 active_jobs 超阈值
+# 缩容保护: minReplicas (不缩到 0)
+# 依赖 metrics-server + 自定义指标 (k12_request_duration_seconds 需 Prometheus Adapter)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: k12
+  namespace: fusion-k12
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: k12
+  minReplicas: 2                    # FUSION_K12_MIN_REPLICAS: 缩容保护, 不缩到 0
+  maxReplicas: 10
+  metrics:
+    # CPU < 30% 持续 5min → 缩容 (内置指标, metrics-server)
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 30
+    # 自定义指标: 请求 p95 延迟 (需 Prometheus Adapter 暴露)
+    - type: Pods
+      pods:
+        metric:
+          name: k12_request_duration_seconds_p95
+        target:
+          type: AverageValue
+          averageValue: "2s"         # p95 > 2s → 扩容
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300   # 缩容冷却 5min, 避免抖动
+      policies:
+        - type: Percent
+          value: 25                    # 单次最多缩 25%
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+---
+# PDB — 滚动更新/节点维护期间保证最小可用实例, 配合排水
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: k12
+  namespace: fusion-k12
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: fusion-k12

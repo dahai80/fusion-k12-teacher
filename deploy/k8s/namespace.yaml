@@ -1,0 +1,7 @@
+# fusion-k12-teacher v2.0 k8s 部署命名空间
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fusion-k12
+  labels:
+    app.kubernetes.io/part-of: fusion
