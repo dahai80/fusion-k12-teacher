@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..safety.filter import sanitize_input
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ class SubjectExpert:
 
     async def explain_concept(self, subject: str, grade: str, concept: str) -> dict[str, Any]:
         """解释学科概念（分年级适配）。"""
+        # ENG-2: 用户可控字段统一 sanitize, 防提示注入
+        subject = sanitize_input(subject)
+        grade = sanitize_input(grade, max_len=8)
+        concept = sanitize_input(concept)
         prompt = f"""用{grade}年级学生能理解的语言解释"{concept}"（{subject}学科）。
 
        返回JSON: {{"simple_explanation": "简单解释", "example": "生活例子", "visualization": "可视化建议", "common_misconceptions": ["常见误解"], "extension": "拓展知识"}}"""
@@ -51,9 +56,15 @@ class SubjectExpert:
 
     async def generate_exercise(self, subject: str, grade: str, topic: str, difficulty: str = "medium") -> SubjectExercise:
         """生成学科练习题。"""
+        # ENG-2: 用户可控字段统一 sanitize
+        subject = sanitize_input(subject)
+        grade = sanitize_input(grade, max_len=8)
+        topic = sanitize_input(topic)
         prompt = f"""为{grade}年级{subject}学科生成一道{topic}相关的练习题，难度为{difficulty}。
 
         返回JSON: {{"question": "题目", "hints": ["提示1", "提示2"], "answer": "答案", "explanation": "解题思路", "skills": ["考察能力"]}}"""
+        # ENG-1: err_msg 预定义, 避免 _parse_json 返回 None 时 UnboundLocalError
+        err_msg = "解析失败"
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位经验丰富的学科教师，设计高质量的练习题。"},
@@ -74,6 +85,9 @@ class SubjectExpert:
 
     async def stem_project(self, grade: str, topic: str, duration: str = "2课时") -> dict[str, Any]:
         """生成STEM项目式学习方案。"""
+        # ENG-2: 用户可控字段统一 sanitize
+        grade = sanitize_input(grade, max_len=8)
+        topic = sanitize_input(topic)
         prompt = f"""为{grade}年级学生设计一个STEM项目式学习方案。
 
 主题: {topic}
@@ -91,6 +105,11 @@ class SubjectExpert:
 
     async def language_activity(self, grade: str, language: str, skill: str, theme: str) -> dict[str, Any]:
         """生成语言学习活动。"""
+        # ENG-2: 用户可控字段统一 sanitize
+        grade = sanitize_input(grade, max_len=8)
+        language = sanitize_input(language, max_len=20)
+        skill = sanitize_input(skill, max_len=20)
+        theme = sanitize_input(theme)
         prompt = f"""为{grade}年级{language}学习者设计一个{skill}练习活动。
 
 主题: {theme}
@@ -106,6 +125,9 @@ class SubjectExpert:
             return {"error": str(e)}
 
     def _parse_json(self, text: str) -> Any:
+        # ENG-7: None/非字符串守卫, 避免下游 .strip() 崩溃
+        if not isinstance(text, str) or not text:
+            return None
         text = text.strip()
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0].strip()

@@ -7,7 +7,7 @@ import re
 import unicodedata
 
 from .age_checker import AgeChecker
-from .models import ContentCheckResult, FilterLevel
+from .models import BYPASS_CLASS, ContentCheckResult, FilterLevel
 from .wordlist import SensitiveWordList
 
 logger = logging.getLogger(__name__)
@@ -27,8 +27,6 @@ SAFETY_PROMPT_SUFFIX = (
 )
 
 _RISK_ORDER = {"safe": 0, "medium": 1, "high": 2, "critical": 3}
-
-_BYPASS_CLASS = r"[\s.​-‍⁠･・、。・\-_/|]*"
 
 _MAX_INPUT_LEN = 500
 _INJECTION_PATTERNS = re.compile(
@@ -55,7 +53,7 @@ def sanitize_input(text: str, max_len: int = _MAX_INPUT_LEN) -> str:
 
 def _bypass_pattern(word: str) -> re.Pattern:
     chars = [re.escape(c) for c in word]
-    return re.compile(_BYPASS_CLASS.join(chars), re.IGNORECASE | re.UNICODE)
+    return re.compile(BYPASS_CLASS.join(chars), re.IGNORECASE | re.UNICODE)
 
 
 class ContentFilter:
@@ -83,46 +81,65 @@ class ContentFilter:
             result.risk_level = level
 
     def check_text(self, text: str, grade: str = "3") -> ContentCheckResult:
+        # SEC-10: 任何异常 fail-closed (标记不安全), 不向调用方抛
         result = ContentCheckResult(filtered_text=text)
+        try:
+            if self.filter_level.sensitive_words:
+                flagged = self.wordlist.check(text)
+                if flagged:
+                    result.flagged_words = flagged
+                    result.filtered_text = self._replace_words(text, flagged)
+                    result.is_safe = False
+                    self._escalate(result, "high")
+                    logger.warning(f"敏感词检出: {flagged}")
 
-        if self.filter_level.sensitive_words:
-            flagged = self.wordlist.check(text)
-            if flagged:
-                result.flagged_words = flagged
-                result.filtered_text = self._replace_words(text, flagged)
-                result.is_safe = False
-                self._escalate(result, "high")
-                logger.warning(f"敏感词检出: {flagged}")
-
-        if self.filter_level.age_check:
-            age_issues = self.age_checker.check_content(text, grade)
-            if age_issues:
-                result.age_issues = age_issues
-                result.is_safe = False
-                self._escalate(result, "medium")
-                logger.warning(f"适龄问题: {age_issues}")
+            if self.filter_level.age_check:
+                age_issues = self.age_checker.check_content(text, grade)
+                if age_issues:
+                    result.age_issues = age_issues
+                    # SEC-11: 仅年龄命中时无词替换, 置占位提示避免原文原样透传
+                    if not result.filtered_text or result.filtered_text == text:
+                        result.filtered_text = "[内容因适龄问题已被拦截]"
+                    result.is_safe = False
+                    self._escalate(result, "medium")
+                    logger.warning(f"适龄问题: {age_issues}")
+        except Exception as exc:
+            logger.error("check_text 异常, fail-closed: %s", exc, exc_info=True)
+            result.is_safe = False
+            self._escalate(result, "critical")
+            result.summary = "[拦截] 内容检查内部异常"
+            return result
 
         result.summary = self._build_summary(result)
         return result
 
     def check_output(self, text: str, grade: str = "3") -> ContentCheckResult:
+        # SEC-10: 输出校验同样 fail-closed
         result = ContentCheckResult(filtered_text=text)
+        try:
+            if self.filter_level.output_check:
+                flagged = self.wordlist.check(text)
+                if flagged:
+                    result.flagged_words = flagged
+                    result.filtered_text = self._replace_words(text, flagged)
+                    result.is_safe = False
+                    self._escalate(result, "high")
+                    logger.warning(f"输出敏感词检出: {flagged}")
 
-        if self.filter_level.output_check:
-            flagged = self.wordlist.check(text)
-            if flagged:
-                result.flagged_words = flagged
-                result.filtered_text = self._replace_words(text, flagged)
-                result.is_safe = False
-                self._escalate(result, "high")
-                logger.warning(f"输出敏感词检出: {flagged}")
-
-            age_issues = self.age_checker.check_content(text, grade)
-            if age_issues:
-                result.age_issues = age_issues
-                result.is_safe = False
-                self._escalate(result, "medium")
-                logger.warning(f"输出适龄问题: {age_issues}")
+                age_issues = self.age_checker.check_content(text, grade)
+                if age_issues:
+                    result.age_issues = age_issues
+                    if not result.filtered_text or result.filtered_text == text:
+                        result.filtered_text = "[内容因适龄问题已被拦截]"
+                    result.is_safe = False
+                    self._escalate(result, "medium")
+                    logger.warning(f"输出适龄问题: {age_issues}")
+        except Exception as exc:
+            logger.error("check_output 异常, fail-closed: %s", exc, exc_info=True)
+            result.is_safe = False
+            self._escalate(result, "critical")
+            result.summary = "[拦截] 输出检查内部异常"
+            return result
 
         result.summary = self._build_summary(result)
         return result
@@ -137,8 +154,9 @@ class ContentFilter:
         return SAFETY_PROMPT_SUFFIX
 
     def _replace_words(self, text: str, words: list[str]) -> str:
+        # SEC-9: 长词优先替换, 避免短词先替导致长词残留泄露
         result = text
-        for w in words:
+        for w in sorted(words, key=len, reverse=True):
             if not w:
                 continue
             pattern = _bypass_pattern(w)

@@ -7,13 +7,13 @@ import os
 import re
 import unicodedata
 
-logger = logging.getLogger(__name__)
+from .models import BYPASS_RE
 
-_BYPASS_RE = re.compile(r"[\s.​-‍⁠﻿·・、。・\-_/|]")
+logger = logging.getLogger(__name__)
 
 
 def _normalize(text: str) -> str:
-    return _BYPASS_RE.sub("", unicodedata.normalize("NFKC", text).lower())
+    return BYPASS_RE.sub("", unicodedata.normalize("NFKC", text).lower())
 
 DEFAULT_WORDLIST_PATH = os.path.join(os.path.dirname(__file__), "data", "sensitive_words.txt")
 

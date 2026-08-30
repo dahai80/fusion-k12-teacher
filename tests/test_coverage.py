@@ -198,31 +198,55 @@ class TestSubjectDeep:
 
     @pytest.mark.asyncio
     async def test_explain_concept(self):
-        """测试概念解释。"""
+        # TEST-2: 注入 mock chat, 严格断言解析出的真实字段 (成功路径覆盖, 非 isinstance 兜底)
         expert = SubjectExpert()
+        async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            return '{"simple_explanation": "植物利用阳光制造养分", "example": "树叶在阳光下变绿", "visualization": "画阳光箭头照向叶子", "common_misconceptions": ["植物吃土"], "extension": "光合作用与呼吸作用的关系"}'
+        expert.mlx.chat = mock_chat
         result = await expert.explain_concept("科学", "5", "光合作用")
         assert isinstance(result, dict)
+        assert result.get("simple_explanation")
+        assert "error" not in result
 
     @pytest.mark.asyncio
     async def test_generate_exercise_with_difficulty(self):
-        """测试不同难度的习题生成。"""
+        # TEST-2: mock chat + 严格断言 question/answer/difficulty 真实解析
         expert = SubjectExpert()
+        async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            return '{"question": "3×4=?", "hints": ["想3个4相加"], "answer": "12", "explanation": "3乘4等于12", "skills": ["乘法"]}'
+        expert.mlx.chat = mock_chat
         ex = await expert.generate_exercise("数学", "3", "乘法", difficulty="hard")
         assert ex.topic == "乘法"
+        assert ex.question == "3×4=?"
+        assert ex.answer == "12"
+        assert ex.difficulty == "hard"
+        assert "失败" not in ex.question
 
     @pytest.mark.asyncio
     async def test_stem_project_with_duration(self):
-        """测试指定时长的 STEM 项目。"""
+        # TEST-2: mock chat + 严格断言 title/driving_question 真实解析
         expert = SubjectExpert()
+        async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            return '{"title": "水循环探究", "driving_question": "水去哪了", "objectives": ["理解蒸发"], "materials": ["杯子"], "procedure": ["观察"], "expected_outcomes": ["能画出循环图"], "rubric": "参与度评分"}'
+        expert.mlx.chat = mock_chat
         result = await expert.stem_project("5", "水循环", duration="4课时")
         assert isinstance(result, dict)
+        assert result.get("title") == "水循环探究"
+        assert result.get("driving_question")
+        assert "error" not in result
 
     @pytest.mark.asyncio
     async def test_language_activity(self):
-        """测试语言活动生成。"""
+        # TEST-2: mock chat + 严格断言 title/objective 真实解析
         expert = SubjectExpert()
+        async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            return '{"title": "动物听力游戏", "objective": "辨动物叫声", "materials": ["音频"], "procedure": ["听辨"], "differentiation": {"beginner": "看图选", "intermediate": "听音选", "advanced": "听写"}}'
+        expert.mlx.chat = mock_chat
         result = await expert.language_activity("3", "英语", "听力", "动物")
         assert isinstance(result, dict)
+        assert result.get("title") == "动物听力游戏"
+        assert result.get("objective")
+        assert "error" not in result
 
     def test_parse_json_invalid(self):
         """测试无效 JSON。"""

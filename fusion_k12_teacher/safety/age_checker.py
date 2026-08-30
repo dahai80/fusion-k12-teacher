@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import unicodedata
 
-from .models import AgeRating
+from .models import BYPASS_RE, AgeRating
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +18,9 @@ GRADE_ORDER = [
     "7", "8", "9", "10", "11", "12",
 ]
 
-_BYPASS_RE = re.compile(r"[\s.​-‍⁠﻿·・、。・\-_/|]")
-
 
 def _normalize(text: str) -> str:
-    return _BYPASS_RE.sub("", unicodedata.normalize("NFKC", text))
+    return BYPASS_RE.sub("", unicodedata.normalize("NFKC", text))
 
 
 def _grade_index(grade: str) -> int:

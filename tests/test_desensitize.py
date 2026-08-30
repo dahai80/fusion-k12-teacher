@@ -2,10 +2,19 @@ import hashlib
 
 from fusion_k12_teacher.desensitize import AnonymizeResult, DataAnonymizer, DesensitizeConfig
 
+# 测试用显式 salt — 保证 hermetic, 不依赖 ~/.fusion-k12/salt 文件
+_TEST_SALT = "k12-test-salt"
 
-def _expected_id(name: str, salt: str = "fusion-k12", prefix: str = "S") -> str:
+
+def _expected_id(name: str, salt: str = _TEST_SALT, prefix: str = "S") -> str:
+    # SEC-3: 截断 16 hex(64bit), 与 anonymizer._hash_id 一致
     digest = hashlib.sha256(f"{salt}:{name}".encode()).hexdigest()
-    return f"{prefix}{digest[:8]}"
+    return f"{prefix}{digest[:16]}"
+
+
+def _anon(**kw) -> DataAnonymizer:
+    cfg = DesensitizeConfig(salt=_TEST_SALT, **kw)
+    return DataAnonymizer(cfg)
 
 
 class TestDesensitizeConfig:
@@ -14,7 +23,8 @@ class TestDesensitizeConfig:
         assert cfg.name_mode == "id"
         assert cfg.id_prefix == "S"
         assert cfg.mask_char == "*"
-        assert cfg.salt == "fusion-k12"
+        # SEC-2: 不再硬编码默认 salt
+        assert cfg.salt == ""
         assert "student_name" in cfg.fields_to_mask
         assert "name" in cfg.fields_to_mask
 
@@ -27,6 +37,8 @@ class TestDesensitizeConfig:
     def test_to_dict_from_dict(self):
         cfg = DesensitizeConfig(name_mode="mask", id_prefix="X")
         d = cfg.to_dict()
+        # SEC-17: salt 不进序列化
+        assert "salt" not in d
         cfg2 = DesensitizeConfig.from_dict(d)
         assert cfg2.name_mode == "mask"
         assert cfg2.id_prefix == "X"
@@ -66,13 +78,13 @@ class TestAnonymizeResult:
 
 class TestDataAnonymizer:
     def test_anonymize_name_id_mode_deterministic(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         expected = _expected_id("张三")
         assert anon.anonymize_name("张三") == expected
         assert anon.anonymize_name("张三") == expected
 
     def test_anonymize_name_id_mode_unique(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         a1 = anon.anonymize_name("张三")
         a2 = anon.anonymize_name("李四")
         assert a1 != a2
@@ -80,58 +92,61 @@ class TestDataAnonymizer:
         assert a2.startswith("S")
 
     def test_anonymize_name_cross_instance_stable(self):
-        anon1 = DataAnonymizer()
-        anon2 = DataAnonymizer()
+        anon1 = _anon()
+        anon2 = _anon()
         assert anon1.anonymize_name("张三") == anon2.anonymize_name("张三")
 
     def test_anonymize_name_mask_mode_full_mask(self):
-        cfg = DesensitizeConfig(name_mode="mask")
-        anon = DataAnonymizer(cfg)
+        anon = _anon(name_mode="mask")
         result = anon.anonymize_name("张三")
         assert result == "**"
 
     def test_anonymize_name_mask_mode_short(self):
-        cfg = DesensitizeConfig(name_mode="mask")
-        anon = DataAnonymizer(cfg)
+        anon = _anon(name_mode="mask")
         assert anon.anonymize_name("王") == "*"
 
     def test_deanonymize_name(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         anon_id = anon.anonymize_name("张三")
         assert anon.deanonymize_name(anon_id) == "张三"
         assert anon.deanonymize_name("UNKNOWN") == "UNKNOWN"
 
     def test_mask_field_phone(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         # SEC-3: 不保留长度, 固定掩码 + 末 4 位
         assert anon.mask_field("13812345678", "phone") == "****5678"
         assert anon.mask_field("1234", "phone") == "********"
 
     def test_mask_field_email(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         # SEC-3: 不泄露域名, 哈希成不可逆伪邮箱
         masked = anon.mask_field("student@school.edu.cn", "email")
         assert masked.startswith("***@")
         assert masked.endswith(".invalid")
 
     def test_mask_field_id_number(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         masked = anon.mask_field("110101199001011234", "id_number")
         assert masked.startswith("ID")
         assert len(masked) == 12
 
     def test_mask_field_generic(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         # SEC-3: 固定 8 位掩码, 不保留长度
         assert anon.mask_field("某地址", "address") == "********"
 
     def test_mask_field_empty(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         assert anon.mask_field("", "phone") == ""
-        assert anon.mask_field(123, "phone") == 123
+
+    def test_mask_field_non_string_phone(self):
+        # SEC-5: 非字符串 PII(int 手机号)转 str 后脱敏, 不再原样穿透
+        anon = _anon()
+        assert anon.mask_field(123, "phone") == "********"
+        assert anon.mask_field(13812345678, "phone") == "****5678"
 
     def test_anonymize_record(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         record = {
             "student_name": "张三",
             "phone": "13812345678",
@@ -143,14 +158,14 @@ class TestDataAnonymizer:
         assert result["score"] == 85
 
     def test_anonymize_record_preserves_original(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         record = {"name": "张三"}
         result = anon.anonymize_record(record)
         assert record["name"] == "张三"
         assert result["name"] == _expected_id("张三")
 
     def test_anonymize_records(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         records = [
             {"student_name": "张三", "score": 85},
             {"student_name": "李四", "score": 90},
@@ -162,7 +177,7 @@ class TestDataAnonymizer:
         assert "李四" in result.name_map
 
     def test_deanonymize_record(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         anon_id = anon.anonymize_name("张三")
         record = {"name": anon_id, "score": 85}
         result = anon.deanonymize_record(record)
@@ -170,7 +185,7 @@ class TestDataAnonymizer:
         assert result["score"] == 85
 
     def test_export_desensitized(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         records = [
             {"student_name": "张三", "phone": "13812345678"},
             {"student_name": "李四", "phone": "13987654321"},
@@ -182,14 +197,14 @@ class TestDataAnonymizer:
         assert result[1]["phone"] == "****4321"
 
     def test_get_name_map(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         anon.anonymize_name("张三")
         anon.anonymize_name("李四")
         m = anon.get_name_map()
         assert m == {"张三": _expected_id("张三"), "李四": _expected_id("李四")}
 
     def test_reset(self):
-        anon = DataAnonymizer()
+        anon = _anon()
         anon.anonymize_name("张三")
         anon.reset()
         assert anon.get_name_map() == {}

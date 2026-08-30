@@ -2,8 +2,30 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+# SEC-7/SEC-8: 统一分隔符绕过字符类。
+# 之前 wordlist/age_checker/filter 三处正则分叉, filter 漏 BOM, 三处均漏
+# 逗号/分号/冒号/感叹号/软连字符/全角/破折号, "杀,人" "杀;人" 可绕过敏感词检测。
+BYPASS_SEPARATORS = (
+    r"\s"
+    r"﻿"      # BOM
+    r"​"      # ZWSP
+    r"‌"      # ZWNJ
+    r"‍"      # ZWJ
+    r"⁠"      # WJ
+    r"­"      # soft hyphen
+    r".．。、・"     # 点号 + 中式逗号 + 中点
+    r"\-–—−"       # 连字符/破折号
+    r"_/|"
+    r",;:!，；：！"  # 标点分隔符 (半角 + 全角)
+)
+# 单分隔符: wordlist/age_checker 归一化用
+BYPASS_RE = re.compile(f"[{BYPASS_SEPARATORS}]")
+# 词间分隔符 (0..N): filter._bypass_pattern 用
+BYPASS_CLASS = f"[{BYPASS_SEPARATORS}]*"
 
 
 @dataclass

@@ -48,6 +48,39 @@ def _coerce_str_list(val: Any) -> list[str]:
     return []
 
 
+def _extract_first_json(text: str) -> str:
+    # ENG-5: 平衡括号扫描, 取首个完整 JSON 对象/数组, 替代贪婪正则 \{.*\}
+    # 贪婪正则在多对象文本("{"a":1} 说明 {"b":2}")会跨界抓到无效串。
+    start = -1
+    close_ch = ""
+    depth = 0
+    in_str = False
+    escape = False
+    for i, c in enumerate(text):
+        if in_str:
+            if escape:
+                escape = False
+            elif c == "\\":
+                escape = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+            continue
+        if c in "{[":
+            if depth == 0:
+                start = i
+                close_ch = "}" if c == "{" else "]"
+            depth += 1
+        elif c in "}]":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start >= 0 and c == close_ch:
+                    return text[start : i + 1]
+    return ""
+
+
 class AnalyticsEngine:
     """学情分析引擎 — 班级画像、错题归因、补救方案生成。"""
 
@@ -70,14 +103,24 @@ class AnalyticsEngine:
         if not assessments:
             return ClassProfile(class_id=class_id, subject=subject, grade=grade)
 
-        total_students = len({a.student_id for a in assessments})
-        scores = [a.total_score for a in assessments]
-        avg_score = sum(scores) / len(scores) if scores else 0.0
-        score_distribution = self._calc_score_distribution(scores)
-
-        weak_points = self._calc_weak_points(assessments)
-        strong_points = self._calc_strong_points(assessments)
-        risk_levels = self._calc_risk_levels(assessments)
+        # ENG-4: 统计块包 try/except, 任何 _calc_* 抛错降级到空统计, 不让方法整体崩
+        total_students = 0
+        scores: list[float] = []
+        avg_score = 0.0
+        score_distribution: dict[str, int] = {}
+        weak_points: list[WeakPoint] = []
+        strong_points: list[str] = []
+        risk_levels: dict[str, str] = {}
+        try:
+            total_students = len({a.student_id for a in assessments})
+            scores = [a.total_score for a in assessments]
+            avg_score = sum(scores) / len(scores) if scores else 0.0
+            score_distribution = self._calc_score_distribution(scores)
+            weak_points = self._calc_weak_points(assessments)
+            strong_points = self._calc_strong_points(assessments)
+            risk_levels = self._calc_risk_levels(assessments)
+        except Exception as exc:
+            logger.error("build_class_profile 统计计算失败, 降级到空统计: %s", exc, exc_info=True)
 
         summary = self._build_class_summary(
             class_id, subject, grade, total_students, avg_score,
@@ -612,14 +655,15 @@ class AnalyticsEngine:
         if not isinstance(text, str) or not text.strip():
             return None
         text = text.strip()
+        # ENG-5: 优先取 ```json``` 代码块, 否则用平衡括号扫描取首个完整 JSON
         match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
         if match:
-            text = match.group(1).strip()
+            candidate = match.group(1).strip()
         else:
-            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
-            if obj_match:
-                text = obj_match.group(0)
+            candidate = _extract_first_json(text)
+        if not candidate:
+            return None
         try:
-            return json.loads(text)
+            return json.loads(candidate)
         except json.JSONDecodeError:
             return None

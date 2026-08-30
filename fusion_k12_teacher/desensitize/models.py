@@ -15,16 +15,17 @@ class DesensitizeConfig:
     fields_to_mask: list[str] = field(default_factory=lambda: list(DEFAULT_MASK_FIELDS))
     mask_char: str = "*"
     mask_keep_chars: int = 1
-    salt: str = "fusion-k12"
+    # SEC-2/SEC-17: 不再硬编码默认 salt; 空串由 DataAnonymizer._resolve_salt 解析
+    salt: str = ""
 
     def to_dict(self) -> dict:
+        # SEC-17: salt 不随配置序列化, 避免与脱敏数据同存导致保护失效
         return {
             "name_mode": self.name_mode,
             "id_prefix": self.id_prefix,
             "fields_to_mask": self.fields_to_mask,
             "mask_char": self.mask_char,
             "mask_keep_chars": self.mask_keep_chars,
-            "salt": self.salt,
         }
 
     @classmethod
@@ -35,7 +36,7 @@ class DesensitizeConfig:
             fields_to_mask=data.get("fields_to_mask", list(DEFAULT_MASK_FIELDS)),
             mask_char=data.get("mask_char", "*"),
             mask_keep_chars=data.get("mask_keep_chars", 1),
-            salt=data.get("salt", "fusion-k12"),
+            salt=data.get("salt", ""),
         )
 
 
