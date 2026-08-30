@@ -62,8 +62,10 @@ def _mask_email(value: str, salt: str, mask_char: str) -> str:
 
 
 def _mask_id_number(value: str, salt: str, mask_char: str) -> str:
+    # SEC-21: 全长 HMAC 不截断 — 身份证结构强(地域6+生辰8+序3+校1),
+    # 截断 10 hex(40bit) 在 salt 泄露后可枚举; 全长 256bit 杜绝枚举。
     digest = hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
-    return f"ID{digest[:10]}"
+    return f"ID{digest}"
 
 
 def _mask_generic(value: str, mask_char: str) -> str:
@@ -96,7 +98,12 @@ class DataAnonymizer:
         return anon_id
 
     def deanonymize_name(self, anon_id: str) -> str:
-        return self._reverse_map.get(anon_id, anon_id)
+        # SEC-20: 未知 ID 静默返回原值 — 重启后映射丢失, 姓名/学号字段留伪名串无告警。
+        # 记 warning 并返原值(可逆失败的尽力而为), 调用方知反匿名不完整。
+        if anon_id in self._reverse_map:
+            return self._reverse_map[anon_id]
+        logger.warning("deanonymize 未知 ID, 映射缺失(可能映射已丢失): %s", anon_id)
+        return anon_id
 
     def mask_field(self, value: str, field_name: str = "") -> str:
         # SEC-5: 非字符串 PII(int 手机号等)转 str 后脱敏, 不再原样穿透

@@ -152,17 +152,26 @@ def monthly_report(class_id: str = "C1", subject: str = "数学", grade: str = "
 def batch_differentiated_materials(subject: str = "数学", grade: str = "3", topics: str = "分数,小数,百分数") -> TeachingTask:
     """批量分层教学材料 — 逐主题生成三层内容。"""
     steps = []
-    for i, topic in enumerate(topics.split(",")):
+    # AGT-10: 拒空段 — topics.split(",") 空串 [""], 空 topic 步骤入队生成无意义材料。
+    # 去重保留首次出现顺序, 避免重复主题重复生成。
+    seen = set()
+    topic_list = []
+    for t in topics.split(","):
+        ts = t.strip()
+        if ts and ts not in seen:
+            seen.add(ts)
+            topic_list.append(ts)
+    for i, topic in enumerate(topic_list):
         steps.append(TaskStep(
             engine="differentiation",
             method="generate_differentiated_lesson",
-            params={"subject": subject, "grade": grade, "topic": topic.strip()},
+            params={"subject": subject, "grade": grade, "topic": topic},
             output_key=f"lesson_{i}",
         ))
         steps.append(TaskStep(
             engine="differentiation",
             method="generate_differentiated_quiz",
-            params={"subject": subject, "grade": grade, "topic": topic.strip()},
+            params={"subject": subject, "grade": grade, "topic": topic},
             output_key=f"quiz_{i}",
         ))
 

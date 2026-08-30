@@ -7,6 +7,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
+# STD-9: difficulty_level 枚举白名单 — typo (basik) 会被当非 basic, aligner 永不强制 must_cover。
+_VALID_DIFFICULTY_LEVELS = {"basic", "standard", "advanced"}
 
 
 @dataclass
@@ -38,6 +40,15 @@ class KnowledgePoint:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> KnowledgePoint:
+        # STD-9: difficulty_level 校验枚举 — 非法值(typo/空) 记 warning 回退 standard,
+        # 避免 aligner 把 typo 当非 basic 排除出 must_cover 永不强制。
+        difficulty = data.get("difficulty_level", "standard")
+        if difficulty not in _VALID_DIFFICULTY_LEVELS:
+            logger.warning(
+                "知识点 %s difficulty_level=%r 非法(须为 %s), 回退 standard",
+                data.get("id", "?"), difficulty, sorted(_VALID_DIFFICULTY_LEVELS),
+            )
+            difficulty = "standard"
         return cls(
             id=data.get("id", ""),
             subject=data.get("subject", ""),
@@ -47,7 +58,7 @@ class KnowledgePoint:
             description=data.get("description", ""),
             prerequisites=data.get("prerequisites", []),
             progression_next=data.get("progression_next", []),
-            difficulty_level=data.get("difficulty_level", "standard"),
+            difficulty_level=difficulty,
             curriculum_code=data.get("curriculum_code", ""),
         )
 

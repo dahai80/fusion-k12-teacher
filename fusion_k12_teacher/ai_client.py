@@ -72,8 +72,10 @@ class MLXClient:
         self.model = model or ""
         self._inner: Any = None
         self._httpx_client: Any = None
-        self._auto_select_lock = asyncio.Lock()
-        self._cache_lock = asyncio.Lock()
+        # LLM-5: 锁不在 __init__ 创建 — __init__ 常在无运行循环时被调(CLI 组解析期),
+        # 3.14 前跨 asyncio.run 复用已绑死循环的锁会 RuntimeError。改惰性建, 绑当前 loop。
+        self._auto_select_lock: asyncio.Lock | None = None
+        self._cache_lock: asyncio.Lock | None = None
         self._models_cache: list[dict[str, Any]] | None = None
         self._models_cache_ts: float = 0.0
         self._connect_timeout = float(os.environ.get("FUSION_MLX_CONNECT_TIMEOUT", "10"))
@@ -86,6 +88,18 @@ class MLXClient:
             "MLXClient init base_url=%s model=%s fusion_core=%s",
             self.base_url, self.model or "(auto)", _HAS_FUSION_CORE,
         )
+
+    def _ensure_locks(self) -> None:
+        """LLM-5: 惰性创建 loop-bound 锁 — 首次使用时绑定当前 running loop。
+
+        3.14 前 asyncio.Lock 在 __init__(无循环) 创建后, 跨 asyncio.run 复用绑死旧
+        (已关)循环的锁会 RuntimeError。此处绑当前 loop, CLI 每 command 独立
+        asyncio.run 时锁随 loop 重建。
+        """
+        if self._cache_lock is None:
+            self._cache_lock = asyncio.Lock()
+        if self._auto_select_lock is None:
+            self._auto_select_lock = asyncio.Lock()
 
     async def __aenter__(self) -> MLXClient:
         return self
@@ -121,6 +135,7 @@ class MLXClient:
         统一重试预算覆盖 fusion-core + httpx 双路径的瞬态错误；
         模型 404 时失效缓存并强制重新选择。
         """
+        self._ensure_locks()
         if not self.model:
             self.model = await self._auto_select_model()
         last_exc: Exception | None = None
@@ -193,6 +208,7 @@ class MLXClient:
 
     async def list_models(self) -> list[dict[str, Any]]:
         """列出 fusion-mlx 可用模型 — 带 TTL 缓存与并发锁。"""
+        self._ensure_locks()
         now = time.monotonic()
         if self._models_cache is not None and (now - self._models_cache_ts) < self._models_cache_ttl:
             return self._models_cache

@@ -22,14 +22,18 @@ class StandardsLoader:
         self._failed_files: list[str] = []
 
     def load_all(self) -> dict[str, CurriculumStandard]:
-        """加载 data 目录下所有 JSON 课标文件。"""
+        """加载 data 目录下所有 JSON 课标文件。
+
+        STD-8: 返 dict 快照(浅拷贝) — 防调用方改可变内部 _standards。
+        与 STD-6 all_points/all_standards 同策略, 不用 MappingProxyType(活视图)。
+        """
         if self._loaded:
-            return self._standards
+            return dict(self._standards)
 
         if not self._data_dir.exists():
             logger.warning(f"课标数据目录不存在: {self._data_dir}")
             self._loaded = True
-            return self._standards
+            return dict(self._standards)
 
         for json_file in sorted(self._data_dir.glob("*.json")):
             try:
@@ -45,7 +49,7 @@ class StandardsLoader:
         )
         if self._failed_files:
             logger.warning("以下课标文件加载失败(已跳过): %s", self._failed_files)
-        return self._standards
+        return dict(self._standards)
 
     @property
     def failed_files(self) -> list[str]:
