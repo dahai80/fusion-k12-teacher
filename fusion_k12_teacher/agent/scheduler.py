@@ -47,11 +47,13 @@ _CRON_KEYS = ("minute", "hour", "day", "month", "day_of_week")
 class TaskScheduler:
     """任务调度器 — 管理任务注册、调度、执行历史。"""
 
-    def __init__(self, history_path: str = ""):
+    def __init__(self, history_path: str = "", repo: object | None = None):
         self._tasks: dict[str, TeachingTask] = {}
         self._history: list[TaskResult] = []
         self._scheduler: AsyncIOScheduler | None = None
         self._history_path = history_path or HISTORY_JSON
+        # M1-T1: 可选 Repository 后端 — 注入则 history 走 DB, 否则保留 JSON 向后兼容。
+        self._repo = repo
         # AGT-11: __init__ 内读 env, 每实例独立; 运行期重建实例即可生效新配置。
         self._max_history = int(os.environ.get("FUSION_AGENT_HISTORY_CAP", _DEFAULT_HISTORY_CAP))
         self._max_concurrency = int(os.environ.get("FUSION_AGENT_MAX_CONCURRENCY", _DEFAULT_CONCURRENCY))
@@ -363,8 +365,12 @@ class TaskScheduler:
 
     def _save_history(self) -> None:
         try:
-            os.makedirs(os.path.dirname(self._history_path), exist_ok=True)
             data = [self._scrub_pii(r.to_dict()) for r in self._history[-self._max_history:]]
+            # M1-T1: 注入 Repository 则走 DB, 否则保留 JSON 落盘
+            if self._repo is not None:
+                self._repo.save_history(data)
+                return
+            os.makedirs(os.path.dirname(self._history_path), exist_ok=True)
             tmp_path = self._history_path + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -374,6 +380,12 @@ class TaskScheduler:
 
     def load_history(self) -> None:
         try:
+            # M1-T1: 注入 Repository 则从 DB 加载, 否则从 JSON
+            if self._repo is not None:
+                data = self._repo.load_history()
+                self._history = [TaskResult.from_dict(d) for d in data]
+                logger.info(f"加载历史(DB): {len(self._history)} 条")
+                return
             if os.path.exists(self._history_path):
                 with open(self._history_path, encoding="utf-8") as f:
                     data = json.load(f)
