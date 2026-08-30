@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS name_map (
     anon_id TEXT NOT NULL,
     reverse TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS task_lock (
+    task_id     TEXT PRIMARY KEY,
+    owner       TEXT NOT NULL,
+    acquired_ts REAL    NOT NULL,
+    ttl         REAL    NOT NULL
+);
 """
 
 # M1-T6: 加密列 — name_hash (sha256 查询键, 无明文) + name_encrypted (AES-GCM 可逆)。
@@ -157,3 +163,65 @@ class SQLiteRepository(Repository):
         except Exception as e:
             logger.warning("SQLiteRepository 健康探测失败: %s", e)
             return False
+
+    # ── M2-T11: 任务锁 ──
+
+    @staticmethod
+    def _now() -> float:
+        import time
+        return time.time()
+
+    def try_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        # 先 reap 超时锁, 再尝试插入; 同 owner 重入视为续约成功。
+        with self._lock:
+            now = self._now()
+            self._conn.execute(
+                "DELETE FROM task_lock WHERE acquired_ts + ttl < ?", (now,)
+            )
+            row = self._conn.execute(
+                "SELECT owner, acquired_ts, ttl FROM task_lock WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if row is None:
+                self._conn.execute(
+                    "INSERT INTO task_lock (task_id, owner, acquired_ts, ttl) VALUES (?, ?, ?, ?)",
+                    (task_id, owner, now, ttl),
+                )
+                self._conn.commit()
+                return True
+            if row[0] == owner:
+                # 同 owner 重入: 续约
+                self._conn.execute(
+                    "UPDATE task_lock SET acquired_ts = ?, ttl = ? WHERE task_id = ? AND owner = ?",
+                    (now, ttl, task_id, owner),
+                )
+                self._conn.commit()
+                return True
+            self._conn.commit()
+            return False
+
+    def renew_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE task_lock SET acquired_ts = ?, ttl = ? WHERE task_id = ? AND owner = ?",
+                (self._now(), ttl, task_id, owner),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def release_lock(self, task_id: str, owner: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM task_lock WHERE task_id = ? AND owner = ?",
+                (task_id, owner),
+            )
+            self._conn.commit()
+
+    def reap_expired_locks(self) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM task_lock WHERE acquired_ts + ttl < ?",
+                (self._now(),),
+            )
+            self._conn.commit()
+            return cur.rowcount

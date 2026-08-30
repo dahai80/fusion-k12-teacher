@@ -26,6 +26,13 @@ from .tasks import build_task, list_available_tasks
 
 logger = logging.getLogger(__name__)
 
+
+def _instance_owner() -> str:
+    # M2-T11: 实例标识 — hostname+pid, 用于 DB 任务锁 owner。
+    import socket
+    return f"{socket.gethostname()}:{os.getpid()}"
+
+
 # P1-11: history 落盘路径改 env 配置 (Dockerfile 设 FUSION_K12_HISTORY_FILE 指向可写卷),
 # 不再写死包内 data/ (只读 / 容器重建即丢)。默认 ~/.fusion-k12/history.json。
 HISTORY_JSON = os.environ.get(
@@ -150,26 +157,53 @@ class TaskScheduler:
         self._ensure_primitives()
         lock = self._run_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
-            if kwargs:
-                rebuilt = self.rebuild_task(task_id, **kwargs)
-                if rebuilt:
-                    task = rebuilt
-            logger.info(f"开始执行任务: {task_id} ({task.name})")
-            # AGT-6: 记录在飞协程, stop() 可取消
-            coro_task = asyncio.current_task()
-            if coro_task is not None:
-                self._inflight.add(coro_task)
+            # M2-T11: cluster 模式抢 DB 任务锁 — 跨实例 cron 去重, 被占则 skip。
+            # standalone 无 repo → try_lock 默认返 True, 不阻塞 (单进程靠 _run_locks 互斥)。
+            acquired_db = False
+            owner = ""
+            if self._repo is not None and os.environ.get("FUSION_K12_MODE", "").lower() == "cluster":
+                owner = _instance_owner()
+                ttl = float(os.environ.get("FUSION_K12_TASK_LOCK_TTL", "300"))
+                try:
+                    acquired_db = await asyncio.to_thread(
+                        self._repo.try_lock, task_id, owner, ttl
+                    )
+                except Exception as e:
+                    logger.warning("DB 任务锁获取失败, 降级执行 (可能重复): %s", e)
+                    acquired_db = True
+                if not acquired_db:
+                    logger.info("任务 %s 已被其它实例持有 DB 锁, 跳过 (跨实例去重)", task_id)
+                    return TaskResult(
+                        task_id=task_id, status="skipped",
+                        summary=f"已被其它实例锁定执行: {task_id}",
+                    )
             try:
-                async with self._concurrency:
-                    result = await execute_task(task)
+                if kwargs:
+                    rebuilt = self.rebuild_task(task_id, **kwargs)
+                    if rebuilt:
+                        task = rebuilt
+                logger.info(f"开始执行任务: {task_id} ({task.name})")
+                # AGT-6: 记录在飞协程, stop() 可取消
+                coro_task = asyncio.current_task()
+                if coro_task is not None:
+                    self._inflight.add(coro_task)
+                try:
+                    async with self._concurrency:
+                        result = await execute_task(task)
+                finally:
+                    self._inflight.discard(coro_task)
+                async with self._history_lock:
+                    self._history.append(result)
+                    if len(self._history) > self._max_history:
+                        del self._history[: len(self._history) - self._max_history]
+                    await asyncio.to_thread(self._save_history)
+                return result
             finally:
-                self._inflight.discard(coro_task)
-            async with self._history_lock:
-                self._history.append(result)
-                if len(self._history) > self._max_history:
-                    del self._history[: len(self._history) - self._max_history]
-                await asyncio.to_thread(self._save_history)
-            return result
+                if acquired_db and owner and self._repo is not None:
+                    try:
+                        await asyncio.to_thread(self._repo.release_lock, task_id, owner)
+                    except Exception as e:
+                        logger.warning("释放 DB 任务锁失败 (等 ttl 自动过期): %s", e)
 
     def get_history(self, limit: int = 20) -> list[TaskResult]:
         if limit <= 0:
@@ -180,6 +214,16 @@ class TaskScheduler:
         # A3: 非阻塞抢占 pidfile — fcntl.flock LOCK_EX|LOCK_NB。
         # 成功持锁 = 本进程负责 cron 调度; 失败 = 另一进程(cli 或 serve)已在调度, 跳过 arm。
         # 跨进程互斥, 防"每周备课"等 cron 被 cli+serve 各跑一遍。
+        # M2-T10: cluster 模式跨实例去重靠 DB 行锁 (run_task 内), 非 pidfile。
+        # 多实例各有独立 pidfile 路径无意义; cron arm 改由 DB 锁保证不重复执行。
+        if os.environ.get("FUSION_K12_MODE", "standalone").lower() == "cluster":
+            if self._repo is not None:
+                logger.info("cluster 模式, cron 去重走 DB 行锁 (T11), 跳过 pidfile")
+                self._owns_pidfile = True
+                return True
+            logger.warning("cluster 模式但无 Repository, cron 去重无 DB 锁 — 可能重复触发")
+            self._owns_pidfile = True
+            return True
         if self._owns_pidfile:
             return True
         try:

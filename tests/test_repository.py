@@ -121,6 +121,111 @@ class TestSchedulerRepoIntegration:
         repo.close()
 
 
+class TestTaskLock:
+    """M2-T11: DB 任务锁 — 跨实例 cron 去重。"""
+
+    def test_lock_acquire_first(self, repo):
+        assert repo.try_lock("task_a", "host1:100", 60) is True
+
+    def test_lock_same_owner_reentrant(self, repo):
+        assert repo.try_lock("task_b", "host1:100", 60) is True
+        # 同 owner 再获取 = 续约成功
+        assert repo.try_lock("task_b", "host1:100", 60) is True
+
+    def test_lock_other_owner_blocked(self, repo):
+        assert repo.try_lock("task_c", "host1:100", 60) is True
+        # 其它实例持有未超时 → 拒
+        assert repo.try_lock("task_c", "host2:200", 60) is False
+
+    def test_lock_release_allows_other(self, repo):
+        repo.try_lock("task_d", "host1:100", 60)
+        repo.release_lock("task_d", "host1:100")
+        assert repo.try_lock("task_d", "host2:200", 60) is True
+
+    def test_lock_release_wrong_owner_noop(self, repo):
+        repo.try_lock("task_e", "host1:100", 60)
+        # 非 owner 释放无效, 锁仍在
+        repo.release_lock("task_e", "host2:200")
+        assert repo.try_lock("task_e", "host2:200", 60) is False
+
+    def test_lock_renew_by_owner(self, repo):
+        repo.try_lock("task_f", "host1:100", 60)
+        assert repo.renew_lock("task_f", "host1:100", 120) is True
+        # 非 owner 续约失败
+        assert repo.renew_lock("task_f", "host2:200", 120) is False
+
+    def test_lock_ttl_reap(self, repo):
+        # ttl 极短 → 过期后被 reap, 重新可获取
+        repo.try_lock("task_g", "host1:100", ttl=0)
+        # ttl=0 即刻过期 (acquired_ts + 0 < now 下次 reap)
+        import time
+        time.sleep(0.01)
+        assert repo.reap_expired_locks() >= 1
+        assert repo.try_lock("task_g", "host2:200", 60) is True
+
+    def test_base_repo_default_locks_passthrough(self):
+        # standalone / 无 lock 后端: 默认实现总放行
+        from fusion_k12_teacher.repository.base import Repository
+        # 不能直接实例化 ABC, 用桩
+        class _Stub(Repository):
+            def save_history(self, r):
+                pass
+            def load_history(self):
+                return []
+            def save_name_map(self, n, r):
+                pass
+            def load_name_map(self):
+                return {}, {}
+        s = _Stub()
+        assert s.try_lock("x", "o", 60) is True
+        assert s.renew_lock("x", "o", 60) is True
+        s.release_lock("x", "o")
+        assert s.reap_expired_locks() == 0
+
+
+class TestSchedulerClusterLock:
+    """M2-T11: cluster 模式 run_task 抢 DB 锁, 被占则 skip。"""
+
+    @pytest.mark.asyncio
+    async def test_cluster_skip_when_locked(self, tmp_path, monkeypatch):
+        db = str(tmp_path / "lock.db")
+        repo = SQLiteRepository(db)
+        monkeypatch.setenv("FUSION_K12_MODE", "cluster")
+        # 预先被其它实例锁定
+        repo.try_lock("dummy_task", "other-host:999", 300)
+        sched = TaskScheduler(repo=repo)
+        sched._tasks["dummy_task"] = _dummy_task("dummy_task")
+        result = await sched.run_task("dummy_task")
+        assert result.status == "skipped"
+        repo.close()
+
+    @pytest.mark.asyncio
+    async def test_standalone_no_db_lock(self, tmp_path, monkeypatch):
+        # standalone 模式不碰 DB 锁, 直接执行 (mock execute 避免真调引擎)
+        db = str(tmp_path / "nolock.db")
+        repo = SQLiteRepository(db)
+        monkeypatch.setenv("FUSION_K12_MODE", "standalone")
+        sched = TaskScheduler(repo=repo)
+        sched._tasks["t1"] = _dummy_task("t1")
+        monkeypatch.setattr(
+            "fusion_k12_teacher.agent.executor.execute_task",
+            _mock_execute,
+        )
+        result = await sched.run_task("t1")
+        assert result.status == "success"
+        repo.close()
+
+
+def _dummy_task(task_id: str):
+    from fusion_k12_teacher.agent.models import TeachingTask
+    return TeachingTask(id=task_id, name="dummy", steps=[])
+
+
+async def _mock_execute(task):
+    from fusion_k12_teacher.agent.models import TaskResult
+    return TaskResult(task_id=task.id, status="success", summary="mock")
+
+
 class TestMigrateCLI:
     def test_migrate_dry_run(self, tmp_path):
         # M1-T3: dry-run 仅读源库预览, 不连 Postgres
