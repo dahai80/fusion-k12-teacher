@@ -232,6 +232,12 @@ class MLXClient:
             return _env_model()
 
     async def close(self) -> None:
+        # LLM-1: 走 fusion-core 路径时 _inner 持有内部 httpx 客户端, 须一并释放
+        if self._inner is not None and hasattr(self._inner, "close"):
+            try:
+                await self._inner.close()
+            except Exception as exc:
+                logger.warning("FusionMLXClient.close 失败: %s", exc)
         if self._httpx_client is not None:
             await self._httpx_client.aclose()
             self._httpx_client = None

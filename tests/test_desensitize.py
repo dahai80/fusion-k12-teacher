@@ -6,10 +6,18 @@ from fusion_k12_teacher.desensitize import AnonymizeResult, DataAnonymizer, Dese
 _TEST_SALT = "k12-test-salt"
 
 
-def _expected_id(name: str, salt: str = _TEST_SALT, prefix: str = "S") -> str:
+def _expected_id(name: str, salt: str = _TEST_SALT, prefix: str = "S", seq: str = "") -> str:
     # SEC-3: 截断 16 hex(64bit), 与 anonymizer._hash_id 一致
-    digest = hashlib.sha256(f"{salt}:{name}".encode()).hexdigest()
+    # SEC-15: 传 seq 时键含序号, 与 anonymizer.anonymize_name(seq=) 一致
+    key = f"{name}:{seq}" if seq else name
+    digest = hashlib.sha256(f"{salt}:{key}".encode()).hexdigest()
     return f"{prefix}{digest[:16]}"
+
+
+def _expected_phone(value: str, salt: str = _TEST_SALT) -> str:
+    # SEC-16: phone 全值 keyed 哈希, 不保留明文位
+    digest = hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
+    return f"PH{digest[:10]}"
 
 
 def _anon(**kw) -> DataAnonymizer:
@@ -113,9 +121,10 @@ class TestDataAnonymizer:
 
     def test_mask_field_phone(self):
         anon = _anon()
-        # SEC-3: 不保留长度, 固定掩码 + 末 4 位
-        assert anon.mask_field("13812345678", "phone") == "****5678"
-        assert anon.mask_field("1234", "phone") == "********"
+        # SEC-16: phone 全值 keyed 哈希, 不保留末 4 位, 不可再识别
+        assert anon.mask_field("13812345678", "phone") == _expected_phone("13812345678")
+        assert anon.mask_field("1234", "phone") == _expected_phone("1234")
+        assert anon.mask_field("13812345678", "phone").startswith("PH")
 
     def test_mask_field_email(self):
         anon = _anon()
@@ -141,9 +150,10 @@ class TestDataAnonymizer:
 
     def test_mask_field_non_string_phone(self):
         # SEC-5: 非字符串 PII(int 手机号)转 str 后脱敏, 不再原样穿透
+        # SEC-16: 走 keyed 哈希
         anon = _anon()
-        assert anon.mask_field(123, "phone") == "********"
-        assert anon.mask_field(13812345678, "phone") == "****5678"
+        assert anon.mask_field(123, "phone") == _expected_phone("123")
+        assert anon.mask_field(13812345678, "phone") == _expected_phone("13812345678")
 
     def test_anonymize_record(self):
         anon = _anon()
@@ -153,8 +163,9 @@ class TestDataAnonymizer:
             "score": 85,
         }
         result = anon.anonymize_record(record)
+        # 单记录无 seq, ID 保持 _expected_id("张三"); phone 走 SEC-16 keyed 哈希
         assert result["student_name"] == _expected_id("张三")
-        assert result["phone"] == "****5678"
+        assert result["phone"] == _expected_phone("13812345678")
         assert result["score"] == 85
 
     def test_anonymize_record_preserves_original(self):
@@ -173,8 +184,11 @@ class TestDataAnonymizer:
         result = anon.anonymize_records(records)
         assert result.original_count == 2
         assert result.anonymized_count == 2
-        assert "张三" in result.name_map
-        assert "李四" in result.name_map
+        # SEC-15: 映射键含序号 (name\x00seq), 同名不同记录可区分
+        assert "张三\x000" in result.name_map
+        assert "李四\x001" in result.name_map
+        assert result.name_map["张三\x000"] == _expected_id("张三", seq="0")
+        assert result.name_map["李四\x001"] == _expected_id("李四", seq="1")
 
     def test_deanonymize_record(self):
         anon = _anon()
@@ -191,10 +205,22 @@ class TestDataAnonymizer:
             {"student_name": "李四", "phone": "13987654321"},
         ]
         result = anon.export_desensitized(records)
-        assert result[0]["student_name"] == _expected_id("张三")
-        assert result[1]["student_name"] == _expected_id("李四")
-        assert result[0]["phone"] == "****5678"
-        assert result[1]["phone"] == "****4321"
+        # SEC-15: 每记录传序号, 同名不同记录不同 ID
+        assert result[0]["student_name"] == _expected_id("张三", seq="0")
+        assert result[1]["student_name"] == _expected_id("李四", seq="1")
+        # SEC-16: phone 全值 keyed 哈希
+        assert result[0]["phone"] == _expected_phone("13812345678")
+        assert result[1]["phone"] == _expected_phone("13987654321")
+
+    def test_same_name_different_seq_unique(self):
+        # SEC-15: 同名不同记录序号得不同 ID, 避免成绩/考勤合并
+        anon = _anon()
+        records = [
+            {"student_name": "张三", "score": 85},
+            {"student_name": "张三", "score": 90},
+        ]
+        result = anon.export_desensitized(records)
+        assert result[0]["student_name"] != result[1]["student_name"]
 
     def test_get_name_map(self):
         anon = _anon()

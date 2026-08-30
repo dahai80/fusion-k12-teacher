@@ -105,7 +105,6 @@ class AnalyticsEngine:
 
         # ENG-4: 统计块包 try/except, 任何 _calc_* 抛错降级到空统计, 不让方法整体崩
         total_students = 0
-        scores: list[float] = []
         avg_score = 0.0
         score_distribution: dict[str, int] = {}
         weak_points: list[WeakPoint] = []
@@ -113,9 +112,10 @@ class AnalyticsEngine:
         risk_levels: dict[str, str] = {}
         try:
             total_students = len({a.student_id for a in assessments})
-            scores = [a.total_score for a in assessments]
-            avg_score = sum(scores) / len(scores) if scores else 0.0
-            score_distribution = self._calc_score_distribution(scores)
+            # ENG-8: 用百分比统计, 与 _calc_risk_levels 一致; 避免非百分制测验(max_score!=100)全员落入低分桶
+            pcts = [a.percentage for a in assessments]
+            avg_score = sum(pcts) / len(pcts) if pcts else 0.0
+            score_distribution = self._calc_score_distribution(pcts)
             weak_points = self._calc_weak_points(assessments)
             strong_points = self._calc_strong_points(assessments)
             risk_levels = self._calc_risk_levels(assessments)
@@ -297,6 +297,16 @@ class AnalyticsEngine:
             if points:
                 standards_hint = f"\n课标知识点参考: {', '.join(p.topic for p in points[:10])}"
 
+        # ENG-9: wrong 中 question/student_answer 等字符串字段来自装载器, 进 prompt 前脱敏防注入
+        wrong_safe = []
+        for r in wrong[:20]:
+            if not isinstance(r, dict):
+                continue
+            sr = {}
+            for k, v in r.items():
+                sr[k] = sanitize_input(v, 500) if isinstance(v, str) else v
+            wrong_safe.append(sr)
+
         prompt = f"""分析以下错题数据，进行归因分析：
 
 学科: {subject_s} | 年级: {grade_s}
@@ -304,7 +314,7 @@ class AnalyticsEngine:
 {standards_hint}
 
 错题列表:
-{json.dumps(wrong[:20], ensure_ascii=False)}
+{json.dumps(wrong_safe, ensure_ascii=False)}
 
 返回JSON数组，每条包含:
 [
@@ -429,6 +439,10 @@ class AnalyticsEngine:
 
     async def generate_class_report(self, class_profile: ClassProfile) -> str:
         """生成 Markdown 格式班级学情报告。"""
+        # ENG-10: 班级画像字段用户可控, 进 prompt 前脱敏
+        cid_s = sanitize_input(class_profile.class_id, 50)
+        subject_s = sanitize_input(class_profile.subject, 20)
+        grade_s = sanitize_input(class_profile.grade, 4)
         wp_str = "\n".join(
             f"  - {wp.knowledge_point_name}: 错误率 {wp.error_rate:.0%}，"
             f"影响 {len(wp.affected_students)} 人"
@@ -441,8 +455,8 @@ class AnalyticsEngine:
 
         prompt = f"""根据以下班级学情画像，生成一份中文 Markdown 格式的教学分析报告：
 
-班级: {class_profile.class_id}
-学科: {class_profile.subject} | 年级: {class_profile.grade}
+班级: {cid_s}
+学科: {subject_s} | 年级: {grade_s}
 学生数: {class_profile.total_students}
 平均分: {class_profile.avg_score}
 分数分布: {json.dumps(class_profile.score_distribution, ensure_ascii=False)}
@@ -469,9 +483,10 @@ class AnalyticsEngine:
 
     # ── 统计辅助方法 ──
 
-    def _calc_score_distribution(self, scores: list[float]) -> dict[str, int]:
+    def _calc_score_distribution(self, pcts: list[float]) -> dict[str, int]:
+        # ENG-8: 入参为百分比 (0-100), 桶阈值与百分比一致, 非百分制测验不再全员落低分桶
         dist = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0, "0-59": 0}
-        for s in scores:
+        for s in pcts:
             if s >= 90:
                 dist["90-100"] += 1
             elif s >= 80:
@@ -593,6 +608,10 @@ class AnalyticsEngine:
         weak_points: list[WeakPoint],
         risk_levels: dict[str, str],
     ) -> str:
+        # ENG-10: class_id/subject/grade 用户可控, 进 prompt 前脱敏防注入
+        class_id = sanitize_input(class_id, 50)
+        subject = sanitize_input(subject, 20)
+        grade = sanitize_input(grade, 4)
         wp_str = "\n".join(
             f"  - {wp.knowledge_point_name}: 错误率{wp.error_rate:.0%}"
             for wp in weak_points[:5]

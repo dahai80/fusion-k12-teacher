@@ -36,18 +36,19 @@ _INJECTION_PATTERNS = re.compile(
 
 
 def sanitize_input(text: str, max_len: int = _MAX_INPUT_LEN) -> str:
-    """清洗用户输入 — 截断长度、标记注入企图、剥离控制字符 (ENG-1)。
+    """清洗用户输入 — 扫描注入、剥离控制字符、截断长度 (ENG-1, SEC-13/14)。
 
-    各引擎调用前统一清洗 subject/grade/topic/essay/problem 等用户可控字段，
-    避免提示注入与超长输入。
+    SEC-13: 先全文扫注入再截断, 避免跨 max_len 边界的关键词被切断而漏检。
+    SEC-14: 检出注入即替换匹配短语为占位 (非仅包裹), LLM 不可读原文指令。
     """
     if not isinstance(text, str):
         text = str(text)
+    # SEC-13: 先扫描未截断全文
+    if _INJECTION_PATTERNS.search(text):
+        logger.warning("检测到疑似提示注入, 已中和匹配短语: %s", text[:60])
+        text = _INJECTION_PATTERNS.sub("[已过滤指令]", text)
     text = text[:max_len]
     text = "".join(c for c in text if c == "\n" or ord(c) >= 0x20)
-    if _INJECTION_PATTERNS.search(text):
-        logger.warning("检测到疑似提示注入输入，已包裹隔离标记: %s", text[:60])
-        text = f"[用户输入开始]{text}[用户输入结束]"
     return text
 
 
@@ -84,6 +85,12 @@ class ContentFilter:
         # SEC-10: 任何异常 fail-closed (标记不安全), 不向调用方抛
         result = ContentCheckResult(filtered_text=text)
         try:
+            # SEC-12: 词库缺失 disabled, 最后防线不可用, fail-closed 拦截
+            if self.filter_level.sensitive_words and self.wordlist.disabled:
+                result.is_safe = False
+                self._escalate(result, "critical")
+                result.summary = "[拦截] 敏感词库未加载, 内容检查不可用"
+                return result
             if self.filter_level.sensitive_words:
                 flagged = self.wordlist.check(text)
                 if flagged:
@@ -117,6 +124,12 @@ class ContentFilter:
         # SEC-10: 输出校验同样 fail-closed
         result = ContentCheckResult(filtered_text=text)
         try:
+            # SEC-12: 词库缺失 disabled, 输出检查不可用, fail-closed 拦截
+            if self.filter_level.output_check and self.wordlist.disabled:
+                result.is_safe = False
+                self._escalate(result, "critical")
+                result.summary = "[拦截] 敏感词库未加载, 输出检查不可用"
+                return result
             if self.filter_level.output_check:
                 flagged = self.wordlist.check(text)
                 if flagged:

@@ -71,8 +71,19 @@ class StandardsQuery:
                 if topic_lower == kp_topic:
                     result.append(kp)
         if not result and loose:
+            # STD-1: prerequisites 存的是知识点 ID, 按 topic 永不匹配; 解析每个 pre_id
+            # 取其 KnowledgePoint, 在其 topic/description 中搜 topic 关键词。
             for kp in points:
-                if any(topic_lower in pre.lower() for pre in kp.prerequisites):
+                matched = False
+                for pre_id in kp.prerequisites:
+                    pre = self._loader.get_point(pre_id)
+                    if not pre:
+                        continue
+                    pre_text = (pre.topic + " " + pre.description).lower()
+                    if topic_lower in pre_text:
+                        matched = True
+                        break
+                if matched:
                     result.append(kp)
         logger.debug(f"主题查询: {subject}/{grade}/{topic} → {len(result)} 个知识点")
         return result

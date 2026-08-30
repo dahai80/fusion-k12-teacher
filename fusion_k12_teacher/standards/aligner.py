@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 
+from ..safety.filter import sanitize_input
 from .models import AlignmentContext
 from .query import StandardsQuery
 
@@ -12,7 +13,11 @@ _CJK_RE = re.compile(r"[一-鿿]")
 
 
 def _cjk_tokens(text: str) -> list[str]:
-    """中文 + 空格混合分词 — CJK 段取 2-gram, 拉丁段按空白切 (STD-6/7)。"""
+    """中文 + 空格混合分词 — CJK 段取 2-gram, 拉丁段按空白切 (STD-6/7)。
+
+    STD-2: 单字 CJK 主题产 0 token (range(0) 无 bigram, len>=2 筛掉), 导致对齐全漏;
+    单字回退保留原 chunk, 避免空 token 集恒假。
+    """
     text = text.lower().strip()
     tokens: list[str] = []
     for chunk in text.split():
@@ -20,9 +25,12 @@ def _cjk_tokens(text: str) -> list[str]:
             tokens.extend(chunk[i:i + 2] for i in range(len(chunk) - 1))
             if len(chunk) >= 2:
                 tokens.append(chunk)
+            else:
+                # STD-2: 单字 CJK chunk 回退保留, 不丢弃
+                tokens.append(chunk)
         else:
             tokens.append(chunk)
-    return [t for t in tokens if len(t) >= 2]
+    return [t for t in tokens if len(t) >= 1]
 
 
 class StandardsAligner:
@@ -78,26 +86,30 @@ class StandardsAligner:
         if not alignment.knowledge_points:
             return ""
 
+        # ENG-11: 课标文件可被篡改, topic/description/code 进 prompt 前脱敏防注入
         lines = ["【课标对齐要求】"]
 
         if alignment.curriculum_codes:
-            lines.append(f"课标编码: {', '.join(alignment.curriculum_codes)}")
+            codes = [sanitize_input(c, 50) for c in alignment.curriculum_codes]
+            lines.append(f"课标编码: {', '.join(codes)}")
 
         if alignment.suggested_objectives:
             lines.append("课标要求的学习目标:")
             for i, obj in enumerate(alignment.suggested_objectives, 1):
-                lines.append(f"  {i}. {obj}")
+                lines.append(f"  {i}. {sanitize_input(obj, 500)}")
 
         if alignment.must_cover:
-            lines.append(f"必修知识点（必须覆盖）: {', '.join(alignment.must_cover)}")
+            ids = [sanitize_input(k, 50) for k in alignment.must_cover]
+            lines.append(f"必修知识点（必须覆盖）: {', '.join(ids)}")
 
         if alignment.optional_advanced:
-            lines.append(f"拓展知识点（可选）: {', '.join(alignment.optional_advanced)}")
+            ids = [sanitize_input(k, 50) for k in alignment.optional_advanced]
+            lines.append(f"拓展知识点（可选）: {', '.join(ids)}")
 
         if alignment.prerequisites:
             all_pre = [kp for group in alignment.prerequisites for kp in group]
             if all_pre:
-                pre_topics = list({kp.topic for kp in all_pre})
+                pre_topics = list({sanitize_input(kp.topic, 100) for kp in all_pre})
                 lines.append(f"前置知识: {', '.join(pre_topics)}")
 
         return "\n".join(lines)

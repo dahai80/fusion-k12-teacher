@@ -47,9 +47,15 @@ def mock_engines():
         "personalization_engine": srv.personalization_engine,
         "content_generator": srv.content_generator,
         "api_key": srv._API_KEY,
+        "ready": srv._ready,
+        "allowed_dirs": list(srv._ALLOWED_DATA_DIRS),
     }
     # SRV-1: 受保护端点 fail-closed, 测试需注入 key
     srv._API_KEY = "test-key"
+    # SRV-4: 模拟 lifespan 就绪, 否则 _ready=False 拦截所有请求返 503
+    srv._ready = True
+    # TEST-3: ASGITransport 不触发 lifespan, 显式初始化允许目录, 覆盖路径校验
+    srv._init_allowed_dirs()
     srv.mlx_client = type("M", (), {"chat": _mock_chat(MOCK_LESSON_PLAN)})()
     srv.curriculum_engine = CurriculumEngine(srv.mlx_client)
     srv.assessment_engine = AssessmentEngine(srv.mlx_client)
@@ -58,7 +64,10 @@ def mock_engines():
     srv.content_generator = ContentGenerator(srv.mlx_client)
     yield
     for k, v in saved.items():
-        setattr(srv, k, v)
+        if k == "allowed_dirs":
+            srv._ALLOWED_DATA_DIRS = v
+        else:
+            setattr(srv, k, v)
 
 
 class TestHealth:
@@ -169,3 +178,42 @@ class TestContentGenerate:
         assert resp.status_code == 200
         data = resp.json()
         assert data["type"] == "game"
+
+
+class TestPathValidation:
+    @pytest.mark.asyncio
+    async def test_data_path_outside_allowed_rejected(self, client):
+        # TEST-3: data_path 越界(etc/passwd)须被 _check_allowed_path 拦截返 400
+        from fusion_k12_teacher import serve as srv
+        assert srv._ALLOWED_DATA_DIRS, "允许目录未初始化, 路径校验零覆盖"
+        resp = await client.post("/api/analytics/class-profile", json={
+            "class_id": "C1", "subject": "数学", "grade": "3",
+            "data_path": "/etc/passwd",
+        })
+        assert resp.status_code == 400
+
+
+class TestGameFailure:
+    @pytest.mark.asyncio
+    async def test_game_generation_failure_returns_502(self, client):
+        # SRV-8: game 生成失败含 error 字段, 不再静默 200 空对象, 须返 502
+        from fusion_k12_teacher import serve as srv
+        # SRV-8: 须触发引擎解析失败路径(L201 返 {"error":...}), 非可解析 dict
+        srv.content_generator.mlx.chat = _mock_chat("无法解析的非 JSON 文本")
+        resp = await client.post("/api/content/generate", json={
+            "topic": "分数", "grade": "3", "style": "game",
+        })
+        assert resp.status_code == 502
+
+
+class TestNotReady:
+    @pytest.mark.asyncio
+    async def test_not_ready_returns_503(self, client):
+        # SRV-4: _ready=False 时受保护端点须返 503, 不让 None 引擎崩 500
+        from fusion_k12_teacher import serve as srv
+        srv._ready = False
+        resp = await client.post("/api/curriculum/plan", json={
+            "grade": "3", "subject": "数学", "topic": "分数",
+        })
+        assert resp.status_code == 503
+        srv._ready = True
