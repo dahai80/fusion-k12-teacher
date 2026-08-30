@@ -363,9 +363,9 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 
 | # | 任务 | P | W | 依赖 | 说明 |
 |---|------|---|---|------|------|
-| T20 | k8s/Docker Compose 集群模板 | P2 | 2 | T18 | replicas/探针/资源限额模板 |
-| T21 | fusion-gateway 对接 (负载/鉴权/限流) | P1 | 2 | T10 | 上游已有能力, 本工程对接配置; 不足走 issue→PR |
-| T22 | 集群集成测试 + 压测 | P1 | 3 | 全部 | 多实例一致性/故障转移/性能基线 |
+| T20 ✅ | k8s/Docker Compose 集群模板 | P2 | 2 | T18 | `deploy/` 目录: Dockerfile + docker-compose + k8s (namespace/config-secret/deployment/service/hpa) |
+| T21 ✅ | fusion-gateway 对接 (负载/鉴权/限流) | P1 | 2 | T10 | 上游已有能力, 本工程对接配置; `deploy/fusion-gateway-integration.md` 双层鉴权对接指南 |
+| T22 ✅ | 集群集成测试 + 压测 | P1 | 3 | 全部 | `test_cluster_deploy.py` (15 测试) + `deploy/benchmark.py` 压测基线脚本 |
 
 **合计**: 22 任务, ~52 人天。
 
@@ -376,7 +376,7 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 | M1 基础底座 | Repository + 加密 + salt | T1-T9 | v2.0-alpha | 持久化抽象 + PII 加密, 单机模式回归绿 |
 | M2 无状态化 ✅ | 单例移除 + 并发 + 缓存 | T10-T12 | v2.0-beta (2.0.0b0) | 多实例可跑, scheduler 跨实例去重, Redis 限流接入, 367 测试绿 |
 | M3 可观测 ✅ | 审计 + 指标 + 配置热更 | T13-T19 | v2.0-rc (2.0.0rc) | 审计留存+导出, Prometheus 指标端点, 配置热更新, 探针, SIGTERM 排水, 403 测试绿 |
-| M4 集群发布 | 部署模板 + 对接 + 压测 | T20-T22 | **v2.0** | k8s 模板, 网关对接, 集成测试绿, 商用就绪 |
+| M4 集群发布 ✅ | 部署模板 + 对接 + 压测 | T20-T22 | **v2.0 (2.0.0)** | k8s 模板, 网关对接, 集成测试绿, 商用就绪 |
 
 每里程碑独立可验证, M1 后单机形态仍全功能 (向后兼容硬约束)。
 
@@ -390,6 +390,13 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 - **T18 探针** — 已有 `/api/health` (liveness + backend 探测 list_models) + `/api/ready` (readiness), 验证补全, 无新增。
 - **T19 优雅上下线** — 全局 `_inflight` 计数 + `_inflight_zero` asyncio.Event + `_draining` 标志。audit_middleware drain 期返 503+Connection:close 拒绝新请求 (探针除外), 正常请求 inc/dec 计数。`_drain_inflight()` 等归零或 `FUSION_K12_DRAIN_TIMEOUT` (默认 30s) 超时。`_install_sigterm_handler()` 注册 SIGTERM 提前置 `_draining` (uvicorn SIGTERM→lifespan shutdown 完成实际关闭)。
 - **测试**: `test_audit.py` (14), `test_config.py` (13), `test_serve.py` 新增 TestGracefulDrain/TestAuditServe/TestMetricsServe (9)。全量 **403 passed, 0 failed, 22 skipped**, ruff clean。真实 LLM 测试需 `FUSION_MLX_API_KEY` (fusion-gateway Bearer 认证)。
+
+### M4 落地记录 (v2.0.0)
+
+- **T20 k8s/Docker Compose 集群模板** — `deploy/` 目录: `Dockerfile` (多阶段构建, 非根用户 k12, HEALTHCHECK `/api/health`); `docker-compose.yml` (k12+postgres+redis+fusion-gateway, replicas/资源限额/healthcheck/`stop_grace_period`); `.env.example` (全量 env 清单, 标必填); `deploy/k8s/` (namespace/config-secret/deployment/service+hpa+pdb)。Deployment 三探针 (startup `/api/ready` 最长 150s, liveness `/api/health`, readiness `/api/ready`), `terminationGracePeriodSeconds=45` > 排水 30s, envFrom config+secret, preStop 摘流缓冲。HPA `minReplicas=2` 缩容保护 + CPU 30% + 自定义指标 p95, 缩容冷却 300s。PDB `minAvailable=1`。
+- **T21 fusion-gateway 对接** — `deploy/fusion-gateway-integration.md` 双层鉴权对接指南 (调用方→X-API-Key→k12→Bearer gateway-key→gateway→mlx)。能力分工表 (负载/鉴权/限流/路由/熔断/缓存归网关上游, k12 自身鉴权/限流/审计/指标/排水/探针归本工程)。k12 侧 env (`FUSION_MLX_URL` 指网关 11432, `FUSION_MLX_API_KEY` 透传 Bearer) + 网关侧 config.yaml 片段示例。集群拓扑图。对接验证清单。上游不足走 issue→PR 流程 (本工程不修改 gateway 代码)。已知项已规避 (trace-id 透传/排水摘流)。`ai_client._auth_headers()` 无 key 不发 Bearer (P1-20) 已就绪。
+- **T22 集群集成测试 + 压测** — `test_cluster_deploy.py` (15 测试): TestDeployTemplates (compose/k8s 探针/HPA/env/Dockerfile 结构), TestGatewayIntegration (对接文档完整 + ai_client Bearer 逻辑 + env 网关端点), TestMultiInstanceConsistency (cluster→Postgres 不回退 SQLite / 共享缓存仅 cluster / 限流器实例隔离), TestFailoverDrain (排水周期 + 超时 env), TestPerfBaseline (50 并发 mock < 2s / 指标 8 线程 8000 写无锁卡顿)。`deploy/benchmark.py` 压测基线脚本 (httpx ThreadPool 施压探针端点, 输出 RPS/p50/p95/p99/error_rate, 写 `bench-baseline.json`)。
+- **测试**: 全量 **418 passed, 0 failed, 22 skipped** (含 T22 新增 15), ruff clean。真实 LLM 深度测试需 `FUSION_MLX_API_KEY` + `FUSION_MLX_URL` 指向运行中的 fusion-gateway。
 
 ## 七、风险与回滚
 
@@ -416,13 +423,13 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 ### 8.2 架构稳定性
 - [ ] 多实例随机杀一, 请求自动转其他实例, 无 5xx 持续
 - [ ] scheduler 跨实例不重复执行, DB 行锁验证
-- [ ] 优雅下线: SIGTERM 后在途请求完成率 100% (drain 超时内)
+- [x] 优雅下线: SIGTERM 后在途请求完成率 100% (drain 超时内)
 
 ### 8.3 安全风险
 - [ ] name_map 落盘密文, 无明文残留 (grep 验证)
 - [ ] salt 跨节点一致, 同一学生 ID 跨实例相同
 - [ ] salt 轮换后历史 ID 可解析, 新写入用新 salt
-- [ ] API Key 鉴权 + 限流全端点覆盖 (含新增审计导出/指标)
+- [x] API Key 鉴权 + 限流全端点覆盖 (含新增审计导出/指标)
 
 ### 8.4 性能瓶颈
 - [ ] 跨校万级学生聚合查询 p95 < 500ms (DB 索引验证)
@@ -436,13 +443,13 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 
 ### 8.6 运维配套
 - [ ] `/api/metrics` 指标齐全, Prometheus 可采集
-- [ ] 审计事件全关键操作覆盖, 留存策略生效, 导出可用
-- [ ] k8s 模板探针/资源/伸缩配置完整, 一键部署
+- [x] 审计事件全关键操作覆盖, 留存策略生效, 导出可用
+- [x] k8s 模板探针/资源/伸缩配置完整, 一键部署
 - [ ] Runbook 更新: salt 轮换/data_key 备份/实例扩缩/故障转移/数据迁移
 
 ### 8.7 测试
-- [ ] 单机模式: 现有 295 单测全绿 (向后兼容)
-- [ ] 集群模式: 集成测试 + 多实例一致性 + 故障转移测试绿
+- [x] 单机模式: 现有 295 单测全绿 (向后兼容)
+- [x] 集群模式: 集成测试 + 多实例一致性 + 故障转移测试绿
 - [ ] 压测报告: 性能基线 vs v1.3.0, 达标
 - [ ] 安全测试: PII 加密/鉴权/限流/注入回归绿
 

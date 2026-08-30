@@ -1,0 +1,38 @@
+# Service — 集群内访问 k12 实例 (网关 upstream)
+# Headless 不用 (网关需 LB), 普通 ClusterIP 轮询
+apiVersion: v1
+kind: Service
+metadata:
+  name: k12
+  namespace: fusion-k12
+  labels:
+    app: fusion-k12
+spec:
+  type: ClusterIP
+  selector:
+    app: fusion-k12
+  ports:
+    - port: 11448
+      targetPort: http
+      protocol: TCP
+      name: http
+---
+# /api/metrics 抓取 ServiceMonitor (Prometheus Operator)
+# 标注 port + path, 抓取需 admin key (通过 Secret 挂 Authorization header)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: k12-metrics
+  namespace: fusion-k12
+  labels:
+    app: fusion-k12
+spec:
+  selector:
+    matchLabels:
+      app: fusion-k12
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 30s
+      # admin key 由 Prometheus 侧 relabel 注入 header, 此处仅声明
+      # 生产: 用 Prometheus basicAuth/authorization secretConfig 注入 X-API-Key

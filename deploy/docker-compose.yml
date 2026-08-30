@@ -1,0 +1,90 @@
+# fusion-k12-teacher v2.0 Docker Compose 集群模板 (小规模)
+# 包含: k12 (replicas) + postgres + redis + fusion-gateway (上游)
+# 用法: docker compose --env-file .env up -d
+# 注: fusion-gateway 镜像由上游项目构建, 此处引用 (不修改其代码)
+#
+# 扩缩容: docker compose up -d --scale k12=4
+# 优雅下线: docker compose stop k12 (SIGTERM → 排水, 等在途完成)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${FUSION_K12_PG_USER:-k12}
+      POSTGRES_PASSWORD: ${FUSION_K12_PG_PASSWORD:-change-me}
+      POSTGRES_DB: ${FUSION_K12_PG_DB:-k12}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FUSION_K12_PG_USER:-k12}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  k12:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    env_file: deploy/.env
+    environment:
+      FUSION_K12_MODE: cluster
+      FUSION_K12_PG_DSN: postgresql://${FUSION_K12_PG_USER:-k12}:${FUSION_K12_PG_PASSWORD:-change-me}@postgres:5432/${FUSION_K12_PG_DB:-k12}
+      FUSION_K12_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "11448-11450:11448"   # 多实例轮询端口 (compose 无内置 LB, 用网关汇聚)
+    deploy:
+      replicas: ${FUSION_K12_REPLICAS:-3}
+      resources:
+        limits:
+          cpu: "2000m"
+          memory: "2Gi"
+        reservations:
+          cpu: "500m"
+          memory: "512Mi"
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:11448/api/health',timeout=2).status==200 else 1)"]
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 40s   # > FUSION_K12_DRAIN_TIMEOUT, 给排水留余量
+    restart: unless-stopped
+
+  # 上游 fusion-gateway — 负载均衡 + API Key 鉴权 + 限流
+  # 镜像由上游项目提供, 此处仅引用, 不修改其代码
+  fusion-gateway:
+    image: ${FUSION_GATEWAY_IMAGE:-fusion-gateway:latest}
+    environment:
+      # 网关按 /api/health 健康检查后端 k12 实例, 轮询分发
+      GATEWAY_UPSTREAM: "k12:11448"
+      GATEWAY_LISTEN: ":11432"
+    ports:
+      - "11432:11432"
+    depends_on:
+      k12:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  redis-data:

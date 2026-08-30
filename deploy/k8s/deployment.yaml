@@ -1,0 +1,75 @@
+# k12 Deployment — 三探针 (liveness/readiness/startup) + 资源限额 + 优雅排水
+# 探针对接 M3 已实现的 /api/health (liveness) /api/ready (readiness, 引擎+DB+缓存就绪)
+# SIGTERM 由 M3-T19 排水处理器接管: 拒新请求 → 等在途 → 退出
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k12
+  namespace: fusion-k12
+  labels:
+    app: fusion-k12
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fusion-k12
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0          # 滚动更新不摘旧实例过多, 配合排水
+  template:
+    metadata:
+      labels:
+        app: fusion-k12
+    spec:
+      terminationGracePeriodSeconds: 45   # > FUSION_K12_DRAIN_TIMEOUT(30), 留排水余量
+      containers:
+        - name: k12
+          image: ${K12_IMAGE:-fusion-k12-teacher:2.0}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 11448
+              name: http
+          envFrom:
+            - configMapRef:
+                name: k12-config
+            - secretRef:
+                name: k12-secret
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          # startup 探针: 初始等待 (DB 迁移/引擎构建慢), 避免过早判死
+          startupProbe:
+            httpGet:
+              path: /api/ready
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5       # 最长 150s 启动窗口
+          # liveness: 进程在 + 后端探测, 失败重启
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # readiness: 引擎+DB+缓存就绪, 失败摘流不杀
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            initialDelaySeconds: 5
+          # /api/metrics 供 Prometheus 抓取 (admin key 经 ServiceAccount/Secret 注入)
+          # 生命周期钩子: preStop 给 k8s 发 SIGTERM 前的缓冲 (uvicorn 收 SIGTERM 即排水)
+          lifecycle:
+            preStop:
+              exec:
+                command: ["python", "-c", "import time; time.sleep(5)"]   # 等端点控制器摘流
