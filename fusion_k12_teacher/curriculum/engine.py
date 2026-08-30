@@ -164,10 +164,18 @@ class CurriculumEngine:
             ], temperature=0.3)
             questions = self._parse_json(response)
             if isinstance(questions, list):
+                # ENG-13: 题项非 dict(string/None)时跳过, points 非 int 容错, 不再崩
+                safe_q = [q for q in questions if isinstance(q, dict)]
+                total = 0
+                for q in safe_q:
+                    try:
+                        total += int(q.get("points", 1))
+                    except (TypeError, ValueError):
+                        total += 1
                 return Quiz(
                     title=f"{topic_s}测验", subject=subject_s, grade=grade_s,
-                    questions=questions,
-                    total_points=sum(q.get("points", 1) for q in questions),
+                    questions=safe_q,
+                    total_points=total,
                     answer_key="[详见每道题目的answer字段]",
                 )
             logger.error("测验生成失败: LLM 返回空或无法解析")

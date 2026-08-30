@@ -95,27 +95,29 @@ class TestEngineRegistry:
 
 class TestExecuteStep:
     def test_execute_step_simple(self):
+        # AGT-1: 须用白名单内的 engine+method, 否则被方法授权拦截
         mock_engine = MagicMock()
-        mock_engine.some_method = AsyncMock(return_value={"result": "ok"})
-        registry.register("_test_eng", mock_engine)
+        mock_engine.generate_lesson_plan = AsyncMock(return_value={"result": "ok"})
+        registry.register("curriculum", mock_engine)
 
-        step = TaskStep(engine="_test_eng", method="some_method", params={"x": 1}, output_key="out")
+        step = TaskStep(engine="curriculum", method="generate_lesson_plan", params={"x": 1}, output_key="out")
         context = {}
         result = asyncio.run(execute_step(step, context))
         assert result == {"result": "ok"}
         assert context["out"] == {"result": "ok"}
-        del registry._engines["_test_eng"]
+        del registry._engines["curriculum"]
 
     def test_execute_step_variable_resolution(self):
+        # AGT-1: 须用白名单内的 engine+method
         mock_engine = MagicMock()
-        mock_engine.process = AsyncMock(return_value={"processed": True})
-        registry.register("_test_eng2", mock_engine)
+        mock_engine.generate_quiz = AsyncMock(return_value={"processed": True})
+        registry.register("curriculum", mock_engine)
 
-        step = TaskStep(engine="_test_eng2", method="process", params={"data": "$prev_result"}, output_key="out")
+        step = TaskStep(engine="curriculum", method="generate_quiz", params={"data": "$prev_result"}, output_key="out")
         context = {"prev_result": "some_data"}
         asyncio.run(execute_step(step, context))
-        mock_engine.process.assert_called_once_with(data="some_data")
-        del registry._engines["_test_eng2"]
+        mock_engine.generate_quiz.assert_called_once_with(data="some_data")
+        del registry._engines["curriculum"]
 
     def test_execute_step_missing_engine(self):
         step = TaskStep(engine="_missing", method="foo", params={}, output_key="out")
@@ -126,15 +128,16 @@ class TestExecuteStep:
 
 class TestExecuteTask:
     def test_execute_task_single_step(self):
+        # AGT-1: 须用白名单内的 engine+method
         mock_engine = MagicMock()
-        mock_engine.do_work = AsyncMock(return_value={"done": True})
-        registry.register("_test_eng3", mock_engine)
+        mock_engine.grade_essay = AsyncMock(return_value={"done": True})
+        registry.register("assessment", mock_engine)
 
-        step = TaskStep(engine="_test_eng3", method="do_work", params={}, output_key="result")
+        step = TaskStep(engine="assessment", method="grade_essay", params={}, output_key="result")
         task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
         result = asyncio.run(execute_task(task))
         assert result.status == "success"
-        del registry._engines["_test_eng3"]
+        del registry._engines["assessment"]
 
     def test_execute_task_step_failure(self):
         mock_engine = MagicMock()

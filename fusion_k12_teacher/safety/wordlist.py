@@ -25,6 +25,8 @@ class SensitiveWordList:
         self._path = path or DEFAULT_WORDLIST_PATH
         self._words: set[str] = set()
         self._matcher: re.Pattern[str] = re.compile(r"$^")
+        # SEC-12: 词库缺失标记 disabled, 由 ContentFilter fail-closed, 不再静默放行
+        self.disabled: bool = False
         self.load()
 
     def _rebuild_matcher(self) -> None:
@@ -37,8 +39,9 @@ class SensitiveWordList:
 
     def load(self) -> None:
         if not os.path.exists(self._path):
-            logger.warning(f"敏感词库文件不存在: {self._path}")
+            logger.warning(f"敏感词库文件不存在, 标记 disabled, 过滤将 fail-closed: {self._path}")
             self._words = set()
+            self.disabled = True
             self._rebuild_matcher()
             return
         with open(self._path, encoding="utf-8") as f:
@@ -49,6 +52,7 @@ class SensitiveWordList:
             if line.strip() and not line.startswith("#")
         }
         self._words.discard("")
+        self.disabled = False
         self._rebuild_matcher()
         logger.info(f"敏感词库加载: {len(self._words)} 个词")
 

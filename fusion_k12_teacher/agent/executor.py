@@ -15,6 +15,31 @@ logger = logging.getLogger(__name__)
 
 _STEP_TIMEOUT = float(os.environ["FUSION_STEP_TIMEOUT"]) if "FUSION_STEP_TIMEOUT" in os.environ else 180.0
 
+# AGT-1: 每引擎可调方法白名单 — 杜绝 getattr 任意方法(__init__/close/_private 等)
+_ALLOWED_METHODS: dict[str, set[str]] = {
+    "curriculum": {"generate_lesson_plan", "generate_quiz", "generate_unit_plan"},
+    "assessment": {"grade_essay", "grade_math", "generate_report", "generate_rubric"},
+    "subjects": {"explain_concept", "generate_exercise", "stem_project", "language_activity"},
+    "personalization": {"create_learning_path", "diagnose_skills", "recommend_resources"},
+    "content": {
+        "generate_worksheet", "generate_flashcards", "generate_lesson_slides",
+        "generate_educational_game", "generate_parent_communication",
+    },
+    "differentiation": {
+        "generate_differentiated_lesson", "generate_differentiated_quiz",
+        "generate_differentiated_worksheet",
+    },
+    "analytics": {
+        "build_class_profile", "build_student_profile", "analyze_errors",
+        "generate_remedial_plan", "generate_class_report",
+    },
+    "standards_query": {
+        "get_knowledge_points", "get_prerequisites", "get_progression",
+        "find_by_topic", "validate_coverage", "get_strands", "get_by_strand",
+        "get_by_difficulty",
+    },
+}
+
 
 class EngineRegistry:
     """引擎注册表 — 按名称查找引擎实例。"""
@@ -88,6 +113,12 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     engine = registry.get(step.engine)
     if not engine:
         raise ValueError(f"引擎未注册: {step.engine}")
+
+    # AGT-1: 方法须在白名单内, 否则拒绝 — 防止调用 __init__/close/_private
+    allowed = _ALLOWED_METHODS.get(step.engine)
+    if allowed is None or step.method not in allowed:
+        logger.error("引擎方法未授权: %s.%s", step.engine, step.method)
+        raise ValueError(f"引擎 {step.engine} 方法 {step.method} 未授权, 不在白名单内")
 
     method = getattr(engine, step.method, None)
     if not method or not callable(method):

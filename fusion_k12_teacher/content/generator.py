@@ -121,10 +121,17 @@ class ContentGenerator:
             ], temperature=0.3)
             data = self._parse_json(response)
             if isinstance(data, list):
-                return [
-                    {k: _bound_str(item.get(k, "")) for k in ("front", "back", "hint")}
-                    for item in data[:_MAX_LIST_ITEMS] if isinstance(item, dict)
-                ]
+                # ENG-12: 卡片内容直达学生, 每字段过 _filter_output
+                out = []
+                for item in data[:_MAX_LIST_ITEMS]:
+                    if not isinstance(item, dict):
+                        continue
+                    card = {
+                        k: self._filter_output(_bound_str(item.get(k, "")), grade_s)
+                        for k in ("front", "back", "hint")
+                    }
+                    out.append(card)
+                return out
             logger.error("闪卡生成失败: LLM 返回空或无法解析")
             return []
         except Exception as e:
@@ -146,11 +153,16 @@ class ContentGenerator:
             ], temperature=0.3)
             data = self._parse_json(response)
             if isinstance(data, list):
-                return [
-                    {k: _bound_str(item.get(k, "")) for k in
-                     ("slide_number", "title", "content", "teacher_notes", "visual_suggestion")}
-                    for item in data[:_MAX_LIST_ITEMS] if isinstance(item, dict)
-                ]
+                # ENG-12: 幻灯内容直达学生, 文本字段过 _filter_output
+                out = []
+                for item in data[:_MAX_LIST_ITEMS]:
+                    if not isinstance(item, dict):
+                        continue
+                    slide = {}
+                    for k in ("slide_number", "title", "content", "teacher_notes", "visual_suggestion"):
+                        slide[k] = self._filter_output(_bound_str(item.get(k, "")), grade_s)
+                    out.append(slide)
+                return out
             logger.error("课件大纲生成失败: LLM 返回空或无法解析")
             return []
         except Exception as e:
@@ -173,12 +185,15 @@ class ContentGenerator:
             ], temperature=0.4)
             data = self._parse_json(response)
             if isinstance(data, dict):
+                # ENG-12: 游戏内容直达学生, 文本与列表项过 _filter_output
                 out: dict[str, Any] = {}
                 for k in _GAME_KEYS:
                     if k in ("rules", "materials", "variations"):
-                        out[k] = _bound_str_list(data.get(k, []))
+                        out[k] = [
+                            self._filter_output(s, grade_s) for s in _bound_str_list(data.get(k, []))
+                        ]
                     else:
-                        out[k] = _bound_str(data.get(k, ""))
+                        out[k] = self._filter_output(_bound_str(data.get(k, "")), grade_s)
                 if not out.get("title"):
                     out["title"] = f"{topic_s}游戏"
                 return out

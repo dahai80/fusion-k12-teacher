@@ -19,6 +19,24 @@ from .safety import ContentFilter, SensitiveWordList
 logger = logging.getLogger(__name__)
 
 
+def _join_str(items, sep: str = ", ") -> str:
+    # CLI-1: LLM 返回的列表项可能非 str(int/dict/None), join 前过滤+转 str 防 TypeError
+    if not items:
+        return ""
+    return sep.join(str(x) for x in items if x is not None)
+
+
+def _check_engine_result(result, label: str) -> None:
+    # CLI-2: 引擎优雅降级返含 error 的 dataclass/None 时, 以 ClickException 退出码 1, 不再静默 0
+    if result is None:
+        raise click.ClickException(f"{label} 生成失败: 引擎返回空")
+    err = getattr(result, "error", None)
+    if not err and isinstance(result, dict):
+        err = result.get("error")
+    if err:
+        raise click.ClickException(f"{label} 生成失败: {err}")
+
+
 @click.group()
 @click.option("--verbose", "-v", is_flag=True)
 @click.option("--model", "-m", default="", help="fusion-mlx model")
@@ -63,10 +81,11 @@ def lesson_plan(ctx, subject, grade, topic, duration):
 async def _async_lesson_plan(ctx, subject, grade, topic, duration):
     engine = ctx.obj["curriculum"]
     plan = await engine.generate_lesson_plan(subject, grade, topic, duration)
+    _check_engine_result(plan, "教案")
     click.echo()
     click.echo(f"📚 {plan.title}")
     click.echo(f"   学科: {plan.subject} | 年级: {plan.grade} | 课时: {plan.duration_minutes}分钟")
-    click.echo(f"   目标: {', '.join(plan.objectives[:3])}")
+    click.echo(f"   目标: {_join_str(plan.objectives[:3])}")
     click.echo(f"   评估: {plan.assessment[:100]}")
     click.echo()
 
@@ -85,6 +104,7 @@ def lesson_quiz(ctx, subject, grade, topic, questions):
 async def _async_lesson_quiz(ctx, subject, grade, topic, questions):
     engine = ctx.obj["curriculum"]
     quiz = await engine.generate_quiz(subject, grade, topic, questions)
+    _check_engine_result(quiz, "测验")
     click.echo()
     click.echo(f"📝 {quiz.title}")
     click.echo(f"   总分: {quiz.total_points}")
@@ -111,12 +131,13 @@ def assess_essay(ctx, essay_text):
 async def _async_assess_essay(ctx, essay_text):
     engine = ctx.obj["assessment"]
     result = await engine.grade_essay(essay_text)
+    _check_engine_result(result, "作文批改")
     click.echo()
     click.echo(f"📊 评分: {result.score}/{result.total} ({result.percentage:.0f}%)")
     if result.strengths:
-        click.echo(f"   优点: {', '.join(result.strengths[:3])}")
+        click.echo(f"   优点: {_join_str(result.strengths[:3])}")
     if result.improvements:
-        click.echo(f"   建议: {', '.join(result.improvements[:3])}")
+        click.echo(f"   建议: {_join_str(result.improvements[:3])}")
     click.echo()
 
 
@@ -140,6 +161,7 @@ def subject_explain(ctx, subject_name, grade, concept):
 async def _async_subject_explain(ctx, subject_name, grade, concept):
     engine = ctx.obj["subjects"]
     result = await engine.explain_concept(subject_name, grade, concept)
+    _check_engine_result(result, "概念解释")
     click.echo()
     click.echo(f"📖 {concept}")
     click.echo(f"   {result.get('simple_explanation', '')[:200]}")
@@ -169,9 +191,10 @@ def personalize_path(ctx, student, grade, subject, goal):
 async def _async_personalize_path(ctx, student, grade, subject, goal):
     engine = ctx.obj["personalization"]
     path = await engine.create_learning_path(student, grade, subject, goal)
+    _check_engine_result(path, "学习路径")
     click.echo()
     click.echo(f"🎯 {student}的个性化学习路径")
-    click.echo(f"   目标: {', '.join(path.goals[:3])}")
+    click.echo(f"   目标: {_join_str(path.goals[:3])}")
     click.echo(f"   预计时长: {path.estimated_duration}")
     click.echo()
 
@@ -196,6 +219,7 @@ def content_worksheet(ctx, subject, grade, topic):
 async def _async_content_worksheet(ctx, subject, grade, topic):
     engine = ctx.obj["content"]
     ws = await engine.generate_worksheet(subject, grade, topic)
+    _check_engine_result(ws, "工作纸")
     click.echo()
     click.echo(f"📄 {ws.title}")
     click.echo(f"   板块数: {len(ws.sections)}")
@@ -216,6 +240,7 @@ def content_worksheet_diff(ctx, subject, grade, topic, questions):
 async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
     engine = ctx.obj["differentiation"]
     result = await engine.generate_differentiated_worksheet(subject, grade, topic, questions)
+    _check_engine_result(result, "分层工作纸")
     click.echo()
     click.echo(f"📄 三层分层工作纸: {result.topic}")
     click.echo(f"   学科: {result.subject} | 年级: {result.grade}")
@@ -294,11 +319,11 @@ def standards_show(ctx, point_id):
 
     if kp.prerequisites:
         pres = query.get_prerequisites(point_id)
-        click.echo(f"   前置: {', '.join(p.topic for p in pres)}")
+        click.echo(f"   前置: {_join_str(p.topic for p in pres)}")
 
     if kp.progression_next:
         nxts = query.get_progression(point_id)
-        click.echo(f"   进阶: {', '.join(n.topic for n in nxts)}")
+        click.echo(f"   进阶: {_join_str(n.topic for n in nxts)}")
 
     click.echo()
 
@@ -319,6 +344,7 @@ def lesson_plan_diff(ctx, subject, grade, topic, duration):
 async def _async_lesson_plan_diff(ctx, subject, grade, topic, duration):
     engine = ctx.obj["differentiation"]
     result = await engine.generate_differentiated_lesson(subject, grade, topic, duration)
+    _check_engine_result(result, "分层教案")
     click.echo()
     click.echo(f"📚 三层分层教案: {result.topic}")
     click.echo(f"   学科: {result.subject} | 年级: {result.grade}")
@@ -345,6 +371,7 @@ def lesson_quiz_diff(ctx, subject, grade, topic, questions):
 async def _async_lesson_quiz_diff(ctx, subject, grade, topic, questions):
     engine = ctx.obj["differentiation"]
     result = await engine.generate_differentiated_quiz(subject, grade, topic, questions)
+    _check_engine_result(result, "分层测验")
     click.echo()
     click.echo(f"📝 三层分层测验: {result.topic}")
     click.echo(f"   学科: {result.subject} | 年级: {result.grade}")
@@ -377,6 +404,7 @@ async def _async_class_profile(ctx, class_id, subject, grade, data):
     engine = ctx.obj["analytics"]
     assessments = _load_assessments(data)
     profile = await engine.build_class_profile(class_id, subject, grade, assessments)
+    _check_engine_result(profile, "班级画像")
     click.echo()
     click.echo(f"📊 班级画像: {profile.class_id}")
     click.echo(f"   学科: {profile.subject} | 年级: {profile.grade}")
@@ -404,14 +432,15 @@ async def _async_student_profile(ctx, student_id, subject, grade, data):
     all_assessments = _load_assessments(data)
     history = [a for a in all_assessments if a.student_id == student_id]
     profile = await engine.build_student_profile(student_id, subject, grade, history)
+    _check_engine_result(profile, "学生画像")
     click.echo()
     click.echo(f"👤 学生画像: {profile.name}({profile.student_id})")
     click.echo(f"   学科: {profile.subject} | 年级: {profile.grade}")
     click.echo(f"   水平: {profile.overall_level} | 趋势: {profile.learning_trend}")
     if profile.risk_indicators:
-        click.echo(f"   ⚠️ 风险: {', '.join(profile.risk_indicators)}")
+        click.echo(f"   ⚠️ 风险: {_join_str(profile.risk_indicators)}")
     if profile.recommended_actions:
-        click.echo(f"   💡 建议: {', '.join(profile.recommended_actions[:3])}")
+        click.echo(f"   💡 建议: {_join_str(profile.recommended_actions[:3])}")
     click.echo()
 
 
@@ -432,6 +461,8 @@ async def _async_error_analysis(ctx, subject, grade, data):
     for a in all_assessments:
         responses.extend(a.responses)
     errors = await engine.analyze_errors(subject, grade, responses)
+    if errors is None:
+        raise click.ClickException("错题归因分析失败: 引擎返回空")
     click.echo()
     click.echo(f"🔍 错题归因分析: {subject} {grade}")
     click.echo(f"   错误类型数: {len(errors)}")
@@ -465,10 +496,11 @@ async def _async_remedial(ctx, student_id, subject, grade, data):
         for wn in weak_names
     ]
     plan = await engine.generate_remedial_plan(student_id, subject, grade, weak_points)
+    _check_engine_result(plan, "补救方案")
     click.echo()
     click.echo(f"💊 补救方案: {plan.student_id}")
-    click.echo(f"   薄弱点: {', '.join(wp.knowledge_point_name for wp in plan.weak_points[:3])}")
-    click.echo(f"   策略: {', '.join(plan.strategies[:3])}")
+    click.echo(f"   薄弱点: {_join_str(wp.knowledge_point_name for wp in plan.weak_points[:3])}")
+    click.echo(f"   策略: {_join_str(plan.strategies[:3])}")
     click.echo(f"   时间线: {plan.timeline}")
     click.echo()
 
@@ -488,7 +520,10 @@ async def _async_report(ctx, class_id, subject, grade, data):
     engine = ctx.obj["analytics"]
     assessments = _load_assessments(data)
     profile = await engine.build_class_profile(class_id, subject, grade, assessments)
+    _check_engine_result(profile, "班级报告")
     report = await engine.generate_class_report(profile)
+    if not isinstance(report, str) or not report.strip():
+        raise click.ClickException("班级报告生成失败: 引擎返回空")
     click.echo()
     click.echo(report)
     click.echo()
@@ -560,6 +595,8 @@ def agent_run(task_id, subject, grade, data_path):
     click.echo(f"   状态: {result.status}")
     click.echo(f"   摘要: {result.summary}")
     click.echo()
+    if result.status != "success":
+        raise click.ClickException(f"任务执行失败: {result.summary}")
 
 
 @agent.command("history")
@@ -615,9 +652,9 @@ def safety_check(text, grade):
     click.echo(f"   安全: {'✅ 是' if result.is_safe else '❌ 否'}")
     click.echo(f"   风险等级: {result.risk_level}")
     if result.flagged_words:
-        click.echo(f"   敏感词: {', '.join(result.flagged_words)}")
+        click.echo(f"   敏感词: {_join_str(result.flagged_words)}")
     if result.age_issues:
-        click.echo(f"   适龄问题: {'; '.join(result.age_issues)}")
+        click.echo(f"   适龄问题: {_join_str(result.age_issues, sep='; ')}")
     click.echo(f"   摘要: {result.summary}")
     click.echo()
 
@@ -637,26 +674,35 @@ def safety_filter(text):
 @click.option("--add", "add_word", default="", help="添加敏感词")
 @click.option("--remove", "remove_word", default="", help="移除敏感词")
 @click.option("--list", "list_words", is_flag=True, help="列出所有敏感词")
-def safety_wordlist(add_word, remove_word, list_words):
+@click.option(
+    "--path", "wl_path", default="",
+    help="词库文件路径; 默认 ~/.fusion-k12/sensitive_words.txt (避免写只读包目录)",
+)
+def safety_wordlist(add_word, remove_word, list_words, wl_path):
     """管理敏感词库。"""
-    wl = SensitiveWordList()
+    # CLI-3: 默认写用户数据目录, 不写包内 site-packages(只读装会 PermissionError)
+    if not wl_path:
+        user_dir = os.path.expanduser("~/.fusion-k12")
+        os.makedirs(user_dir, exist_ok=True)
+        wl_path = os.path.join(user_dir, "sensitive_words.txt")
+    wl = SensitiveWordList(path=wl_path)
     if add_word:
         wl.add(add_word)
         wl.save()
-        click.echo(f"✅ 已添加: {add_word}")
+        click.echo(f"✅ 已添加: {add_word} (词库: {wl_path})")
     elif remove_word:
         wl.remove(remove_word)
         wl.save()
-        click.echo(f"⛔ 已移除: {remove_word}")
+        click.echo(f"⛔ 已移除: {remove_word} (词库: {wl_path})")
     elif list_words:
         words = wl.list_words()
         click.echo()
-        click.echo(f"📋 敏感词库 ({len(words)} 个):")
+        click.echo(f"📋 敏感词库 ({len(words)} 个) @ {wl_path}")
         for w in words:
             click.echo(f"   {w}")
         click.echo()
     else:
-        click.echo(f"当前词库: {wl.count} 个敏感词")
+        click.echo(f"当前词库: {wl.count} 个敏感词 @ {wl_path}")
 
 
 # ── 数据脱敏 ──
@@ -692,7 +738,7 @@ def desensitize_anon(input_file, mode, prefix, output):
     click.echo(f"   原始记录: {result.original_count}")
     click.echo(f"   脱敏记录: {result.anonymized_count}")
     click.echo(f"   名称映射: {len(result.name_map)} 个")
-    click.echo(f"   脱敏字段: {', '.join(result.masked_fields)}")
+    click.echo(f"   脱敏字段: {_join_str(result.masked_fields)}")
     if output:
         with open(output, "w", encoding="utf-8") as f:
             _json.dump(desensitized, f, ensure_ascii=False, indent=2)
