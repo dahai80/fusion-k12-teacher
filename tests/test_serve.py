@@ -88,7 +88,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "1.0.7"
+        assert data["version"] == "1.0.8"
 
 
 class TestCurriculumPlan:
