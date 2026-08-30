@@ -60,6 +60,23 @@ class Repository(ABC):
         """清理超时锁 — 返回清理条数。默认空实现返 0。"""
         return 0
 
+    # ── M3-T14: 审计持久化 ──
+    # audit_events 表存每请求审计 (ts/trace_id/route/status/duration/student_hash/...)。
+    # 留存: purge_audit(days) 清理 N 天前; 归档侧可另接。
+
+    def save_audit(self, records: list[dict[str, Any]]) -> None:
+        """批量写审计事件 (追加语义, 非覆写)。默认空实现。"""
+
+    def load_audit(
+        self, since_ts: str = "", limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """加载审计事件 — since_ts 起升序, 限 limit 条。默认返空。"""
+        return []
+
+    def purge_audit(self, before_ts: str) -> int:
+        """清理 before_ts 之前的审计事件 — 返删除条数。默认 0。"""
+        return 0
+
     def close(self) -> None:
         """释放后端资源 (连接/文件句柄)。默认空实现。"""
 

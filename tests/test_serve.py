@@ -112,7 +112,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "2.0.0b0"
+        assert data["version"] == "2.0.0rc"
 
 
 class TestCurriculumPlan:
@@ -439,3 +439,135 @@ class TestAuthEnforcement:
                 "grade": "3", "subject": "数学", "topic": "分数",
             })
             assert resp.status_code == 401
+
+
+class TestGracefulDrain:
+    """M3-T19: 排水下线 — drain 期拒绝新请求, 等在途归零。"""
+
+    @pytest.mark.asyncio
+    async def test_draining_rejects_new(self, client):
+        import fusion_k12_teacher.serve as srv
+        srv._draining = True
+        srv._ready = True
+        try:
+            resp = await client.post("/api/curriculum/plan", json={
+                "grade": "3", "subject": "数学", "topic": "分数",
+            })
+            assert resp.status_code == 503
+            assert resp.headers.get("Connection") == "close"
+        finally:
+            srv._draining = False
+
+    @pytest.mark.asyncio
+    async def test_drain_inflight_zero_immediate(self):
+        import asyncio
+
+        import fusion_k12_teacher.serve as srv
+        from fusion_k12_teacher.serve import _drain_inflight
+        srv._inflight = 0
+        srv._inflight_zero = asyncio.Event()
+        await asyncio.wait_for(_drain_inflight(), timeout=2)
+        assert srv._draining is True
+        srv._draining = False
+
+    @pytest.mark.asyncio
+    async def test_drain_inflight_waits_then_completes(self):
+        import asyncio
+
+        import fusion_k12_teacher.serve as srv
+        from fusion_k12_teacher.serve import _drain_inflight
+        srv._inflight = 1
+        srv._inflight_zero = asyncio.Event()
+
+        async def release_after():
+            await asyncio.sleep(0.1)
+            srv._inflight = 0
+            srv._inflight_zero.set()
+
+        await asyncio.gather(_drain_inflight(), release_after())
+        assert srv._draining is True
+        srv._draining = False
+
+    @pytest.mark.asyncio
+    async def test_drain_timeout_forces_close(self, monkeypatch):
+        import asyncio
+
+        import fusion_k12_teacher.serve as srv
+        from fusion_k12_teacher.serve import _drain_inflight
+        monkeypatch.setenv("FUSION_K12_DRAIN_TIMEOUT", "0.2")
+        srv._inflight = 1
+        srv._inflight_zero = asyncio.Event()
+        await _drain_inflight()
+        assert srv._draining is True
+        srv._draining = False
+
+
+class TestAuditServe:
+    """M3-T13/T15: 审计中间件 + 导出端点。"""
+
+    @pytest.mark.asyncio
+    async def test_audit_trace_id_header(self, client):
+        resp = await client.post("/api/curriculum/plan", json={
+            "grade": "3", "subject": "数学", "topic": "分数",
+        })
+        assert resp.headers.get("X-Trace-Id")
+
+    @pytest.mark.asyncio
+    async def test_audit_export_admin_key(self, client):
+        import os
+
+        import fusion_k12_teacher.serve as srv
+        os.environ["FUSION_K12_ADMIN_API_KEY"] = "admin-secret"
+        orig = getattr(srv.scheduler, "_repo", None)
+
+        class _FakeRepo:
+            def load_audit(self, since_ts="", limit=1000):
+                return [{"route": "/api/x", "status": 200, "ts": "2026-01-01T00:00:00"}]
+
+        srv.scheduler._repo = _FakeRepo()
+        try:
+            resp = await client.get(
+                "/api/audit/export?format=json&limit=10",
+                headers={"X-API-Key": "admin-secret"},
+            )
+            assert resp.status_code == 200
+        finally:
+            srv.scheduler._repo = orig
+            os.environ.pop("FUSION_K12_ADMIN_API_KEY", None)
+
+    @pytest.mark.asyncio
+    async def test_audit_export_wrong_key_rejected(self, client):
+        import os
+        os.environ["FUSION_K12_ADMIN_API_KEY"] = "admin-secret"
+        try:
+            resp = await client.get(
+                "/api/audit/export", headers={"X-API-Key": "wrong"},
+            )
+            assert resp.status_code == 403
+        finally:
+            os.environ.pop("FUSION_K12_ADMIN_API_KEY", None)
+
+
+class TestMetricsServe:
+    """M3-T16: 指标端点。"""
+
+    @pytest.mark.asyncio
+    async def test_metrics_endpoint_admin(self, client):
+        import os
+        os.environ["FUSION_K12_ADMIN_API_KEY"] = "admin-secret"
+        try:
+            resp = await client.get("/api/metrics", headers={"X-API-Key": "admin-secret"})
+            assert resp.status_code == 200
+            assert "k12_request_total" in resp.text
+        finally:
+            os.environ.pop("FUSION_K12_ADMIN_API_KEY", None)
+
+    @pytest.mark.asyncio
+    async def test_metrics_wrong_key_rejected(self, client):
+        import os
+        os.environ["FUSION_K12_ADMIN_API_KEY"] = "admin-secret"
+        try:
+            resp = await client.get("/api/metrics", headers={"X-API-Key": "nope"})
+            assert resp.status_code == 403
+        finally:
+            os.environ.pop("FUSION_K12_ADMIN_API_KEY", None)

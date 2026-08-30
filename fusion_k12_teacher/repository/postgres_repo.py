@@ -36,6 +36,21 @@ CREATE TABLE IF NOT EXISTS task_lock (
     acquired_ts DOUBLE PRECISION NOT NULL,
     ttl         DOUBLE PRECISION NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit_events (
+    id           SERIAL PRIMARY KEY,
+    ts           TEXT    NOT NULL,
+    trace_id     TEXT    NOT NULL DEFAULT '',
+    route        TEXT    NOT NULL DEFAULT '',
+    method       TEXT    NOT NULL DEFAULT '',
+    status       INTEGER NOT NULL DEFAULT 0,
+    duration_ms  DOUBLE PRECISION NOT NULL DEFAULT 0,
+    student_hash TEXT    NOT NULL DEFAULT '',
+    llm_model    TEXT    NOT NULL DEFAULT '',
+    llm_status   TEXT    NOT NULL DEFAULT '',
+    client_ip    TEXT    NOT NULL DEFAULT '',
+    error        TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts);
 """
 
 # M1-T6: 加密列 — name_hash (sha256 查询键) + name_encrypted (AES-GCM 可逆)。
@@ -300,3 +315,77 @@ class PostgresRepository(Repository):
     def reap_expired_locks(self) -> int:
         import asyncio
         return asyncio.get_event_loop().run_until_complete(self.areap_expired_locks())
+
+    # ── M3-T14: 审计持久化 (异步, cluster 模式用) ──
+
+    async def asave_audit(self, records: list[dict[str, Any]]) -> None:
+        if not records:
+            return
+        await self.ensure_pool()
+        cols = (
+            "ts", "trace_id", "route", "method", "status", "duration_ms",
+            "student_hash", "llm_model", "llm_status", "client_ip", "error",
+        )
+        rows = []
+        for r in records:
+            row = []
+            for c in cols:
+                v = r.get(c, 0 if c in ("status", "duration_ms") else "")
+                if c == "status":
+                    v = int(v)
+                elif c == "duration_ms":
+                    v = float(v)
+                else:
+                    v = str(v)
+                row.append(v)
+            rows.append(tuple(row))
+        async with self._pool.acquire() as conn:
+            placeholders = ",".join(f"${i+1}" for i in range(len(cols)))
+            await conn.executemany(
+                f"INSERT INTO audit_events ({','.join(cols)}) VALUES ({placeholders})",
+                rows,
+            )
+
+    async def aload_audit(
+        self, since_ts: str = "", limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        await self.ensure_pool()
+        cols = (
+            "ts", "trace_id", "route", "method", "status", "duration_ms",
+            "student_hash", "llm_model", "llm_status", "client_ip", "error",
+        )
+        async with self._pool.acquire() as conn:
+            if since_ts:
+                rows = await conn.fetch(
+                    f"SELECT {','.join(cols)} FROM audit_events WHERE ts >= $1 "
+                    f"ORDER BY id ASC LIMIT $2",
+                    since_ts, limit,
+                )
+                return [dict(zip(cols, r)) for r in rows]
+            rows = await conn.fetch(
+                f"SELECT {','.join(cols)} FROM audit_events "
+                f"ORDER BY id DESC LIMIT $1",
+                limit,
+            )
+        return [dict(zip(cols, r)) for r in reversed(rows)]
+
+    async def apurge_audit(self, before_ts: str) -> int:
+        await self.ensure_pool()
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM audit_events WHERE ts < $1", before_ts
+            )
+            return int(result.split()[-1]) if result else 0
+
+    # 同步适配
+    def save_audit(self, records: list[dict[str, Any]]) -> None:
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(self.asave_audit(records))
+
+    def load_audit(self, since_ts: str = "", limit: int = 1000) -> list[dict[str, Any]]:
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(self.aload_audit(since_ts, limit))
+
+    def purge_audit(self, before_ts: str) -> int:
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(self.apurge_audit(before_ts))

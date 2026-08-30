@@ -193,20 +193,35 @@ class MLXClient:
         temperature: float,
         max_tokens: int,
     ) -> str:
-        if _HAS_FUSION_CORE and self._inner is not None:
+        import time as _time
+        _t0 = _time.monotonic()
+        _ok = False
+        try:
+            if _HAS_FUSION_CORE and self._inner is not None:
+                try:
+                    r = await self._inner.chat_text(
+                        model=model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    _ok = True
+                    return r
+                except NonDegradableError:
+                    # P2: 认证/服务端硬错不可降级 — 直接上抛, 不吞成 httpx 重试 (与 _chat_httpx A12 一致)
+                    raise
+                except Exception as e:
+                    logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
+            r = await self._chat_httpx(messages, model, temperature, max_tokens)
+            _ok = True
+            return r
+        finally:
+            # M3-T16: LLM 调用指标 — 计数 + 延迟
             try:
-                return await self._inner.chat_text(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            except NonDegradableError:
-                # P2: 认证/服务端硬错不可降级 — 直接上抛, 不吞成 httpx 重试 (与 _chat_httpx A12 一致)
-                raise
-            except Exception as e:
-                logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
-        return await self._chat_httpx(messages, model, temperature, max_tokens)
+                from .metrics import get_metrics
+                get_metrics().record_llm(model or "", _ok, _time.monotonic() - _t0)
+            except Exception:
+                pass
 
     async def _chat_httpx(
         self,
