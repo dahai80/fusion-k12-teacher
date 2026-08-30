@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 from ..standards.query import StandardsQuery
 from .models import (
@@ -134,6 +135,7 @@ class AnalyticsEngine:
             risk_levels = self._calc_risk_levels(assessments)
         except Exception as exc:
             logger.error("build_class_profile 统计计算失败, 降级到空统计: %s", exc, exc_info=True)
+            rethrow_if_fatal(exc)
 
         summary = self._build_class_summary(
             class_id, subject, grade, total_students, avg_score,
@@ -173,6 +175,7 @@ class AnalyticsEngine:
                 llm_err = "LLM 返回空或无法解析"
         except Exception as e:
             logger.error(f"LLM 班级画像增强失败: {e}")
+            rethrow_if_fatal(e)
             llm_err = str(e)
 
         return ClassProfile(
@@ -280,6 +283,7 @@ class AnalyticsEngine:
             llm_err = "LLM 返回空或无法解析"
         except Exception as e:
             logger.error(f"LLM 学生画像增强失败: {e}")
+            rethrow_if_fatal(e)
             llm_err = str(e)
 
         return StudentProfile(
@@ -377,6 +381,7 @@ class AnalyticsEngine:
                 logger.error("错题归因: LLM 返回空或无法解析，回退")
         except Exception as e:
             logger.error(f"LLM 错题归因失败: {e}")
+            rethrow_if_fatal(e)
 
         return [ErrorAnalysis(
             error_id="err-fallback",
@@ -462,6 +467,7 @@ class AnalyticsEngine:
             llm_err = "LLM 返回空或无法解析"
         except Exception as e:
             logger.error(f"LLM 补救方案生成失败: {e}")
+            rethrow_if_fatal(e)
             llm_err = str(e)
 
         return RemedialPlan(
@@ -518,6 +524,7 @@ class AnalyticsEngine:
             return self._fallback_report(class_profile)
         except Exception as e:
             logger.error(f"LLM 报告生成失败: {e}")
+            rethrow_if_fatal(e)
             return self._fallback_report(class_profile)
 
     # ── 统计辅助方法 ──

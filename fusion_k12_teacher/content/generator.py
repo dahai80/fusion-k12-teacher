@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ class ContentGenerator:
             return Worksheet(title=f"{topic_s}练习", subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")
         except Exception as e:
             logger.error(f"工作纸生成失败: {e}")
+            rethrow_if_fatal(e)
             return Worksheet(title=f"{topic_s}练习", subject=subject_s, grade=grade_s, error=str(e))
 
     async def generate_flashcards(self, subject: str, grade: str, topic: str, count: int = 10) -> list[dict[str, str]]:
@@ -140,6 +142,7 @@ class ContentGenerator:
             return []
         except Exception as e:
             logger.error(f"闪卡生成失败: {e}")
+            rethrow_if_fatal(e)
             return []
 
     async def generate_lesson_slides(self, subject: str, grade: str, topic: str, num_slides: int = 8) -> list[dict[str, str]]:
@@ -171,6 +174,7 @@ class ContentGenerator:
             return []
         except Exception as e:
             logger.error(f"课件大纲生成失败: {e}")
+            rethrow_if_fatal(e)
             return []
 
     async def generate_educational_game(self, subject: str, grade: str, topic: str, game_type: str = "quiz") -> dict[str, Any]:
@@ -205,6 +209,7 @@ class ContentGenerator:
             return {"title": f"{topic_s}游戏", "error": "LLM 返回空或无法解析"}
         except Exception as e:
             logger.error(f"教育游戏生成失败: {e}")
+            rethrow_if_fatal(e)
             return {"title": f"{topic_s}游戏", "error": str(e)}
 
     async def generate_parent_communication(self, student: str, grade: str, subject: str, topic: str) -> str:
@@ -232,6 +237,7 @@ class ContentGenerator:
             return text
         except Exception as e:
             logger.error(f"家校沟通信生成失败: {e}")
+            rethrow_if_fatal(e)
             return ""
 
     def _parse_json(self, text: Any) -> Any:

@@ -36,7 +36,8 @@ from .subjects import SubjectExpert
 logger = logging.getLogger(__name__)
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-_API_KEY = os.environ.get("FUSION_K12_API_KEY", "")
+# R1: API key 改每请求读 env — 运行期轮换密钥即时生效, 不再导入时固化。模块常量留空,
+# require_api_key 内 os.environ.get 现取。lifespan 启动日志仍可 log key 是否已配置。
 _RATE_WINDOW = int(os.environ.get("FUSION_K12_RATE_WINDOW", "60"))
 _RATE_MAX = int(os.environ.get("FUSION_K12_RATE_MAX", "60"))
 # A1: 跨进程共享速率限制状态文件 — uvicorn --workers N / 多节点各进程共一份令牌桶。
@@ -113,14 +114,15 @@ async def _client_key(request: Request) -> str:
 
 
 async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
-    # SRV-1: 未配置 API key 时 fail-closed — 拒绝所有受保护端点, 不再默认放行
-    if not _API_KEY:
+    # R1: 每请求现读 env — 密钥轮换后无需重启即生效。SRV-1 fail-closed: 未配置拒所有端点。
+    configured = os.environ.get("FUSION_K12_API_KEY", "")
+    if not configured:
         logger.error("FUSION_K12_API_KEY 未配置, 拒绝受保护端点 (fail-closed)")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="API key not configured; set FUSION_K12_API_KEY",
         )
-    if not api_key or not secrets.compare_digest(api_key, _API_KEY):
+    if not api_key or not secrets.compare_digest(api_key, configured):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="missing or invalid X-API-Key",
@@ -161,7 +163,9 @@ async def lifespan(app: FastAPI):
     global _ready
     # SRV-5: 构建失败时 yield 不执行, 须 try/except 清理已分配资源
     try:
-        bundle = build_engines()
+        # A9: build_engines 内含 loader.load_all() 同步磁盘 I/O, 放线程池
+        # 避免阻塞事件循环 — 大课标库首次加载数百毫秒, 否则并发请求全挂起。
+        bundle = await asyncio.to_thread(build_engines)
         mlx_client = bundle.mlx
         curriculum_engine = bundle.curriculum
         assessment_engine = bundle.assessment
@@ -565,6 +569,7 @@ async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(req
     profile = await analytics_engine.build_class_profile(
         class_id=req.class_id, subject=req.subject, grade=req.grade, assessments=assessments,
     )
+    _check_engine_error(profile, "analytics/class-profile")
     return profile.to_dict()
 
 
@@ -577,6 +582,7 @@ async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends
     profile = await analytics_engine.build_student_profile(
         student_id=req.student_id, subject=req.subject, grade=req.grade, history=history,
     )
+    _check_engine_error(profile, "analytics/student-profile")
     return profile.to_dict()
 
 
@@ -603,6 +609,7 @@ async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_
     student_profile = await analytics_engine.build_student_profile(
         student_id=req.student_id, subject=req.subject, grade=req.grade, history=history,
     )
+    _check_engine_error(student_profile, "analytics/student-profile")
     weak_points = [
         WeakPoint(knowledge_point_id=wn, knowledge_point_name=wn, error_rate=0.5)
         for wn in list(student_profile.knowledge_mastery.keys())[:5]
@@ -610,6 +617,7 @@ async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_
     plan = await analytics_engine.generate_remedial_plan(
         student_id=req.student_id, subject=req.subject, grade=req.grade, weak_points=weak_points,
     )
+    _check_engine_error(plan, "analytics/remedial")
     return plan.to_dict()
 
 
@@ -621,6 +629,7 @@ async def analytics_class_report(req: ClassReportRequest, _: str = Depends(requi
     profile = await analytics_engine.build_class_profile(
         class_id=req.class_id, subject=req.subject, grade=req.grade, assessments=assessments,
     )
+    _check_engine_error(profile, "analytics/class-profile")
     report = await analytics_engine.generate_class_report(profile)
     return {"class_id": req.class_id, "report": report}
 

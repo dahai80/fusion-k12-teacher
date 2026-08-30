@@ -15,6 +15,8 @@ from typing import Any
 
 import httpx
 
+from .errors import NonDegradableError, classify_http_status
+
 logger = logging.getLogger(__name__)
 
 _FALLBACK_URL = "http://localhost:11432/v1"
@@ -197,6 +199,10 @@ class MLXClient:
         resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
             raise _ModelNotFound(f"模型未加载: {model}")
+        # A12: 认证错(401/403)/服务端硬错(5xx)不可降级 — 须上抛暴露, 不被引擎 blanket except 吞成空对象。
+        # classify 在 raise_for_status 前先判, 命中则抛 NonDegradableError (EngineError 子类)。
+        if classify_http_status(resp.status_code):
+            raise NonDegradableError(f"LLM HTTP {resp.status_code}: {str(resp.text)[:200]}")
         resp.raise_for_status()
         # LLM-3: 网关非标结构无 KeyError/IndexError 防御会直接崩, 降级空串并记日志
         try:

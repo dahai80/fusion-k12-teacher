@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class PersonalizationEngine:
                 )
         except Exception as e:
             logger.error(f"学习路径生成失败: {e}")
+            rethrow_if_fatal(e)
         return LearningPath(student_id=student, grade=grade, subject=subject)
 
     async def diagnose_skills(self, subject: str, grade: str, responses: list[dict]) -> dict[str, Any]:
@@ -114,6 +116,7 @@ class PersonalizationEngine:
                 return out
             return {"overall_level": "unknown"}
         except Exception as e:
+            rethrow_if_fatal(e)
             return {"error": str(e)}
 
     async def recommend_resources(self, student: str, grade: str, subject: str, weakness: str) -> dict[str, Any]:
@@ -150,6 +153,7 @@ class PersonalizationEngine:
                 return out
             return {"resources": []}
         except Exception as e:
+            rethrow_if_fatal(e)
             return {"error": str(e)}
 
     def _parse_json(self, text: str) -> Any:

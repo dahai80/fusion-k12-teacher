@@ -5,7 +5,10 @@ import re
 
 from ..safety.filter import sanitize_input
 from .models import AlignmentContext
-from .query import StandardsQuery
+
+# A10: 复用 query._word_match (CJK bigram 整词命中), 与 find_by_topic 主路径对齐,
+# 不再 fallback 裸子串。_cjk_tokens 本模块另用于 validate_alignment, 保留本地一份。
+from .query import StandardsQuery, _word_match
 
 logger = logging.getLogger(__name__)
 
@@ -38,21 +41,31 @@ class StandardsAligner:
 
     def __init__(self, query: StandardsQuery | None = None):
         self._query = query or StandardsQuery()
+        # A7: 按 (subject,grade,topic) 缓存 AlignmentContext — 单主题 lesson+quiz+worksheet
+        # 生成时 align() 对同三元组重复计算 3 次, 课标数据不变时缓存命中免重复扫描。
+        self._cache: dict[tuple[str, str, str], AlignmentContext] = {}
 
     def align(
         self, subject: str, grade: str, topic: str
     ) -> AlignmentContext:
         """返回课标对齐上下文，注入到 engine prompt。"""
+        cache_key = (subject, grade, topic)
+        # A7: 命中缓存直接返回, 跳过 find_by_topic + fallback + 前置计算
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.debug(f"课标对齐缓存命中: {subject}/{grade}/{topic}")
+            return cached
         points = self._query.find_by_topic(subject, grade, topic)
 
         if not points:
             logger.info(f"课标未命中: {subject}/{grade}/{topic}，尝试宽泛匹配")
             all_points = self._query.get_knowledge_points(subject, grade)
             topic_lower = topic.lower()
-            topic_tokens = _cjk_tokens(topic)
             for kp in all_points:
-                kp_text = (kp.topic + " " + kp.description).lower()
-                if topic_lower in kp_text or any(tok in kp_text for tok in topic_tokens):
+                # A10: fallback 复用 query._word_match — 与 find_by_topic 主路径一致,
+                # 杜绝裸子串重新引入"加"命中"加权/参加"过度命中 (STD-3 修复在 fallback 回归)。
+                # topic 字段子串 + description 整词命中, 与 find_by_topic L107 同策略。
+                if topic_lower in kp.topic.lower() or _word_match(topic_lower, kp.description.lower()):
                     points.append(kp)
 
         prerequisites = []
@@ -79,6 +92,8 @@ class StandardsAligner:
             f"课标对齐: {subject}/{grade}/{topic} → "
             f"{len(points)} 知识点, {len(must_cover)} 必修, {len(optional_advanced)} 拓展"
         )
+        # A7: 入缓存, 后续同三元组命中免重复计算
+        self._cache[cache_key] = ctx
         return ctx
 
     def build_prompt_context(self, alignment: AlignmentContext) -> str:

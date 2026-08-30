@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
+from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,7 @@ class AssessmentEngine:
             err_msg = "LLM返回为空或非JSON"
         except Exception as exc:
             logger.error(f"批改失败: {exc}")
+            rethrow_if_fatal(exc)
             err_msg = str(exc)
         return GradingResult(score=0, total=100, percentage=0.0, feedback=f"批改失败: {err_msg}", partial=partial)
 
@@ -173,6 +175,7 @@ class AssessmentEngine:
             err_msg = "LLM返回为空或非JSON"
         except Exception as exc:
             logger.error(f"批改失败: {exc}")
+            rethrow_if_fatal(exc)
             err_msg = str(exc)
         return GradingResult(score=0, total=10, percentage=0.0, feedback=f"批改失败: {err_msg}")
 
@@ -210,6 +213,7 @@ class AssessmentEngine:
             return StudentReport(student_name=student_s, subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")
         except Exception as e:
             logger.error(f"报告生成失败: {e}")
+            rethrow_if_fatal(e)
             return StudentReport(student_name=student_s, subject=subject_s, grade=grade_s, error=str(e))
 
     async def generate_rubric(self, assignment_type: str, grade: str, criteria: list[str] | None = None) -> dict[str, Any]:
@@ -233,6 +237,7 @@ class AssessmentEngine:
             return {"criteria": criteria or [], "error": "LLM 返回空或无法解析"}
         except Exception as e:
             logger.error(f"评分标准生成失败: {e}")
+            rethrow_if_fatal(e)
             return {"criteria": criteria or [], "error": str(e)}
 
     def _parse_json(self, text: Any) -> Any:
