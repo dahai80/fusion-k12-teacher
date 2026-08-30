@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from types import MappingProxyType
 
 from .models import CurriculumStandard, KnowledgePoint
 
@@ -100,17 +99,21 @@ class StandardsLoader:
             self.load_all()
         return self._points_index.get(point_id)
 
-    def all_points(self) -> MappingProxyType[str, KnowledgePoint]:
-        """返回所有知识点索引的只读视图(零拷贝, STD-3)。"""
-        if not self._loaded:
-            self.load_all()
-        return MappingProxyType(self._points_index)
+    def all_points(self) -> dict[str, KnowledgePoint]:
+        """返回所有知识点的快照(dict 浅拷贝, STD-6)。
 
-    def all_standards(self) -> MappingProxyType[str, CurriculumStandard]:
-        """返回所有课标的只读视图(零拷贝, STD-3)。"""
+        MappingProxyType 是活视图非快照 — reload()/迟注册 _register 改底层字典时,
+        持有视图的消费者会见到突变或在迭代中 RuntimeError。快照隔离调用方。
+        """
         if not self._loaded:
             self.load_all()
-        return MappingProxyType(self._standards)
+        return dict(self._points_index)
+
+    def all_standards(self) -> dict[str, CurriculumStandard]:
+        """返回所有课标的快照(dict 浅拷贝, STD-6)。见 all_points 说明。"""
+        if not self._loaded:
+            self.load_all()
+        return dict(self._standards)
 
     def list_subjects(self) -> list[str]:
         """列出已加载的学科。"""

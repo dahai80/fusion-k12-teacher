@@ -96,28 +96,32 @@ class TestEngineRegistry:
 class TestExecuteStep:
     def test_execute_step_simple(self):
         # AGT-1: 须用白名单内的 engine+method, 否则被方法授权拦截
+        # TEST-8: try/finally 保清理, 失败也勿泄漏全局 registry 单例
         mock_engine = MagicMock()
         mock_engine.generate_lesson_plan = AsyncMock(return_value={"result": "ok"})
         registry.register("curriculum", mock_engine)
-
-        step = TaskStep(engine="curriculum", method="generate_lesson_plan", params={"x": 1}, output_key="out")
-        context = {}
-        result = asyncio.run(execute_step(step, context))
-        assert result == {"result": "ok"}
-        assert context["out"] == {"result": "ok"}
-        del registry._engines["curriculum"]
+        try:
+            step = TaskStep(engine="curriculum", method="generate_lesson_plan", params={"x": 1}, output_key="out")
+            context = {}
+            result = asyncio.run(execute_step(step, context))
+            assert result == {"result": "ok"}
+            assert context["out"] == {"result": "ok"}
+        finally:
+            registry._engines.pop("curriculum", None)
 
     def test_execute_step_variable_resolution(self):
         # AGT-1: 须用白名单内的 engine+method
+        # TEST-8: try/finally 保清理
         mock_engine = MagicMock()
         mock_engine.generate_quiz = AsyncMock(return_value={"processed": True})
         registry.register("curriculum", mock_engine)
-
-        step = TaskStep(engine="curriculum", method="generate_quiz", params={"data": "$prev_result"}, output_key="out")
-        context = {"prev_result": "some_data"}
-        asyncio.run(execute_step(step, context))
-        mock_engine.generate_quiz.assert_called_once_with(data="some_data")
-        del registry._engines["curriculum"]
+        try:
+            step = TaskStep(engine="curriculum", method="generate_quiz", params={"data": "$prev_result"}, output_key="out")
+            context = {"prev_result": "some_data"}
+            asyncio.run(execute_step(step, context))
+            mock_engine.generate_quiz.assert_called_once_with(data="some_data")
+        finally:
+            registry._engines.pop("curriculum", None)
 
     def test_execute_step_missing_engine(self):
         step = TaskStep(engine="_missing", method="foo", params={}, output_key="out")
@@ -129,26 +133,30 @@ class TestExecuteStep:
 class TestExecuteTask:
     def test_execute_task_single_step(self):
         # AGT-1: 须用白名单内的 engine+method
+        # TEST-8: try/finally 保清理
         mock_engine = MagicMock()
         mock_engine.grade_essay = AsyncMock(return_value={"done": True})
         registry.register("assessment", mock_engine)
-
-        step = TaskStep(engine="assessment", method="grade_essay", params={}, output_key="result")
-        task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
-        result = asyncio.run(execute_task(task))
-        assert result.status == "success"
-        del registry._engines["assessment"]
+        try:
+            step = TaskStep(engine="assessment", method="grade_essay", params={}, output_key="result")
+            task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
+            result = asyncio.run(execute_task(task))
+            assert result.status == "success"
+        finally:
+            registry._engines.pop("assessment", None)
 
     def test_execute_task_step_failure(self):
+        # TEST-8: try/finally 保清理
         mock_engine = MagicMock()
         mock_engine.fail_method = AsyncMock(side_effect=Exception("boom"))
         registry.register("_test_eng4", mock_engine)
-
-        step = TaskStep(engine="_test_eng4", method="fail_method", params={}, output_key="out")
-        task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
-        result = asyncio.run(execute_task(task))
-        assert result.status == "failed"
-        del registry._engines["_test_eng4"]
+        try:
+            step = TaskStep(engine="_test_eng4", method="fail_method", params={}, output_key="out")
+            task = TeachingTask(id="t1", name="test", task_type="manual", steps=[step])
+            result = asyncio.run(execute_task(task))
+            assert result.status == "failed"
+        finally:
+            registry._engines.pop("_test_eng4", None)
 
     def test_execute_task_depends_on_unmet(self):
         step = TaskStep(engine="x", method="y", params={}, output_key="o", depends_on=["missing_dep"])

@@ -31,11 +31,17 @@ class SensitiveWordList:
 
     def _rebuild_matcher(self) -> None:
         # SECb-P1: 单正则一次扫描, 替代 O(W×N) 逐词 in 子串
+        # SEC-23: 局部构建, compile 成功才赋值, 失败保留旧 matcher 不污染 _words 状态
         if not self._words:
             self._matcher = re.compile(r"$^")
             return
-        escaped = sorted((re.escape(w) for w in self._words), key=len, reverse=True)
-        self._matcher = re.compile("|".join(escaped))
+        try:
+            escaped = sorted((re.escape(w) for w in self._words), key=len, reverse=True)
+            new_matcher = re.compile("|".join(escaped))
+        except re.error as e:
+            logger.error("敏感词 matcher 构建失败, 保留旧 matcher: %s", e)
+            raise
+        self._matcher = new_matcher
 
     def load(self) -> None:
         if not os.path.exists(self._path):
@@ -66,9 +72,15 @@ class SensitiveWordList:
 
     def add(self, word: str) -> None:
         w = _normalize(word.strip())
-        if w:
-            self._words.add(w)
+        if not w:
+            return
+        self._words.add(w)
+        # SEC-23: matcher 构建失败时回滚新增词, 不留静默缺失状态
+        try:
             self._rebuild_matcher()
+        except re.error:
+            logger.error("新增词 %r 导致 matcher 构建失败, 已回滚", w)
+            self._words.discard(w)
 
     def remove(self, word: str) -> None:
         self._words.discard(_normalize(word.strip()))

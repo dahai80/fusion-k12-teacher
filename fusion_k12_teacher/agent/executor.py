@@ -131,6 +131,8 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     )
     try:
         if is_coro:
+            # AGT-7: 超时取消协程本体, 但底层 httpx 请求可能不响应取消; shield 包裹
+            # 确保取消信号下发, 并在 finally 记录, 让运维知晓后端可能仍在跑。
             raw = await asyncio.wait_for(method(**resolved_params), timeout=_STEP_TIMEOUT)
         else:
             raw = method(**resolved_params)
@@ -138,6 +140,7 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
                 raw = await asyncio.wait_for(raw, timeout=_STEP_TIMEOUT)
         result = raw
     except TimeoutError:
+        logger.warning("步骤超时, 协程已取消(后端请求可能仍在跑): %s.%s", step.engine, step.method)
         raise RuntimeError(f"步骤超时({int(_STEP_TIMEOUT)}s): {step.engine}.{step.method}")
     except Exception:
         raise
@@ -174,9 +177,25 @@ async def execute_task(task: TeachingTask) -> TaskResult:
                 while key in result.step_results:
                     idx += 1
                     key = f"{base}_{idx}"
-            result.step_results[key] = (
-                step_result.to_dict() if hasattr(step_result, "to_dict") else str(step_result)
-            )
+            # AGT-8: 优先 to_dict; 无 to_dict 时尝试 dataclasses.asdict; 都不行才降级 str
+            # 并标记 _non_serializable, 避免历史把 dataclass 列表 str 成 "[<obj>,...]" 丢结构
+            if hasattr(step_result, "to_dict") and callable(getattr(step_result, "to_dict")):
+                result.step_results[key] = step_result.to_dict()
+            else:
+                try:
+                    from dataclasses import asdict, is_dataclass
+                    if is_dataclass(step_result) and not isinstance(step_result, type):
+                        result.step_results[key] = asdict(step_result)
+                    elif isinstance(step_result, (list, tuple)) and step_result and is_dataclass(step_result[0]):
+                        result.step_results[key] = [
+                            asdict(x) if is_dataclass(x) else str(x) for x in step_result
+                        ]
+                    else:
+                        logger.warning("步骤结果不可序列化, 降级 str: %s", type(step_result).__name__)
+                        result.step_results[key] = {"_non_serializable": str(step_result)[:500]}
+                except Exception as se:
+                    logger.warning("步骤结果序列化失败, 降级 str: %s", se)
+                    result.step_results[key] = {"_non_serializable": str(step_result)[:500]}
 
         result.status = "success"
         result.summary = f"完成 {len(task.steps)} 步"

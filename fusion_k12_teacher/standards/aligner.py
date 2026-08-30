@@ -135,7 +135,10 @@ class StandardsAligner:
         for kp in must_cover:
             kp_topic_lower = kp.topic.lower()
             kp_tokens = _cjk_tokens(kp.topic + " " + kp.description)
-            if kp_topic_lower in obj_blob or any(tok in obj_tokens for tok in kp_tokens):
+            # STD-5: any(tok in obj_tokens) 是 list 精确成员, bigram 偏移 1 即漏;
+            # 改 tok in obj_blob 子串命中 (obj_blob L133 已拼, token 间以空格隔开,
+            # 跨 token 子串不会假拼)。topic 整词保留子串, description 走 bigram 子串。
+            if kp_topic_lower in obj_blob or any(tok in obj_blob for tok in kp_tokens):
                 covered.append(kp.id)
             else:
                 missing.append(kp.id)

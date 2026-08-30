@@ -7,13 +7,45 @@ import re
 from typing import Any
 
 from ..ai_client import MLXClient
-from ..safety.filter import sanitize_input
+from ..safety.filter import ContentFilter, sanitize_input
 from ..standards.aligner import StandardsAligner
 from ..standards.query import StandardsQuery
 from .level_config import LEVEL_CONFIGS
 from .models import DifferentiatedContent, GroupTask, LayerContent
 
 logger = logging.getLogger(__name__)
+
+# ENG-17: 分层内容直达学生, 文本/列表有界 + 过 ContentFilter
+_MAX_STR = 5000
+_MAX_LIST = 50
+
+
+def _bound_str(val: Any) -> str:
+    s = str(val) if val is not None else ""
+    return s[:_MAX_STR]
+
+
+def _bound_str_list(val: Any) -> list[str]:
+    if not isinstance(val, list):
+        return []
+    return [_bound_str(x) for x in val[:_MAX_LIST]]
+
+
+def _bound_exercises(val: Any) -> list[Any]:
+    if not isinstance(val, list):
+        return []
+    out = []
+    for ex in val[:_MAX_LIST]:
+        if not isinstance(ex, dict):
+            continue
+        item = {}
+        for k, v in ex.items():
+            if isinstance(v, str):
+                item[k] = v[:_MAX_STR]
+            else:
+                item[k] = v
+        out.append(item)
+    return out
 
 
 def _sgt(subject: str, grade: str, topic: str) -> tuple[str, str, str]:
@@ -31,9 +63,21 @@ class DifferentiationEngine:
         self,
         mlx: MLXClient | None = None,
         standards_query: StandardsQuery | None = None,
+        content_filter: ContentFilter | None = None,
     ):
         self.mlx = mlx or MLXClient()
         self._aligner = StandardsAligner(standards_query)
+        self._filter = content_filter or ContentFilter()
+
+    def _filter_output(self, text: str, grade: str) -> str:
+        """ENG-17: 分层文本过 safety.check_output, 命中则替换掩码并告警。"""
+        if not isinstance(text, str) or not text:
+            return text
+        check = self._filter.check_output(text, grade)
+        if not check.is_safe:
+            logger.warning("分层内容检出不当, 已过滤: %s", check.summary)
+            return check.filtered_text
+        return text
 
     async def generate_differentiated_lesson(
         self,
@@ -185,10 +229,10 @@ class DifferentiationEngine:
         data = self._parse_json(response)
         if data:
             return LayerContent(
-                explanation=data.get("explanation", ""),
-                exercises=data.get("exercises", []),
-                hints=data.get("hints", []),
-                extension=data.get("extension", ""),
+                explanation=self._filter_output(_bound_str(data.get("explanation", "")), grade),
+                exercises=_bound_exercises(data.get("exercises", [])),
+                hints=[self._filter_output(s, grade) for s in _bound_str_list(data.get("hints", []))],
+                extension=self._filter_output(_bound_str(data.get("extension", "")), grade),
             )
         return LayerContent()
 
@@ -230,11 +274,11 @@ class DifferentiationEngine:
         data = self._parse_json(response)
         if data:
             return LayerContent(
-                explanation=data.get("explanation", ""),
-                examples=data.get("examples", []),
-                exercises=data.get("exercises", []),
-                hints=data.get("hints", []),
-                extension=data.get("extension", ""),
+                explanation=self._filter_output(_bound_str(data.get("explanation", "")), grade),
+                examples=[self._filter_output(s, grade) for s in _bound_str_list(data.get("examples", []))],
+                exercises=_bound_exercises(data.get("exercises", [])),
+                hints=[self._filter_output(s, grade) for s in _bound_str_list(data.get("hints", []))],
+                extension=self._filter_output(_bound_str(data.get("extension", "")), grade),
             )
         return LayerContent()
 
@@ -268,7 +312,7 @@ class DifferentiationEngine:
         if isinstance(questions, list):
             return LayerContent(
                 explanation=f"{config['label']}测验",
-                exercises=questions,
+                exercises=_bound_exercises(questions),
             )
         return LayerContent()
 
@@ -311,10 +355,10 @@ C组(挑战): 面向优等生，任务有挑战，重在拓展探究
                 if not isinstance(item, dict):
                     continue
                 tasks.append(GroupTask(
-                    group_name=str(item.get("group_name", "")),
-                    task_description=str(item.get("task_description", "")),
-                    expected_output=str(item.get("expected_output", "")),
-                    time_allocation=str(item.get("time_allocation", "")),
+                    group_name=_bound_str(item.get("group_name", ""))[:100],
+                    task_description=self._filter_output(_bound_str(item.get("task_description", "")), grade),
+                    expected_output=self._filter_output(_bound_str(item.get("expected_output", "")), grade),
+                    time_allocation=_bound_str(item.get("time_allocation", ""))[:100],
                 ))
             if tasks:
                 return tasks

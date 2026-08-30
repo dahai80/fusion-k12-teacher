@@ -14,6 +14,32 @@ logger = logging.getLogger(__name__)
 
 _CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
 
+# AGT-2: 数据文件允许目录 — CLI/tasks 与 serve 共用同一白名单, 杜绝任意路径读取
+def _allowed_data_dirs() -> list[Path]:
+    project_root = Path(__file__).resolve().parent.parent
+    return [
+        (project_root / "data").resolve(),
+        (project_root / "examples").resolve(),
+        (Path.cwd() / "data").resolve(),
+    ]
+
+
+class DataPathError(ValueError):
+    """数据路径越界 — CLI 转 click.ClickException, serve 转 HTTPException。"""
+
+
+def validate_data_path(path: str) -> Path:
+    """AGT-2: 校验 data_path 在允许目录内 (is_relative_to 精确匹配, 非前缀)。"""
+    resolved = Path(path).resolve()
+    for d in _allowed_data_dirs():
+        try:
+            if resolved.is_relative_to(d):
+                return resolved
+        except (ValueError, OSError):
+            continue
+    logger.warning("data path outside allowed dirs: %s", resolved)
+    raise DataPathError(f"data path not allowed: {resolved}")
+
 
 def _sanitize_cell(val: Any) -> str:
     """消毒 CSV 单元格 — 剥离公式注入前缀 (ENG-8)。"""

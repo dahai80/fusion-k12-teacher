@@ -9,11 +9,25 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
-from ..safety.filter import sanitize_input
+from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
 
 _ESSAY_MAX = 4000
+# ENG-19: 评语/反馈面向学生家长, 过 safety.check_output 后再返
+_MAX_FEEDBACK = 5000
+_MAX_LIST_ITEMS = 50
+
+
+def _bound_str(val: Any) -> str:
+    s = str(val) if val is not None else ""
+    return s[:_MAX_FEEDBACK]
+
+
+def _bound_str_list(val: Any) -> list[str]:
+    if not isinstance(val, list):
+        return []
+    return [_bound_str(x) for x in val[:_MAX_LIST_ITEMS]]
 
 
 def _clamp_score(score: float, total: float) -> tuple[float, float, float]:
@@ -73,8 +87,19 @@ class StudentReport:
 class AssessmentEngine:
     """评估引擎 — 对标 Claude K-12 Teacher 的作业批改和评估能力。"""
 
-    def __init__(self, mlx: MLXClient | None = None):
+    def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
+        self._filter = content_filter or ContentFilter()
+
+    def _filter_output(self, text: str, grade: str) -> str:
+        """ENG-19: 评语/反馈过 safety.check_output, 命中则替换掩码并告警。"""
+        if not isinstance(text, str) or not text:
+            return text
+        check = self._filter.check_output(text, grade)
+        if not check.is_safe:
+            logger.warning("评语检出不当, 已过滤: %s", check.summary)
+            return check.filtered_text
+        return text
 
     async def grade_essay(self, essay: str, rubric: dict[str, int] | None = None) -> GradingResult:
         """批改作文/论述题。"""
@@ -103,8 +128,9 @@ class AssessmentEngine:
                 score, total, percentage = _clamp_score(score, total)
                 return GradingResult(
                     score=score, total=total, percentage=percentage, partial=partial,
-                    feedback=data.get("feedback", ""), strengths=data.get("strengths", []),
-                    improvements=data.get("improvements", []),
+                    feedback=self._filter_output(_bound_str(data.get("feedback", "")), "3"),
+                    strengths=[self._filter_output(s, "3") for s in _bound_str_list(data.get("strengths", []))],
+                    improvements=[self._filter_output(s, "3") for s in _bound_str_list(data.get("improvements", []))],
                     rubric_scores=data.get("rubric_scores", {}),
                 )
             err_msg = "LLM返回为空或非JSON"
@@ -141,8 +167,8 @@ class AssessmentEngine:
                 score, total, percentage = _clamp_score(score, total)
                 return GradingResult(
                     score=score, total=total, percentage=percentage,
-                    feedback=data.get("feedback", ""),
-                    improvements=data.get("mistakes", []),
+                    feedback=self._filter_output(_bound_str(data.get("feedback", "")), "3"),
+                    improvements=[self._filter_output(s, "3") for s in _bound_str_list(data.get("mistakes", []))],
                 )
             err_msg = "LLM返回为空或非JSON"
         except Exception as exc:
@@ -175,9 +201,10 @@ class AssessmentEngine:
                 return StudentReport(
                     student_name=student_s, subject=subject_s, grade=grade_s,
                     period="本学期", overall_score=overall,
-                    skills=data.get("skills", {}), strengths=data.get("strengths", []),
-                    areas_to_improve=data.get("areas_to_improve", []),
-                    teacher_notes=data.get("teacher_notes", ""),
+                    skills=data.get("skills", {}),
+                    strengths=[self._filter_output(s, grade_s) for s in _bound_str_list(data.get("strengths", []))],
+                    areas_to_improve=[self._filter_output(s, grade_s) for s in _bound_str_list(data.get("areas_to_improve", []))],
+                    teacher_notes=self._filter_output(_bound_str(data.get("teacher_notes", "")), grade_s),
                 )
             logger.error("报告生成失败: LLM 返回空或无法解析")
             return StudentReport(student_name=student_s, subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")

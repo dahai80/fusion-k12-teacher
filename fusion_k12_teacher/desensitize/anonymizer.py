@@ -146,10 +146,10 @@ class DataAnonymizer:
         logger.info(
             "anonymize_records: %d -> %d records", len(records), len(anonymized)
         )
+        # SEC-18: 反匿名表不随结果流转, 仅经 get_name_map() 显式取; 结果只返计数/掩码字段
         return AnonymizeResult(
             original_count=len(records),
             anonymized_count=len(anonymized),
-            name_map=dict(self._name_map),
             masked_fields=sorted(masked_fields),
             records=anonymized,
         )
@@ -161,9 +161,14 @@ class DataAnonymizer:
                 result[field_name] = self.deanonymize_name(result[field_name])
         return result
 
-    def export_desensitized(self, records: list[dict]) -> list[dict]:
+    def export_desensitized(self, records: list[dict], reversible: bool = False) -> list[dict]:
         # SEC-15: 同 anonymize_records, 传序号避免同名记录合并
-        return [self.anonymize_record(rec, seq=str(idx)) for idx, rec in enumerate(records)]
+        # SEC-19: 单向脱敏(reversible=False)默认不在内存驻留反匿名表
+        out = [self.anonymize_record(rec, seq=str(idx)) for idx, rec in enumerate(records)]
+        if not reversible:
+            logger.info("export_desensitized: 单向模式, 清理内存中的反匿名表")
+            self.reset()
+        return out
 
     def get_name_map(self) -> dict[str, str]:
         logger.warning("get_name_map 被调用 — 返回可逆映射表，注意保管，勿随脱敏数据一并存储")

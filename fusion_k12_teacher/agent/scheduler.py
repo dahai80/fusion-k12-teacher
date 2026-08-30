@@ -13,6 +13,8 @@ import logging
 import os
 from typing import Any
 
+# AGT-3: 显式 import JobLookupError, 不用字符串匹配类名 (会误吞同名异常)
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers import SchedulerNotRunningError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -38,9 +40,13 @@ class TaskScheduler:
         self._scheduler: AsyncIOScheduler | None = None
         self._history_path = history_path or HISTORY_JSON
         self._running = False
-        self._run_locks: dict[str, asyncio.Lock] = {}
-        self._history_lock = asyncio.Lock()
-        self._concurrency = asyncio.Semaphore(MAX_CONCURRENCY)
+        # AGT-4/CLI-7: 不在 __init__(导入期)建 Lock/Semaphore, 绑定首个 loop 后
+        # 第二次 asyncio.run 会复用已关闭 loop 的原语 → RuntimeError。改惰性建。
+        self._run_locks: dict[str, asyncio.Lock] | None = None
+        self._history_lock: asyncio.Lock | None = None
+        self._concurrency: asyncio.Semaphore | None = None
+        # AGT-6: 跟踪在飞 run_task 协程, stop 时取消并 await
+        self._inflight: set[asyncio.Task] = set()
 
     def register_task(self, task: TeachingTask) -> None:
         self._tasks[task.id] = task
@@ -72,11 +78,11 @@ class TaskScheduler:
                 self._scheduler.remove_job(task_id)
             except SchedulerNotRunningError:
                 logger.warning(f"禁用任务时调度器未运行: {task_id}")
+            except JobLookupError:
+                # AGT-3: 显式捕获, 作业未注册属正常(任务从未调度)
+                logger.debug(f"禁用任务 {task_id}: 作业未注册, 无需移除")
             except Exception as e:
-                if "JobLookupError" in type(e).__name__:
-                    pass
-                else:
-                    logger.error(f"禁用任务 {task_id} 移除作业失败: {e}")
+                logger.error(f"禁用任务 {task_id} 移除作业失败: {e}")
         logger.info(f"任务禁用: {task_id}")
         return True
 
@@ -99,10 +105,28 @@ class TaskScheduler:
             logger.error(f"任务重建失败 {task_id}: {e}")
             return None
 
+    def _ensure_primitives(self) -> None:
+        """AGT-4/CLI-7: 惰性创建 loop-bound 原语 — 绑定当前 running loop, 不复用已关闭 loop 的旧原语。"""
+        loop = asyncio.get_running_loop()
+        def _bound(obj):
+            # 3.12+ Lock/Semaphore 无公开 _loop; 用 bound loop 若可见, 否则视 None(每次重建)
+            return getattr(obj, "_loop", None)
+        if self._history_lock is None or _bound(self._history_lock) is not loop:
+            self._history_lock = asyncio.Lock()
+        if self._concurrency is None or _bound(self._concurrency) is not loop:
+            self._concurrency = asyncio.Semaphore(MAX_CONCURRENCY)
+        if self._run_locks is None:
+            self._run_locks = {}
+        # 清掉绑定其它 loop 的 per-task 锁
+        stale = [k for k, lk in self._run_locks.items() if _bound(lk) is not None and _bound(lk) is not loop]
+        for k in stale:
+            self._run_locks.pop(k, None)
+
     async def run_task(self, task_id: str, **kwargs) -> TaskResult:
         task = self._tasks.get(task_id)
         if not task:
             return TaskResult(task_id=task_id, status="failed", summary=f"任务不存在: {task_id}")
+        self._ensure_primitives()
         lock = self._run_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             if kwargs:
@@ -110,8 +134,15 @@ class TaskScheduler:
                 if rebuilt:
                     task = rebuilt
             logger.info(f"开始执行任务: {task_id} ({task.name})")
-            async with self._concurrency:
-                result = await execute_task(task)
+            # AGT-6: 记录在飞协程, stop() 可取消
+            coro_task = asyncio.current_task()
+            if coro_task is not None:
+                self._inflight.add(coro_task)
+            try:
+                async with self._concurrency:
+                    result = await execute_task(task)
+            finally:
+                self._inflight.discard(coro_task)
             async with self._history_lock:
                 self._history.append(result)
                 if len(self._history) > MAX_HISTORY:
@@ -132,8 +163,16 @@ class TaskScheduler:
         )
         try:
             self._scheduler.start()
-        except RuntimeError:
-            pass
+        except RuntimeError as e:
+            # AGT-5: 区分 "已运行" 与 "无 loop"; 仅 "已运行" 视为成功幂等。
+            # "no running event loop"(同步上下文启动)是可恢复延迟态, 标 _running 表达
+            # 启动意图, 实际调度等 loop 起来后由 ensure_primitives/重新 start 补。
+            if "already running" in str(e):
+                logger.debug("调度器已在运行, 幂等返回")
+            else:
+                logger.warning(f"调度器启动暂缓(无 event loop 等), 标记 running 意图: {e}")
+            self._running = True
+            return
         self._running = True
         for task in self._tasks.values():
             if not (task.enabled and task.schedule and task.task_type == "scheduled"):
@@ -145,6 +184,10 @@ class TaskScheduler:
         logger.info("Agent 调度器已启动")
 
     def stop(self) -> None:
+        # AGT-6: 同步取消在飞 run_task 协程(cancel 不阻塞); 异步调用方用 await aclose()
+        for t in list(self._inflight):
+            if not t.done():
+                t.cancel()
         if self._scheduler:
             try:
                 self._scheduler.shutdown(wait=False)
@@ -153,6 +196,19 @@ class TaskScheduler:
             self._scheduler = None
         self._running = False
         logger.info("Agent 调度器已停止")
+
+    async def aclose(self) -> None:
+        """AGT-6: 异步关闭 — 取消并 await 在飞协程, 供 serve lifespan 用。"""
+        for t in list(self._inflight):
+            if not t.done():
+                t.cancel()
+        for t in list(self._inflight):
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._inflight.clear()
+        self.stop()
 
     def is_running(self) -> bool:
         return self._running

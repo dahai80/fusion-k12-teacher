@@ -184,11 +184,13 @@ class TestDataAnonymizer:
         result = anon.anonymize_records(records)
         assert result.original_count == 2
         assert result.anonymized_count == 2
+        # SEC-18: 反匿名表不随结果流转, 经 get_name_map() 显式取
         # SEC-15: 映射键含序号 (name\x00seq), 同名不同记录可区分
-        assert "张三\x000" in result.name_map
-        assert "李四\x001" in result.name_map
-        assert result.name_map["张三\x000"] == _expected_id("张三", seq="0")
-        assert result.name_map["李四\x001"] == _expected_id("李四", seq="1")
+        name_map = anon.get_name_map()
+        assert "张三\x000" in name_map
+        assert "李四\x001" in name_map
+        assert name_map["张三\x000"] == _expected_id("张三", seq="0")
+        assert name_map["李四\x001"] == _expected_id("李四", seq="1")
 
     def test_deanonymize_record(self):
         anon = _anon()

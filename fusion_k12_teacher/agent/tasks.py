@@ -15,7 +15,9 @@ def _load_assessments(data_path: str) -> list:
     if not data_path:
         return []
     try:
-        from ..analytics.loader import load_from_csv, load_from_json
+        # AGT-2: 先校验路径在允许目录内, 越界直接拒(与 serve 共用白名单)
+        from ..analytics.loader import load_from_csv, load_from_json, validate_data_path
+        validate_data_path(data_path)
         if data_path.lower().endswith(".csv"):
             return load_from_csv(data_path)
         return load_from_json(data_path)
