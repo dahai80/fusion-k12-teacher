@@ -80,6 +80,11 @@ class TestFactory:
 
     def test_get_repository_cluster_dsn_no_asyncpg(self, tmp_path, monkeypatch):
         # M1-T2: cluster 模式配了 DSN 但 asyncpg 缺失 → 回退 SQLite
+        try:
+            import asyncpg  # noqa: F401
+            pytest.skip("asyncpg 已安装, 缺失回退场景无法复现")
+        except ImportError:
+            pass
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.setenv("FUSION_K12_PG_DSN", "postgresql://u:p@localhost/db")
         monkeypatch.setenv("FUSION_K12_REPO_DB", str(tmp_path / "c2.db"))
