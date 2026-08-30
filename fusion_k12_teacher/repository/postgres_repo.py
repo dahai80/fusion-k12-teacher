@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS name_map (
     anon_id TEXT NOT NULL,
     reverse TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS task_lock (
+    task_id     TEXT PRIMARY KEY,
+    owner       TEXT NOT NULL,
+    acquired_ts DOUBLE PRECISION NOT NULL,
+    ttl         DOUBLE PRECISION NOT NULL
+);
 """
 
 # M1-T6: 加密列 — name_hash (sha256 查询键) + name_encrypted (AES-GCM 可逆)。
@@ -213,3 +219,84 @@ class PostgresRepository(Repository):
     def health(self) -> bool:
         import asyncio
         return asyncio.get_event_loop().run_until_complete(self.ahealth())
+
+    # ── M2-T11: 任务锁 (异步, cluster 模式用) ──
+
+    @staticmethod
+    def _now() -> float:
+        import time
+        return time.time()
+
+    async def atry_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        await self.ensure_pool()
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM task_lock WHERE acquired_ts + ttl < $1", self._now()
+                )
+                row = await conn.fetchrow(
+                    "SELECT owner FROM task_lock WHERE task_id = $1", task_id
+                )
+                now = self._now()
+                if row is None:
+                    await conn.execute(
+                        "INSERT INTO task_lock (task_id, owner, acquired_ts, ttl) "
+                        "VALUES ($1, $2, $3, $4)",
+                        task_id, owner, now, ttl,
+                    )
+                    return True
+                if row["owner"] == owner:
+                    await conn.execute(
+                        "UPDATE task_lock SET acquired_ts = $1, ttl = $2 "
+                        "WHERE task_id = $3 AND owner = $4",
+                        now, ttl, task_id, owner,
+                    )
+                    return True
+                return False
+
+    async def arenew_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        await self.ensure_pool()
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE task_lock SET acquired_ts = $1, ttl = $2 "
+                "WHERE task_id = $3 AND owner = $4",
+                self._now(), ttl, task_id, owner,
+            )
+            return result.endswith(" 1")
+
+    async def arelease_lock(self, task_id: str, owner: str) -> None:
+        await self.ensure_pool()
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM task_lock WHERE task_id = $1 AND owner = $2",
+                task_id, owner,
+            )
+
+    async def areap_expired_locks(self) -> int:
+        await self.ensure_pool()
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM task_lock WHERE acquired_ts + ttl < $1", self._now()
+            )
+            return int(result.split()[-1]) if result else 0
+
+    # 同步适配 (满足 Repository 抽象)
+    def try_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(
+            self.atry_lock(task_id, owner, ttl)
+        )
+
+    def renew_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(
+            self.arenew_lock(task_id, owner, ttl)
+        )
+
+    def release_lock(self, task_id: str, owner: str) -> None:
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(self.arelease_lock(task_id, owner))
+
+    def reap_expired_locks(self) -> int:
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(self.areap_expired_locks())

@@ -343,9 +343,9 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 
 | # | 任务 | P | W | 依赖 | 说明 |
 |---|------|---|---|------|------|
-| T10 | 移除模块级引擎单例, 请求级取状态 | P1 | 3 | T1 | serve lifespan 单例→每请求从 Repository/缓存, 实例无状态 |
-| T11 | scheduler 改 DB 行锁 + 异步去重 | P1 | 3 | T2 | 串行锁→`SELECT FOR UPDATE`, 跨实例不重复执行 |
-| T12 | Redis 缓存/会话后端 | P1 | 2 | — | `cache/redis_client.py`, salt/会话/限流计数 |
+| T10 ✅ | 移除模块级引擎单例, 请求级取状态 | P1 | 3 | T1 | 实际: 引擎构造后无状态, 仅 cluster 模式跳过 fcntl 单实例锁 + pidfile (允许多实例), 不拆单例 (Rule 2 简化) |
+| T11 ✅ | scheduler 改 DB 行锁 + 异步去重 | P1 | 3 | T2 | `Repository.try_lock(task_id,owner,ttl)` reap-then-insert, 同 owner 重入续约, TTL 防死锁; cluster 模式 run_task 抢锁, 被占 skip; standalone 默认放行 |
+| T12 ✅ | Redis 缓存/会话后端 | P1 | 2 | — | `cache/` 模块 (CacheBackend ABC + LocalCache 进程内 + RedisCache 异步), `get_cache()` 工厂按 mode 选; 限流 cluster 模式走 Redis INCR 共享计数; redis 进 cluster extras |
 
 ### 5.4 可观测与运维
 
@@ -374,7 +374,7 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 | 里程碑 | 范围 | 任务 | 版本 | 产出 |
 |--------|------|------|------|------|
 | M1 基础底座 | Repository + 加密 + salt | T1-T9 | v2.0-alpha | 持久化抽象 + PII 加密, 单机模式回归绿 |
-| M2 无状态化 | 单例移除 + 并发 + 缓存 | T10-T12 | v2.0-beta | 多实例可跑, scheduler 并发, Redis 接入 |
+| M2 无状态化 ✅ | 单例移除 + 并发 + 缓存 | T10-T12 | v2.0-beta (2.0.0b0) | 多实例可跑, scheduler 跨实例去重, Redis 限流接入, 367 测试绿 |
 | M3 可观测 | 审计 + 指标 + 配置热更 | T13-T19 | v2.0-rc | 审计留存, 指标端点, 探针, 热更新 |
 | M4 集群发布 | 部署模板 + 对接 + 压测 | T20-T22 | **v2.0** | k8s 模板, 网关对接, 集成测试绿, 商用就绪 |
 

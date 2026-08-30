@@ -254,6 +254,16 @@ Components:
 
 Optional deps (`pip install -e ".[cluster]"`): `asyncpg`, `cryptography`, `redis` — all lazy-imported, missing → clear ImportError + fallback. Standalone needs none. See `docs/v2-enterprise-arch-upgrade.md` and `docs/m1-implementation-0830.md`.
 
+### 11b. Statelessness & Horizontal Scaling (`cache/`, `agent/scheduler.py`) — v2.0 M2
+
+M2 (v2.0.0b0) makes the service horizontally scalable: multiple instances share state via DB task locks and Redis.
+
+- **Instance lock conditional** (T10): `FUSION_K12_MODE=cluster` skips the fcntl single-instance lock + scheduler pidfile — multiple instances coexist. Engines remain stateless post-build (no per-request state), so the build-once module singletons are kept (simplicity over a risky singleton teardown).
+- **DB task lock** (T11): `Repository.try_lock(task_id, owner, ttl)` — reap-then-insert row lock on `task_lock` table; same-owner reentry renews; TTL reaps dead-holder locks. Cluster-mode `run_task` acquires the lock before `execute_task`, skips (status `skipped`) if held by another instance — cross-instance cron dedup. Standalone keeps in-process asyncio lock (default `try_lock` → `True`).
+  - Env: `FUSION_K12_MODE`, `FUSION_K12_TASK_LOCK_TTL` (default 300s).
+- **Redis cache / rate-limit backend** (T12): `cache/` module — `CacheBackend` ABC + `LocalCache` (in-process LRU+TTL, standalone default) + `RedisCache` (async `redis.asyncio`, cluster). `get_cache()` factory selects by mode (Redis missing/unreachable → fallback `LocalCache`). `_RateLimiter` in cluster mode uses shared Redis `INCR` counter for unified rate limiting across instances.
+  - Env: `FUSION_K12_REDIS_URL` (cluster only).
+
 ### 12. HTTP API (`serve.py`)
 
 REST API for programmatic access (default port 11448).

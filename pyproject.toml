@@ -1,6 +1,6 @@
 [project]
 name = "fusion-k12-teacher"
-version = "2.0.0a0"
+version = "2.0.0b0"
 description = "Fusion-K12-Teacher — Local AI-powered K-12 education assistant. macOS Apple Silicon native, 100% offline, powered by fusion-mlx."
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -21,8 +21,8 @@ test = [
     "apscheduler>=3.10.0",
 ]
 web = ["fastapi>=0.104.0", "uvicorn>=0.24.0", "apscheduler>=3.10.0", "sqlalchemy>=2.0.0"]
-# M1-T2/T5: cluster 模式 Postgres 后端 + AES-256-GCM 加密 — 可选, 缺失则回退 SQLite/明文。
-cluster = ["asyncpg>=0.29.0,<1.0.0", "cryptography>=42.0.0,<46.0.0"]
+# M1-T2/T5/T12: cluster 模式 Postgres 后端 + AES-256-GCM 加密 + Redis 缓存/限流 — 可选, 缺失则回退 SQLite/明文/进程内。
+cluster = ["asyncpg>=0.29.0,<1.0.0", "cryptography>=42.0.0,<46.0.0", "redis>=5.0.0,<6.0.0"]
 
 [project.scripts]
 fusion-k12 = "fusion_k12_teacher.cli:main"

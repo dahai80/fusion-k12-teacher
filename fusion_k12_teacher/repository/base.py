@@ -36,6 +36,30 @@ class Repository(ABC):
     def load_name_map(self) -> tuple[dict[str, str], dict[str, str]]:
         """加载脱敏映射表, 返回 (name_map, reverse_map)。"""
 
+    # ── M2-T11: 任务锁 (跨实例 cron 去重) ──
+    # cluster 模式多实例各 arm cron, 抢 DB 行锁防同一任务重复执行。
+    # owner = 实例标识 (hostname+pid), ttl = 锁超时秒 (防持锁实例宕机永久阻塞)。
+
+    def try_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        """尝试获取任务执行锁 — 成功返 True, 已被持有(且未超时)返 False。
+
+        幂等: 同 owner 再次获取返 True (重入/续约场景)。
+        ttl 超时的旧锁被 reap 后可重新获取。
+        默认实现 (standalone 单进程无需 DB 锁) 总返 True。
+        """
+        return True
+
+    def renew_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
+        """续约任务锁 — 仅持锁 owner 可续, 成功返 True。默认空实现。"""
+        return True
+
+    def release_lock(self, task_id: str, owner: str) -> None:
+        """释放任务锁 — 仅持锁 owner 可释放。默认空实现。"""
+
+    def reap_expired_locks(self) -> int:
+        """清理超时锁 — 返回清理条数。默认空实现返 0。"""
+        return 0
+
     def close(self) -> None:
         """释放后端资源 (连接/文件句柄)。默认空实现。"""
 

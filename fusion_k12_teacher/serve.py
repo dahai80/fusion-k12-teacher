@@ -123,6 +123,15 @@ class _RateLimiter:
             os.close(fd)
 
     async def check(self, key: str) -> bool:
+        # M2-T12: cluster 模式有共享 Redis 后端 → 跨实例统一限流计数。
+        # 固定窗口: INCR key (ttl=window), 超过 _max 拒绝。各实例共享同一计数。
+        cache = _shared_cache()
+        if cache is not None:
+            try:
+                count = await cache.incr(f"rl:{key}", ttl=self._window)
+                return count <= self._max
+            except Exception as e:
+                logger.warning("Redis 限流失败, 降级进程内: %s", e)
         now = time.monotonic()
         if self._state_file:
             # 文件 I/O 放线程池, 不阻塞 event loop
@@ -136,6 +145,20 @@ class _RateLimiter:
                 return False
             dq.append(now)
             return True
+
+
+def _shared_cache():
+    """cluster 模式返共享 CacheBackend 单例, standalone 返 None (用进程内限流)。"""
+    if os.environ.get("FUSION_K12_MODE", "").lower() != "cluster":
+        return None
+    if not os.environ.get("FUSION_K12_REDIS_URL", ""):
+        return None
+    try:
+        from .cache import get_cache
+        return get_cache()
+    except Exception as e:
+        logger.warning("加载共享缓存失败, 限流回退进程内: %s", e)
+        return None
 
 
 _rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX, _RATE_STATE_FILE)
@@ -215,9 +238,18 @@ _INSTANCE_LOCKFILE = os.environ.get(
 _instance_lockfd: int | None = None
 
 
+def _is_cluster_mode() -> bool:
+    # M2-T10: cluster 模式允许多实例水平扩容, 单实例锁仅 standalone 需要。
+    return os.environ.get("FUSION_K12_MODE", "standalone").lower() == "cluster"
+
+
 def _acquire_instance_lock() -> bool:
     global _instance_lockfd
     if _instance_lockfd is not None:
+        return True
+    # M2-T10: cluster 模式多实例共存, 跳过进程级互斥 (跨实例去重靠 DB 行锁, 见 scheduler T11)。
+    if _is_cluster_mode():
+        logger.info("cluster 模式, 跳过单实例锁 (多实例水平扩容)")
         return True
     try:
         import fcntl
