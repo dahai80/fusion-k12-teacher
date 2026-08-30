@@ -238,7 +238,7 @@ class TestNotReady:
 class TestStandardsEndpoints:
     @pytest.mark.asyncio
     async def test_standards_list(self, client):
-        # GET 不需 API key
+        # R5: 读端点亦须认证 (敏感词表/agent 历史/课标), client fixture 默认带 X-API-Key
         resp = await client.get("/api/standards/list", params={"subject": "数学", "grade": "3"})
         assert resp.status_code == 200
         data = resp.json()
@@ -330,6 +330,15 @@ class TestSafetyEndpoints:
         resp = await client.get("/api/safety/wordlist")
         assert resp.status_code == 200
         assert "count" in resp.json()
+
+    @pytest.mark.asyncio
+    async def test_read_endpoints_require_auth(self):
+        # R5: 4 个读端点无 X-API-Key 必返 401 — 敏感词表/agent 历史/任务列表/课标不可未授权读
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as noauth:
+            for path in ("/api/safety/wordlist", "/api/agent/tasks", "/api/agent/history", "/api/standards/list"):
+                resp = await noauth.get(path)
+                assert resp.status_code == 401, f"{path} 无认证应拒"
 
 
 class TestDesensitizeEndpoint:

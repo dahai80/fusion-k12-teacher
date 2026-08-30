@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
-from ..safety.filter import sanitize_input
+from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,32 @@ class SubjectExpert:
     支持：数学、科学、编程、语言、历史、地理等学科。
     """
 
-    def __init__(self, mlx: MLXClient | None = None):
+    def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
+        # A6: 全引擎统一安全过滤 — LLM 生成内容送学生前过 check_output。
+        self._filter = content_filter or ContentFilter()
+
+    def _filter_output(self, text: str, grade: str) -> str:
+        # A6: 命中不当内容替换掩码并告警, 不让敏感内容直达学生。
+        if not isinstance(text, str) or not text:
+            return text
+        check = self._filter.check_output(text, grade)
+        if not check.is_safe:
+            logger.warning("学科内容检出不当, 已过滤: %s", check.summary)
+            return check.filtered_text
+        return text
+
+    def _filter_dict(self, data: dict[str, Any], grade: str) -> dict[str, Any]:
+        # A6: dict 中字符串值与列表项过安全过滤, 递归不到嵌套 dict(够用)。
+        out = {}
+        for k, v in data.items():
+            if isinstance(v, str):
+                out[k] = self._filter_output(v, grade)
+            elif isinstance(v, list):
+                out[k] = [self._filter_output(x, grade) if isinstance(x, str) else x for x in v]
+            else:
+                out[k] = v
+        return out
 
     async def explain_concept(self, subject: str, grade: str, concept: str) -> dict[str, Any]:
         """解释学科概念（分年级适配）。"""
@@ -50,7 +74,11 @@ class SubjectExpert:
                 {"role": "system", "content": f"你是一位{grade}年级{subject}教师，用学生能理解的语言解释概念。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
-            return self._parse_json(response) or {"concept": concept}
+            data = self._parse_json(response)
+            if isinstance(data, dict):
+                # A6: 概念解释直达学生, 全字段过安全过滤
+                return self._filter_dict(data, grade)
+            return {"concept": concept}
         except Exception as e:
             return {"error": str(e)}
 
@@ -72,10 +100,14 @@ class SubjectExpert:
             ], temperature=0.4)
             data = self._parse_json(response)
             if data:
+                # A6: 题目/提示/答案/解析直达学生, 全字段过安全过滤
                 return SubjectExercise(
-                    question=data.get("question", ""), difficulty=difficulty,
-                    subject=subject, grade=grade, hints=data.get("hints", []),
-                    answer=data.get("answer", ""), explanation=data.get("explanation", ""),
+                    question=self._filter_output(data.get("question", ""), grade),
+                    difficulty=difficulty,
+                    subject=subject, grade=grade,
+                    hints=[self._filter_output(h, grade) for h in data.get("hints", [])],
+                    answer=self._filter_output(data.get("answer", ""), grade),
+                    explanation=self._filter_output(data.get("explanation", ""), grade),
                     topic=topic, skills=data.get("skills", []),
                 )
         except Exception as exc:
@@ -99,7 +131,11 @@ class SubjectExpert:
                 {"role": "system", "content": "你是一位STEM教育专家，设计跨学科的项目式学习方案。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
-            return self._parse_json(response) or {"title": topic}
+            data = self._parse_json(response)
+            if isinstance(data, dict):
+                # A6: STEM 方案文本与列表过安全过滤
+                return self._filter_dict(data, grade)
+            return {"title": topic}
         except Exception as e:
             return {"error": str(e)}
 
@@ -120,7 +156,11 @@ class SubjectExpert:
                 {"role": "system", "content": "你是一位语言教学专家，设计互动式语言学习活动。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.4)
-            return self._parse_json(response) or {"title": f"{skill}练习"}
+            data = self._parse_json(response)
+            if isinstance(data, dict):
+                # A6: 语言活动文本与列表过安全过滤
+                return self._filter_dict(data, grade)
+            return {"title": f"{skill}练习"}
         except Exception as e:
             return {"error": str(e)}
 

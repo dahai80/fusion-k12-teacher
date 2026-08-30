@@ -13,6 +13,7 @@ from .content import ContentGenerator
 from .curriculum import CurriculumEngine
 from .differentiation import DifferentiationEngine
 from .personalization import PersonalizationEngine
+from .safety import ContentFilter
 from .standards import StandardsLoader, StandardsQuery
 from .subjects import SubjectExpert
 
@@ -41,16 +42,18 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
     """
     if mlx is None:
         mlx = MLXClient(model=model)
-    curriculum = CurriculumEngine(mlx)
-    assessment = AssessmentEngine(mlx)
-    subjects = SubjectExpert(mlx)
-    personalization = PersonalizationEngine(mlx)
-    content = ContentGenerator(mlx)
+    # A6: 共享单一 ContentFilter — 7 引擎统一安全过滤, 非各自默认构造 (敏感词/年龄规则一份)。
+    content_filter = ContentFilter()
+    curriculum = CurriculumEngine(mlx, content_filter)
+    assessment = AssessmentEngine(mlx, content_filter)
+    subjects = SubjectExpert(mlx, content_filter)
+    personalization = PersonalizationEngine(mlx, content_filter)
+    content = ContentGenerator(mlx, content_filter)
     loader = StandardsLoader()
     loader.load_all()
     standards_query = StandardsQuery(loader)
-    differentiation = DifferentiationEngine(mlx, standards_query)
-    analytics = AnalyticsEngine(mlx, standards_query)
+    differentiation = DifferentiationEngine(mlx, standards_query, content_filter)
+    analytics = AnalyticsEngine(mlx, standards_query, content_filter)
     register_all_engines(
         curriculum=curriculum,
         assessment=assessment,

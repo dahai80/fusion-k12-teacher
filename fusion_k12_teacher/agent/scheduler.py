@@ -2,7 +2,8 @@
 
 约束: MemoryJobStore 无跨进程持久化，仅支持单 worker 部署
 (uvicorn --workers 1)。多 worker / 多进程会重复触发 cron；
-跨进程去重靠 _lock_file 进程锁。
+A3: 跨进程去重靠 _pidfile 进程锁 — cli 与 serve 共用单例时,
+仅持锁进程 arm cron, 防同一调度任务双重注册重复执行。
 """
 
 from __future__ import annotations
@@ -26,6 +27,12 @@ from .tasks import build_task, list_available_tasks
 logger = logging.getLogger(__name__)
 
 HISTORY_JSON = os.path.join(os.path.dirname(__file__), "data", "history.json")
+# A3: pidfile 锁 — cli agent_start 与 serve lifespan 共用同一 scheduler 单例,
+# 双臂触发同一 cron 会导致重复执行。持锁进程 arm, 未持锁进程跳过。
+_PIDFILE = os.environ.get(
+    "FUSION_K12_SCHEDULER_PIDFILE",
+    os.path.expanduser("~/.fusion-k12/scheduler.pid"),
+)
 # AGT-11: env 仅 import 时读 → 运行期改 env 无效; 下移到 __init__ 实例属性。
 _DEFAULT_HISTORY_CAP = 500
 _DEFAULT_CONCURRENCY = 2
@@ -51,6 +58,9 @@ class TaskScheduler:
         self._concurrency: asyncio.Semaphore | None = None
         # AGT-6: 跟踪在飞 run_task 协程, stop 时取消并 await
         self._inflight: set[asyncio.Task] = set()
+        # A3: pidfile 锁 fd — 持锁进程 arm cron, cli/serve 双臂时仅一方调度。
+        self._pidfd: int | None = None
+        self._owns_pidfile: bool = False
 
     def register_task(self, task: TeachingTask) -> None:
         self._tasks[task.id] = task
@@ -159,8 +169,43 @@ class TaskScheduler:
             limit = self._max_history
         return self._history[-limit:]
 
+    def _acquire_pidfile(self) -> bool:
+        # A3: 非阻塞抢占 pidfile — fcntl.flock LOCK_EX|LOCK_NB。
+        # 成功持锁 = 本进程负责 cron 调度; 失败 = 另一进程(cli 或 serve)已在调度, 跳过 arm。
+        # 跨进程互斥, 防"每周备课"等 cron 被 cli+serve 各跑一遍。
+        if self._owns_pidfile:
+            return True
+        try:
+            import fcntl
+        except ImportError:
+            logger.warning("fcntl 不可用, 跳过 pidfile 锁, cron 可能重复触发")
+            self._owns_pidfile = True
+            return True
+        try:
+            os.makedirs(os.path.dirname(_PIDFILE), exist_ok=True)
+            fd = os.open(_PIDFILE, os.O_RDWR | os.O_CREAT, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{os.getpid()}\n".encode())
+            self._pidfd = fd
+            self._owns_pidfile = True
+            logger.info("调度器获取 pidfile 锁 (pid=%d), 本进程负责 cron", os.getpid())
+            return True
+        except OSError:
+            # 已被其它进程持锁 — 另一进程正在调度, 本进程不重复 arm
+            try:
+                os.close(fd)
+            except (OSError, UnboundLocalError):
+                pass
+            logger.warning("pidfile 已被其它进程持有, 本进程跳过 cron arm, 避免重复调度")
+            return False
+
     def start(self) -> None:
         if self._running:
+            return
+        # A3: arm cron 前先抢 pidfile 锁 — 未持锁则不启动调度器, 避免多进程重复触发。
+        if not self._acquire_pidfile():
+            self._running = False
             return
         self._scheduler = AsyncIOScheduler(
             jobstores={"default": MemoryJobStore()},
@@ -199,6 +244,19 @@ class TaskScheduler:
                 pass
             self._scheduler = None
         self._running = False
+        # A3: 释放 pidfile 锁, 允许另一进程接管 cron 调度
+        if self._pidfd is not None:
+            try:
+                import fcntl
+                fcntl.flock(self._pidfd, fcntl.LOCK_UN)
+            except (OSError, ImportError):
+                pass
+            try:
+                os.close(self._pidfd)
+            except OSError:
+                pass
+            self._pidfd = None
+            self._owns_pidfile = False
         logger.info("Agent 调度器已停止")
 
     async def aclose(self) -> None:

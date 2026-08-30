@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..ai_client import MLXClient
-from ..safety.filter import sanitize_input
+from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,23 @@ class LearningPath:
 class PersonalizationEngine:
     """个性化学习引擎 — 对标 Claude K-12 Teacher 的差异化教学能力。"""
 
-    def __init__(self, mlx: MLXClient | None = None):
+    def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
+        # A6: 全引擎统一安全过滤 — LLM 生成内容送学生前过 check_output。
+        self._filter = content_filter or ContentFilter()
+
+    def _filter_output(self, text: str, grade: str) -> str:
+        # A6: 命中不当内容替换掩码并告警, 不让敏感内容直达学生。
+        if not isinstance(text, str) or not text:
+            return text
+        check = self._filter.check_output(text, grade)
+        if not check.is_safe:
+            logger.warning("学习路径内容检出不当, 已过滤: %s", check.summary)
+            return check.filtered_text
+        return text
+
+    def _filter_list(self, items: list, grade: str) -> list:
+        return [self._filter_output(x, grade) if isinstance(x, str) else x for x in items]
 
     async def create_learning_path(self, student: str, grade: str, subject: str, goal: str) -> LearningPath:
         """创建个性化学习路径。"""
@@ -50,12 +65,21 @@ class PersonalizationEngine:
             ], temperature=0.3)
             data = self._parse_json(response)
             if data:
+                # A6: 学习路径文本字段过安全过滤 — 单元 title/活动/掌握标准直达学生
+                units = data.get("units", [])
+                if isinstance(units, list):
+                    units = [
+                        {k: (self._filter_output(v, grade) if isinstance(v, str)
+                             else self._filter_list(v, grade) if isinstance(v, list) else v)
+                         for k, v in u.items()} if isinstance(u, dict) else u
+                        for u in units
+                    ]
                 return LearningPath(
                     student_id=student, grade=grade, subject=subject,
-                    units=data.get("units", []),
-                    estimated_duration=data.get("estimated_duration", ""),
-                    prerequisites=data.get("prerequisites", []),
-                    goals=data.get("goals", []),
+                    units=units,
+                    estimated_duration=self._filter_output(data.get("estimated_duration", ""), grade),
+                    prerequisites=self._filter_list(data.get("prerequisites", []), grade),
+                    goals=self._filter_list(data.get("goals", []), grade),
                 )
         except Exception as e:
             logger.error(f"学习路径生成失败: {e}")
@@ -76,7 +100,19 @@ class PersonalizationEngine:
                 {"role": "system", "content": "你是一位教育评估专家，准确诊断学生的能力水平。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.2)
-            return self._parse_json(response) or {"overall_level": "unknown"}
+            data = self._parse_json(response)
+            if isinstance(data, dict):
+                # A6: 诊断建议直达学生, 字符串与列表过安全过滤
+                out = {}
+                for k, v in data.items():
+                    if isinstance(v, str):
+                        out[k] = self._filter_output(v, grade)
+                    elif isinstance(v, list):
+                        out[k] = self._filter_list(v, grade)
+                    else:
+                        out[k] = v
+                return out
+            return {"overall_level": "unknown"}
         except Exception as e:
             return {"error": str(e)}
 
@@ -95,7 +131,24 @@ class PersonalizationEngine:
                 {"role": "system", "content": "你是一位教育顾问，为学生推荐最适合的学习资源。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
-            return self._parse_json(response) or {"resources": []}
+            data = self._parse_json(response)
+            if isinstance(data, dict):
+                # A6: 资源描述/练习计划/家长建议直达学生, 字符串与列表过安全过滤
+                out = {}
+                for k, v in data.items():
+                    if isinstance(v, str):
+                        out[k] = self._filter_output(v, grade)
+                    elif isinstance(v, list):
+                        out[k] = [
+                            {kk: (self._filter_output(vv, grade) if isinstance(vv, str) else vv)
+                             for kk, vv in item.items()} if isinstance(item, dict) else
+                            self._filter_output(item, grade) if isinstance(item, str) else item
+                            for item in v
+                        ]
+                    else:
+                        out[k] = v
+                return out
+            return {"resources": []}
         except Exception as e:
             return {"error": str(e)}
 

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from ..ai_client import MLXClient
-from ..safety.filter import sanitize_input
+from ..safety.filter import ContentFilter, sanitize_input
 from ..standards.query import StandardsQuery
 from .models import (
     ClassProfile,
@@ -88,9 +88,22 @@ class AnalyticsEngine:
         self,
         mlx: MLXClient | None = None,
         standards_query: StandardsQuery | None = None,
+        content_filter: ContentFilter | None = None,
     ):
         self.mlx = mlx or MLXClient()
         self._standards = standards_query
+        # A6: 全引擎统一安全过滤 — LLM 生成报告/补救策略送学生/教师前过 check_output。
+        self._filter = content_filter or ContentFilter()
+
+    def _filter_output(self, text: str, grade: str) -> str:
+        # A6: 命中不当内容替换掩码并告警, 不让敏感内容直达师生。
+        if not isinstance(text, str) or not text:
+            return text
+        check = self._filter.check_output(text, grade)
+        if not check.is_safe:
+            logger.warning("学情分析内容检出不当, 已过滤: %s", check.summary)
+            return check.filtered_text
+        return text
 
     async def build_class_profile(
         self,
@@ -141,11 +154,13 @@ class AnalyticsEngine:
                         continue
                     llm_weak.append(WeakPoint(
                         knowledge_point_id=str(wp.get("knowledge_point_id", "")),
-                        knowledge_point_name=str(wp.get("knowledge_point_name", "")),
+                        knowledge_point_name=self._filter_output(str(wp.get("knowledge_point_name", "")), grade),
                         error_rate=max(0.0, min(_coerce_float(wp.get("error_rate")), 1.0)),
                         affected_students=_coerce_str_list(wp.get("affected_students")),
-                        common_mistakes=_coerce_str_list(wp.get("common_mistakes")),
-                        suggested_remedial=str(wp.get("suggested_remedial", "")),
+                        common_mistakes=[
+                            self._filter_output(m, grade) for m in _coerce_str_list(wp.get("common_mistakes"))
+                        ],
+                        suggested_remedial=self._filter_output(str(wp.get("suggested_remedial", "")), grade),
                     ))
                 if llm_weak:
                     weak_points = llm_weak
@@ -255,8 +270,12 @@ class AnalyticsEngine:
                     overall_level=llm_level,
                     knowledge_mastery=llm_mastery,
                     learning_trend=llm_trend,
-                    risk_indicators=_coerce_str_list(data.get("risk_indicators", risk_indicators)),
-                    recommended_actions=_coerce_str_list(data.get("recommended_actions")),
+                    risk_indicators=[
+                        self._filter_output(r, grade) for r in _coerce_str_list(data.get("risk_indicators", risk_indicators))
+                    ],
+                    recommended_actions=[
+                        self._filter_output(a, grade) for a in _coerce_str_list(data.get("recommended_actions"))
+                    ],
                 )
             llm_err = "LLM 返回空或无法解析"
         except Exception as e:
@@ -345,9 +364,11 @@ class AnalyticsEngine:
                         knowledge_point_id=str(e.get("knowledge_point_id", "")),
                         error_type=str(e.get("error_type", "unknown")),
                         frequency=_coerce_int(e.get("frequency", 1), 1),
-                        sample_responses=_coerce_str_list(e.get("sample_responses")),
-                        root_cause=str(e.get("root_cause", "")),
-                        remediation=str(e.get("remediation", "")),
+                        sample_responses=[
+                            self._filter_output(s, grade_s) for s in _coerce_str_list(e.get("sample_responses"))
+                        ],
+                        root_cause=self._filter_output(str(e.get("root_cause", "")), grade_s),
+                        remediation=self._filter_output(str(e.get("remediation", "")), grade_s),
                     ))
                 if out:
                     return out
@@ -431,10 +452,12 @@ class AnalyticsEngine:
                     subject=subject_s,
                     grade=grade_s,
                     weak_points=weak_points,
-                    strategies=_coerce_str_list(data.get("strategies")),
-                    timeline=str(data.get("timeline", ""))[:1000],
+                    strategies=[
+                        self._filter_output(s, grade_s) for s in _coerce_str_list(data.get("strategies"))
+                    ],
+                    timeline=self._filter_output(str(data.get("timeline", ""))[:1000], grade_s),
                     exercises=exercises,
-                    estimated_duration=str(data.get("estimated_duration", ""))[:200],
+                    estimated_duration=self._filter_output(str(data.get("estimated_duration", ""))[:200], grade_s),
                 )
             llm_err = "LLM 返回空或无法解析"
         except Exception as e:
@@ -489,7 +512,10 @@ class AnalyticsEngine:
                 {"role": "system", "content": "你是一位教学督导，撰写专业、可操作的班级学情分析报告。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
-            return response.strip() if response else self._fallback_report(class_profile)
+            if response and response.strip():
+                # A6: 班级报告 LLM 原文送教师前过安全过滤
+                return self._filter_output(response.strip(), grade_s)
+            return self._fallback_report(class_profile)
         except Exception as e:
             logger.error(f"LLM 报告生成失败: {e}")
             return self._fallback_report(class_profile)
