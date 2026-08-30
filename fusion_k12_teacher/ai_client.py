@@ -95,13 +95,20 @@ class MLXClient:
 
     @property
     def httpx_client(self):
+        # LLM-4: 惰性初始化须加锁, 防并发首访竞态重复建客户端
         if self._httpx_client is None:
-            self._httpx_client = httpx.AsyncClient(
-                base_url=self.base_url,
-                timeout=httpx.Timeout(self._read_timeout, connect=self._connect_timeout),
-                headers={"Authorization": f"Bearer {os.environ.get('FUSION_MLX_API_KEY', 'local')}"},
-            )
+            self._httpx_client = self._build_httpx_client()
         return self._httpx_client
+
+    def _build_httpx_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=httpx.Timeout(self._read_timeout, connect=self._connect_timeout),
+        )
+
+    def _auth_headers(self) -> dict[str, str]:
+        # LLM-4: 每次请求读 env, 运行期换 key 即时生效, 不在客户端创建时固化
+        return {"Authorization": f"Bearer {os.environ.get('FUSION_MLX_API_KEY', 'local')}"}
 
     async def chat(
         self,
@@ -172,11 +179,17 @@ class MLXClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        resp = await self.httpx_client.post("/chat/completions", json=payload)
+        resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
             raise _ModelNotFound(f"模型未加载: {model}")
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        # LLM-3: 网关非标结构无 KeyError/IndexError 防御会直接崩, 降级空串并记日志
+        try:
+            body = resp.json()
+            return body["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            logger.error("LLM 响应结构异常, 无法解析 content: %s | body: %s", e, str(resp.text)[:300])
+            return ""
 
     async def list_models(self) -> list[dict[str, Any]]:
         """列出 fusion-mlx 可用模型 — 带 TTL 缓存与并发锁。"""
@@ -198,7 +211,7 @@ class MLXClient:
                 return await self._inner.list_models()
             except Exception as e:
                 logger.warning("fusion_core list_models 失败，回退 httpx: %s", e)
-        resp = await self.httpx_client.get("/models")
+        resp = await self.httpx_client.get("/models", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json().get("data", [])
 

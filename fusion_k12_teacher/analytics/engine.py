@@ -413,15 +413,28 @@ class AnalyticsEngine:
             ], temperature=0.3)
             data = self._parse_json(response)
             if isinstance(data, dict):
+                raw_ex = data.get("exercises", [])
+                # ENG-18: exercises 原始透传会带任意键/超长字段; 白名单键 + 有界 + 仅 dict
+                exercises = []
+                if isinstance(raw_ex, list):
+                    for ex in raw_ex[:50]:
+                        if not isinstance(ex, dict):
+                            continue
+                        exercises.append({
+                            "topic": str(ex.get("topic", ""))[:200],
+                            "type": str(ex.get("type", ""))[:50],
+                            "difficulty": str(ex.get("difficulty", "medium"))[:20],
+                            "count": _coerce_int(ex.get("count", 1), 1),
+                        })
                 return RemedialPlan(
                     student_id=sid_s,
                     subject=subject_s,
                     grade=grade_s,
                     weak_points=weak_points,
                     strategies=_coerce_str_list(data.get("strategies")),
-                    timeline=str(data.get("timeline", "")),
-                    exercises=data.get("exercises", []) if isinstance(data.get("exercises"), list) else [],
-                    estimated_duration=str(data.get("estimated_duration", "")),
+                    timeline=str(data.get("timeline", ""))[:1000],
+                    exercises=exercises,
+                    estimated_duration=str(data.get("estimated_duration", ""))[:200],
                 )
             llm_err = "LLM 返回空或无法解析"
         except Exception as e:
@@ -673,6 +686,10 @@ class AnalyticsEngine:
     def _parse_json(self, text: Any) -> Any:
         if not isinstance(text, str) or not text.strip():
             return None
+        # ENG-20: 顶部有界长度, 防超长响应撑爆解析/下游; 仅 content 路径单独 cap 不够
+        if len(text) > 200000:
+            logger.warning("LLM 返回过长(%d 字符), 截断后再解析", len(text))
+            text = text[:200000]
         text = text.strip()
         # ENG-5: 优先取 ```json``` 代码块, 否则用平衡括号扫描取首个完整 JSON
         match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)

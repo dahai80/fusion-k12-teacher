@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from . import __version__
 from .agent import list_available_tasks, scheduler
@@ -141,9 +141,9 @@ async def lifespan(app: FastAPI):
         logger.error("lifespan 启动失败, 清理已分配资源: %s", exc, exc_info=True)
         _ready = False
         try:
-            scheduler.stop()
+            await scheduler.aclose()
         except Exception as e:
-            logger.warning("scheduler.stop 失败(启动异常清理): %s", e)
+            logger.warning("scheduler.aclose 失败(启动异常清理): %s", e)
         if mlx_client is not None:
             try:
                 await mlx_client.close()
@@ -154,9 +154,9 @@ async def lifespan(app: FastAPI):
     logger.info("Fusion-K12-Teacher API shutting down")
     _ready = False
     try:
-        scheduler.stop()
+        await scheduler.aclose()
     except Exception as e:
-        logger.warning("scheduler.stop 失败: %s", e)
+        logger.warning("scheduler.aclose 失败: %s", e)
     if mlx_client is not None:
         try:
             await mlx_client.close()
@@ -177,11 +177,26 @@ async def rate_limit_middleware(request: Request, call_next):
     if request.url.path.startswith("/api/"):
         key = await _client_key(request)
         if not await _rate_limiter.check(key):
-            raise HTTPException(
+            # SRV-6: 用标准 JSONResponse 而非 HTTPException, 确保统一错误体经正常响应链
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"rate limit exceeded ({_RATE_MAX}/{_RATE_WINDOW}s)",
+                content={"detail": f"rate limit exceeded ({_RATE_MAX}/{_RATE_WINDOW}s)"},
             )
     return await call_next(request)
+
+
+def _check_engine_error(result: Any, label: str) -> None:
+    # SRV-9: 引擎优雅降级返含 error 的结果时, 显式 502 而非 200+error 误导客户端
+    err = getattr(result, "error", None)
+    if not err and isinstance(result, dict):
+        err = result.get("error")
+    if err:
+        logger.warning("%s 引擎失败: %s", label, err)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{label} failed",
+        )
 
 
 # ── Request/Response Models ──
@@ -205,6 +220,18 @@ class PersonalizePathRequest(BaseModel):
     student_id: str = Field(..., max_length=50, description="学生ID")
     progress: dict[str, Any] = Field(default_factory=dict, description="学习进度")
 
+    # SRV-7: 限定 progress 键数与值长, 防超大 payload
+    @model_validator(mode="after")
+    def _bound_progress(self):
+        if len(self.progress) > 20:
+            raise ValueError("progress 键数超过上限 20")
+        for k, v in self.progress.items():
+            if len(str(k)) > 50:
+                raise ValueError("progress 键过长")
+            if isinstance(v, str) and len(v) > 500:
+                raise ValueError("progress 值过长")
+        return self
+
 class ContentGenerateRequest(BaseModel):
     topic: str = Field(..., max_length=100, description="主题")
     grade: str = Field("", max_length=4, description="年级")
@@ -226,6 +253,7 @@ async def curriculum_plan(req: CurriculumPlanRequest, _: str = Depends(require_a
     plan = await curriculum_engine.generate_lesson_plan(
         subject=req.subject, grade=req.grade, topic=req.topic,
     )
+    _check_engine_error(plan, "curriculum/plan")
     return plan.to_dict()
 
 
@@ -237,6 +265,7 @@ async def assessment_grade(req: AssessmentGradeRequest, _: str = Depends(require
     result = await assessment_engine.grade_math(
         problem=req.question, answer=req.answer, solution=req.standard,
     )
+    _check_engine_error(result, "assessment/grade")
     return {
         "score": result.score,
         "total": result.total,
@@ -254,6 +283,7 @@ async def subject_explain(req: SubjectExplainRequest, _: str = Depends(require_a
     result = await subject_expert.explain_concept(
         subject=req.subject, grade=req.grade or "3", concept=req.concept,
     )
+    _check_engine_error(result, "subject/explain")
     return result
 
 
@@ -268,6 +298,7 @@ async def personalize_path(req: PersonalizePathRequest, _: str = Depends(require
     path = await personalization_engine.create_learning_path(
         student=req.student_id, grade=grade, subject=subject, goal=goal,
     )
+    _check_engine_error(path, "personalize/path")
     return {
         "student_id": path.student_id,
         "grade": path.grade,
@@ -385,6 +416,7 @@ async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(
     result = await differentiation_engine.generate_differentiated_lesson(
         subject=req.subject, grade=req.grade, topic=req.topic, duration=req.duration,
     )
+    _check_engine_error(result, "curriculum/plan-diff")
     return result.to_dict()
 
 
@@ -395,6 +427,7 @@ async def curriculum_quiz_diff(req: DifferentiatedQuizRequest, _: str = Depends(
     result = await differentiation_engine.generate_differentiated_quiz(
         subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
     )
+    _check_engine_error(result, "curriculum/quiz-diff")
     return result.to_dict()
 
 
@@ -455,24 +488,18 @@ def _init_allowed_dirs():
 
 
 def _check_allowed_path(path: str) -> Path:
-    """校验 data_path 在允许目录内 (SRV-5: is_relative_to 精确匹配，非前缀)。"""
-    resolved = Path(path).resolve()
-    if _ALLOWED_DATA_DIRS:
-        allowed = False
-        for d in _ALLOWED_DATA_DIRS:
-            try:
-                if resolved.is_relative_to(d):
-                    allowed = True
-                    break
-            except (ValueError, OSError):
-                continue
-        if not allowed:
-            logger.warning("_load_assessments: path outside allowed dirs: %s", resolved)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"data path not allowed: {resolved}",
-            )
-    return resolved
+    """校验 data_path 在允许目录内 (SRV-5: is_relative_to 精确匹配，非前缀)。
+
+    AGT-2: 复用 loader.validate_data_path 白名单, CLI/tasks/serve 同源校验。
+    """
+    try:
+        from .analytics.loader import DataPathError, validate_data_path
+        return validate_data_path(path)
+    except DataPathError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
 
 async def _load_assessments(path: str):
@@ -600,7 +627,8 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
     return {
         "accepted": len(assessments),
         "total": len(req.data),
-        "data_path": str(dest),
+        # SRV-10: 仅回传文件名, 不泄露服务端绝对路径
+        "filename": dest.name,
     }
 
 
@@ -774,8 +802,13 @@ async def desensitize_export(
     logger.info("desensitize/export: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode)
     anon = DataAnonymizer(cfg)
+    # SEC-19: 单向导出后反匿名表已清理, name_count 从脱敏结果中统计唯一匿名名
     desensitized = anon.export_desensitized(req.records)
+    name_fields = ("student_name", "name")
+    unique_names = {
+        r[f] for r in desensitized for f in name_fields if r.get(f)
+    }
     return {
         "desensitized": desensitized,
-        "name_count": len(anon.get_name_map()),
+        "name_count": len(unique_names),
     }

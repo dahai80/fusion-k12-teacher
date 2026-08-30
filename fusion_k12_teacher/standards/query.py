@@ -1,11 +1,45 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from .loader import StandardsLoader
 from .models import CoverageReport, KnowledgePoint
 
 logger = logging.getLogger(__name__)
+
+_CJK_RE = re.compile(r"[一-鿿]")
+
+
+def _cjk_tokens(text: str) -> list[str]:
+    """CJK+拉丁混合分词 — CJK 段取 2-gram, 拉丁段按空白切。
+
+    与 aligner._cjk_tokens 同逻辑, 按"per-module 隔离"约定本模块独立一份。
+    单字 CJK chunk 回退保留原字, 不丢弃。
+    """
+    text = text.lower().strip()
+    tokens: list[str] = []
+    for chunk in text.split():
+        if _CJK_RE.search(chunk):
+            tokens.extend(chunk[i:i + 2] for i in range(len(chunk) - 1))
+            tokens.append(chunk)
+        else:
+            tokens.append(chunk)
+    return [t for t in tokens if t]
+
+
+def _word_match(needle: str, haystack: str) -> bool:
+    """CJK 整词命中 — 用 bigram token 交集替代裸子串, 避免"加法"命中"参加法学"。
+
+    needle/haystack 均 bigram 分词; 至少 1 个 needle bigram 出现在 haystack token 集内才算命中。
+    拉丁词走精确 token 相等。无 bigram(needle<2 字)时回退裸子串(已由 loose 守门)。
+    """
+    if not needle:
+        return False
+    if len(needle) < 2:
+        return needle in haystack
+    hay_set = set(_cjk_tokens(haystack))
+    return any(tok in hay_set for tok in _cjk_tokens(needle))
 
 
 class StandardsQuery:
@@ -56,7 +90,11 @@ class StandardsQuery:
         return result
 
     def find_by_topic(self, subject: str, grade: str, topic: str) -> list[KnowledgePoint]:
-        """按主题关键词查找知识点 — 单字不模糊匹配, 避免误命中 (STD-4)。"""
+        """按主题关键词查找知识点 — 单字不模糊匹配, 避免误命中 (STD-4)。
+
+        STD-3: CJK 无词边界, topic in description 子串匹配会过度命中
+        ("加"命中"加权/增加/参加"); 改为 topic 字段子串 + description 整词边界。
+        """
         points = self.get_knowledge_points(subject, grade)
         topic_lower = topic.strip().lower()
         result = []
@@ -65,7 +103,8 @@ class StandardsQuery:
         for kp in points:
             kp_topic = kp.topic.lower()
             if loose:
-                if topic_lower in kp_topic or topic_lower in kp.description.lower():
+                # STD-3: topic 字段允许子串(主题名本就短); description 须整词命中边界
+                if topic_lower in kp_topic or _word_match(topic_lower, kp.description.lower()):
                     result.append(kp)
             else:
                 if topic_lower == kp_topic:
@@ -79,8 +118,7 @@ class StandardsQuery:
                     pre = self._loader.get_point(pre_id)
                     if not pre:
                         continue
-                    pre_text = (pre.topic + " " + pre.description).lower()
-                    if topic_lower in pre_text:
+                    if topic_lower in pre.topic.lower() or _word_match(topic_lower, pre.description.lower()):
                         matched = True
                         break
                 if matched:
@@ -103,8 +141,12 @@ class StandardsQuery:
         details = []
 
         for kp in all_points:
+            kp_topic_lower = kp.topic.lower()
+            kp_desc_lower = kp.description.lower()
+            # STD-4: CJK 裸子串 "kp.topic in obj" 把"加"判进"加权平均", 覆盖率虚高。
+            # topic 字段允许子串(教学目标常含完整主题名); description 须整词命中。
             is_covered = any(
-                kp.topic.lower() in obj or kp.description.lower() in obj
+                kp_topic_lower in obj or _word_match(kp_desc_lower, obj)
                 for obj in objectives_lower
             )
             if is_covered:

@@ -67,7 +67,6 @@ class CurriculumEngine:
 
     def __init__(self, mlx: MLXClient | None = None):
         self.mlx = mlx or MLXClient()
-        self._plans: dict[str, LessonPlan] = {}
 
     async def generate_lesson_plan(
         self,
@@ -130,7 +129,6 @@ class CurriculumEngine:
                     differentiation=data.get("differentiation", {}),
                     created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 )
-                self._plans[plan.id] = plan
                 return plan
             logger.error("教案生成失败: LLM 返回空或无法解析")
             return LessonPlan(title=topic_s, subject=subject_s, grade=grade_s, error="LLM 返回空或无法解析")

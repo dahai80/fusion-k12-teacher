@@ -380,6 +380,28 @@ class TestContentDeep:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestCLICoverage:
+    @staticmethod
+    def _assert_cli_not_crashed(result, success_marker: str = ""):
+        """TEST-7: 不再盲目接受 exit_code in (0,1) — 那会把成功与引擎降级混为一谈, 掩盖真实失败。
+
+        - exit_code==2 是 Click 用法错误/参数解析失败, 绝不接受;
+        - result.exception 非 SystemExit 表示未捕获崩溃, 绝不接受
+          (Click 的 ClickException 以 SystemExit(n) 退出属正常优雅降级, 可接受);
+        - 后端(fusion-mlx+聊天模型)在线时断言成功路径(exit 0 + success_marker 在输出);
+        - 后端不可用时断言优雅降级(exit 1, 无崩溃), 且输出非空(CLI 有反馈)。
+        """
+        assert result.exit_code != 2, f"CLI 用法错误(exit 2): {result.output}"
+        # Click 的 ClickException → SystemExit(1) 是正常降级, 勿当崩溃;
+        # 仅非 SystemExit 的异常才是真崩溃(未处理)。
+        if result.exception is not None and not isinstance(result.exception, SystemExit):
+            raise AssertionError(f"CLI 未捕获异常: {result.exception!r}")
+        if result.exit_code == 0:
+            assert success_marker in result.output, (
+                f"成功路径但缺标记 {success_marker!r}: {result.output[:300]}"
+            )
+        else:
+            assert result.output.strip(), f"失败路径无任何输出: exit={result.exit_code}"
+
     def test_cli_import(self):
         """测试 CLI 可导入。"""
         from fusion_k12_teacher import cli
@@ -466,8 +488,8 @@ class TestCLICoverage:
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["lesson", "plan", "数学", "3", "分数"])
-        # fusion-mlx 不可用时可能报错，但不应崩溃
-        assert result.exit_code in (0, 1)
+        # TEST-7: 区分成功/降级, 拒用法错误与崩溃; 成功须见 📚 标记
+        self._assert_cli_not_crashed(result, "📚")
 
     def test_cli_lesson_quiz_run(self, tmp_path):
         """测试 lesson quiz 命令执行。"""
@@ -476,7 +498,8 @@ class TestCLICoverage:
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["lesson", "quiz", "数学", "3", "分数"])
-        assert result.exit_code in (0, 1)
+        # TEST-7: 成功须见 📝 标记
+        self._assert_cli_not_crashed(result, "📝")
 
     def test_cli_subject_explain_run(self, tmp_path):
         """测试 subject explain 命令执行。"""
@@ -485,7 +508,8 @@ class TestCLICoverage:
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["subject", "explain", "科学", "5", "光合作用"])
-        assert result.exit_code in (0, 1)
+        # TEST-7: 成功须见 📖 标记
+        self._assert_cli_not_crashed(result, "📖")
 
     def test_cli_content_worksheet_run(self, tmp_path):
         """测试 content worksheet 命令执行。"""
@@ -494,7 +518,8 @@ class TestCLICoverage:
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, ["content", "worksheet", "数学", "3", "分数"])
-        assert result.exit_code in (0, 1)
+        # TEST-7: 成功须见 📄 标记
+        self._assert_cli_not_crashed(result, "📄")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

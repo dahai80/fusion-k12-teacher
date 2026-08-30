@@ -92,7 +92,11 @@ class ContentGenerator:
                                 q = dict(q)
                                 q["question"] = self._filter_output(_bound_str(q.get("question", "")), grade_s)
                             filtered_q.append(q)
-                    sections.append({**sec, "questions": filtered_q})
+                    # ENG-16: 白名单 section 键, title 有界, 不展开 LLM 任意键
+                    sections.append({
+                        "title": self._filter_output(_bound_str(sec.get("title", "")), grade_s),
+                        "questions": filtered_q,
+                    })
                 return Worksheet(
                     title=_bound_str(data.get("title", f"{topic_s}练习")),
                     subject=subject_s, grade=grade_s,

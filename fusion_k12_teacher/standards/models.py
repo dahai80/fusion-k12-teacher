@@ -6,6 +6,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
+
 
 @dataclass
 class KnowledgePoint:
@@ -81,6 +83,13 @@ class CurriculumStandard:
                 data.get("id", "?"),
             )
             ver = "1.0"
+        # STD-7: 已知版本白名单; 未知版本(如 "2.0")字段布局不兼容, 静默按 v1.0 加载
+        # 会错位映射字段 → 数据损坏。直接抛错让调用方显式处理(loader 记录失败文件并跳过)。
+        if ver not in _SUPPORTED_SCHEMA_VERSIONS:
+            raise ValueError(
+                f"课标 {data.get('id', '?')} schema_version={ver} 不受支持"
+                f"(已知: {sorted(_SUPPORTED_SCHEMA_VERSIONS)}), 拒绝加载以免数据损坏"
+            )
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),

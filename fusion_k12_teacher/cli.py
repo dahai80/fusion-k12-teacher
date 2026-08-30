@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 
@@ -24,6 +25,27 @@ def _join_str(items, sep: str = ", ") -> str:
     if not items:
         return ""
     return sep.join(str(x) for x in items if x is not None)
+
+
+def _atomic_write_json(path: str, data, indent: int = 2) -> None:
+    """CLI-4: 原子写 JSON — 先写 .tmp 再 os.replace, 兼 SRV-3 O_NOFOLLOW。
+
+    写中崩溃只留 .tmp 临时文件, 目标文件保持旧值或不存在, 不留半文件。
+    """
+    import json as _json
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    tmp = f"{path}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False, indent=indent)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _check_engine_result(result, label: str) -> None:
@@ -714,7 +736,8 @@ def desensitize():
 
 @desensitize.command("anon")
 @click.argument("input_file")
-@click.option("--mode", "-m", default="id", help="匿名模式: id/mask")
+@click.option("--mode", "-m", "mode", default="id", help="匿名模式: id/mask",
+              type=click.Choice(["id", "mask"], case_sensitive=False))
 @click.option("--prefix", "-p", default="S", help="ID前缀")
 @click.option("--output", "-o", default="", help="输出文件路径")
 def desensitize_anon(input_file, mode, prefix, output):
@@ -733,15 +756,17 @@ def desensitize_anon(input_file, mode, prefix, output):
     anon = DataAnonymizer(cfg)
     result = anon.anonymize_records(records)
     desensitized = anon.export_desensitized(records)
+    # SEC-18: 反匿名表不随结果流转, 经 get_name_map() 显式取
+    name_map = anon.get_name_map()
     click.echo()
     click.echo("🔒 脱敏完成:")
     click.echo(f"   原始记录: {result.original_count}")
     click.echo(f"   脱敏记录: {result.anonymized_count}")
-    click.echo(f"   名称映射: {len(result.name_map)} 个")
+    click.echo(f"   名称映射: {len(name_map)} 个")
     click.echo(f"   脱敏字段: {_join_str(result.masked_fields)}")
     if output:
-        with open(output, "w", encoding="utf-8") as f:
-            _json.dump(desensitized, f, ensure_ascii=False, indent=2)
+        # CLI-4: temp+rename 原子写, 写中崩溃不留半文件
+        _atomic_write_json(output, desensitized)
         click.echo(f"   输出文件: {output}")
     else:
         click.echo(f"   脱敏数据: {_json.dumps(desensitized[:1], ensure_ascii=False)[:200]}...")
@@ -751,7 +776,8 @@ def desensitize_anon(input_file, mode, prefix, output):
 @desensitize.command("export")
 @click.argument("input_file")
 @click.option("--output", "-o", required=True, help="输出文件路径")
-@click.option("--mode", "-m", default="id", help="匿名模式: id/mask")
+@click.option("--mode", "-m", "mode", default="id", help="匿名模式: id/mask",
+              type=click.Choice(["id", "mask"], case_sensitive=False))
 def desensitize_export(input_file, output, mode):
     """导出脱敏数据到文件。"""
     import json as _json
@@ -768,20 +794,19 @@ def desensitize_export(input_file, output, mode):
     cfg = DesensitizeConfig(name_mode=mode)
     anon = DataAnonymizer(cfg)
     desensitized = anon.export_desensitized(records)
-    # SRV-3: 输出文件 O_NOFOLLOW, 勿跟随已有符号链接
-    fd_out = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd_out, "w", encoding="utf-8") as f:
-        _json.dump(desensitized, f, ensure_ascii=False, indent=2)
+    # CLI-4: 原子写脱敏数据 (temp+rename), 兼 SRV-3 O_NOFOLLOW
+    _atomic_write_json(output, desensitized)
     name_map = anon.get_name_map()
     keys_dir = os.path.expanduser("~/.fusion-k12/keys")
     os.makedirs(keys_dir, exist_ok=True)
     os.chmod(keys_dir, 0o700)
+    # CLI-6: basename 去重不充分, 同名不同目录两次导出互覆 _map.json, 首份映射静默丢失。
+    # 改用 output 绝对路径的短 hash 前缀 + basename, 保证唯一。
+    out_abs = os.path.abspath(output)
+    out_hash = hashlib.sha1(out_abs.encode("utf-8")).hexdigest()[:8]
     base_name = os.path.basename(output).replace(".json", "")
-    map_path = os.path.join(keys_dir, f"{base_name}_map.json")
-    # SRV-3: 映射表 O_NOFOLLOW (含敏感还原信息)
-    fd = os.open(map_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        _json.dump(name_map, f, ensure_ascii=False, indent=2)
+    map_path = os.path.join(keys_dir, f"{out_hash}_{base_name}_map.json")
+    _atomic_write_json(map_path, name_map)
     if os.path.exists(map_path):
         os.chmod(map_path, 0o600)
     logger.warning("可逆映射表已导出至受限目录(0600, 含敏感还原信息, 勿与脱敏数据同存/外传): %s", map_path)
