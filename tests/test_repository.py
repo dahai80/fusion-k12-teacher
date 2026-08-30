@@ -144,6 +144,50 @@ class TestMigrateCLI:
         assert "脱敏映射 1 条" in result.output
         assert "未写入" in result.output
 
+    def test_encrypt_name_map_cli(self, tmp_path, monkeypatch):
+        # M1-T9: 就地加密 standalone SQLite 旧明文 name_map
+        from click.testing import CliRunner
+
+        from fusion_k12_teacher.cli import cli
+
+        monkeypatch.setenv("FUSION_K12_DATA_KEY", "ab" * 32)
+        db = str(tmp_path / "enc.db")
+        repo = SQLiteRepository(db)
+        repo.save_name_map({"张三\x001": "S001", "李四\x001": "S002"}, {"S001": "张三", "S002": "李四"})
+        repo.close()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["encrypt-name-map", "--db", db])
+        assert result.exit_code == 0, result.output
+        assert "已加密" in result.output
+        assert "2 条" in result.output
+
+        # 验证: 重开 repo, 用 cipher 解密读回原名
+        from fusion_k12_teacher.safety import DataCipher
+        cipher = DataCipher()
+        repo2 = SQLiteRepository(db)
+        _nm, rev = repo2.load_name_map(cipher=cipher)
+        assert rev["S001"] == "张三"
+        assert rev["S002"] == "李四"
+        repo2.close()
+
+    def test_encrypt_name_map_dry_run(self, tmp_path, monkeypatch):
+        from click.testing import CliRunner
+
+        from fusion_k12_teacher.cli import cli
+
+        monkeypatch.setenv("FUSION_K12_DATA_KEY", "ab" * 32)
+        db = str(tmp_path / "enc2.db")
+        repo = SQLiteRepository(db)
+        repo.save_name_map({"王五\x001": "S003"}, {"S003": "王五"})
+        repo.close()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["encrypt-name-map", "--db", db, "--dry-run"])
+        assert result.exit_code == 0, result.output
+        assert "待加密" in result.output
+        assert "未写入" in result.output
+
 
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401

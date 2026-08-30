@@ -838,11 +838,13 @@ def desensitize_export(input_file, output, mode):
 @click.option("--from-db", "from_db", required=True, help="源 SQLite 路径 (standalone)")
 @click.option("--to-dsn", "to_dsn", required=True, help="目标 Postgres DSN (cluster)")
 @click.option("--dry-run", is_flag=True, help="仅预览迁移记录数, 不写入")
-def migrate(from_db, to_dsn, dry_run):
-    """M1-T3: 单机→集群数据迁移 — 导出 standalone SQLite (history/name_map) 导入 Postgres。
+@click.option("--encrypt", is_flag=True, help="M1-T9: name_map 加密导入 (AES-256-GCM, 需 FUSION_K12_DATA_KEY)")
+def migrate(from_db, to_dsn, dry_run, encrypt):
+    """M1-T3/T9: 单机→集群数据迁移 — 导出 standalone SQLite (history/name_map) 导入 Postgres。
 
     schema 由目标后端构造时自建 (CREATE TABLE IF NOT EXISTS), 无需 Alembic。
     迁移不可逆回滚, 源库只读不删。
+    --encrypt: name_map 以 name_hash+name_encrypted 加密写入 (PII 不落明文)。
     """
     from .repository import SQLiteRepository
     try:
@@ -852,12 +854,22 @@ def migrate(from_db, to_dsn, dry_run):
         click.echo("   安装: pip install -e '.[cluster]'")
         raise SystemExit(1)
 
+    cipher = None
+    if encrypt:
+        try:
+            from .safety import DataCipher
+            cipher = DataCipher()
+        except ImportError as e:
+            click.echo(f"❌ 加密需 cryptography: {e}")
+            click.echo("   安装: pip install -e '.[cluster]'")
+            raise SystemExit(1)
+
     src = SQLiteRepository(from_db)
     history = src.load_history()
     name_map, reverse_map = src.load_name_map()
     src.close()
-    logger.info("迁移源读取: history=%d 条, name_map=%d 条", len(history), len(name_map))
-    click.echo(f"📦 源数据: 历史 {len(history)} 条, 脱敏映射 {len(name_map)} 条")
+    logger.info("迁移源读取: history=%d 条, name_map=%d 条, encrypt=%s", len(history), len(name_map), encrypt)
+    click.echo(f"📦 源数据: 历史 {len(history)} 条, 脱敏映射 {len(name_map)} 条" + (" (加密导入)" if encrypt else ""))
 
     if dry_run:
         click.echo("🔍 --dry-run: 仅预览, 未写入目标")
@@ -866,10 +878,10 @@ def migrate(from_db, to_dsn, dry_run):
     async def _run():
         dst = PostgresRepository(to_dsn)
         await dst.asave_history(history)
-        await dst.asave_name_map(name_map, reverse_map)
-        # 验证: 回读比对
+        await dst.asave_name_map(name_map, reverse_map, cipher=cipher)
+        # 验证: 回读比对 (加密模式需同 cipher 解密)
         loaded_hist = await dst.aload_history()
-        loaded_nm, _ = await dst.aload_name_map()
+        loaded_nm, _ = await dst.aload_name_map(cipher=cipher)
         await dst.aclose()
         return loaded_hist, loaded_nm
 
@@ -883,6 +895,37 @@ def migrate(from_db, to_dsn, dry_run):
         click.echo(f"⚠️ 迁移后数量不符 (历史 {len(loaded_hist)}/{len(history)}, "
                    f"映射 {len(loaded_nm)}/{len(name_map)}) — 请检查目标库")
         raise SystemExit(1)
+
+
+@cli.command("encrypt-name-map")
+@click.option("--db", "db_path", required=True, help="standalone SQLite 路径")
+@click.option("--dry-run", is_flag=True, help="仅预览待加密条数, 不写入")
+def encrypt_name_map(db_path, dry_run):
+    """M1-T9: 就地加密 standalone SQLite 旧明文 name_map (name_hash + name_encrypted)。
+
+    读明文 map_key/reverse, 用 DataCipher 重写为加密列。原明文 reverse 列保留
+    (渐进迁移, 解密失败可回退); 加密列成为权威。需 FUSION_K12_DATA_KEY。
+    """
+    try:
+        from .safety import DataCipher
+        cipher = DataCipher()
+    except ImportError as e:
+        click.echo(f"❌ 加密需 cryptography: {e}")
+        click.echo("   安装: pip install -e '.[cluster]'")
+        raise SystemExit(1)
+
+    from .repository import SQLiteRepository
+    repo = SQLiteRepository(db_path)
+    name_map, reverse_map = repo.load_name_map()
+    click.echo(f"📦 待加密 name_map: {len(name_map)} 条")
+    if dry_run:
+        click.echo("🔍 --dry-run: 仅预览, 未写入")
+        repo.close()
+        return
+    repo.save_name_map(name_map, reverse_map, cipher=cipher)
+    logger.info("name_map 就地加密完成: %d 条", len(name_map))
+    click.echo(f"✅ name_map 已加密 ({len(name_map)} 条), 明文 reverse 列保留作回退")
+    repo.close()
 
 
 @cli.command("rotate-salt")
