@@ -230,6 +230,30 @@ Student data privacy: salted-hash name anonymization, fixed-width field masking,
 | `DataAnonymizer.export_desensitized()` | Export desensitized records (without name_map) |
 | `DataAnonymizer.deanonymize_record()` | Reverse anonymization (requires in-memory name_map) |
 
+### 11a. Enterprise Infrastructure (`repository/`, `safety/`) — v2.0
+
+v2.0 adds dual-form deployment (standalone default / cluster optional) with persistence decoupling, PII encryption, and unified salt distribution.
+
+| Mode | Backend | Encryption | Salt |
+|------|---------|-----------|------|
+| `standalone` (default) | SQLite (`~/.fusion-k12/k12.db`, stdlib) | optional (FUSION_K12_DATA_KEY) | env / file / random fallback |
+| `cluster` | Postgres (asyncpg pool, `FUSION_K12_PG_DSN`) | AES-256-GCM | ConfigCenter (Redis cache TTL 300s) |
+
+Components:
+- `Repository` ABC + `SQLiteRepository` / `PostgresRepository` — `task_history` + `name_map` tables, business layer agnostic
+- `get_repository()` factory — selects backend by `FUSION_K12_MODE`
+- `DataCipher` (AES-256-GCM) — PII encryption, key from env/file, `encrypt_dict`/`decrypt_dict` with gradual-migration plaintext passthrough
+- `SaltProvider` ABC + `EnvSaltProvider` / `FileSaltProvider` / `ConfigCenterSaltProvider` / `VersionedSaltProvider` — unified cross-node salt, versioned rotation
+- Encrypted `name_map`: `name_hash` (sha256 query key) + `name_encrypted` (AES-GCM reversible)
+
+| Command | Description |
+|---------|-------------|
+| `migrate --from-db X --to-dsn Y [--encrypt]` | Migrate standalone SQLite → cluster Postgres (encrypt name_map on import) |
+| `encrypt-name-map --db X` | In-place encrypt legacy plaintext name_map in standalone SQLite |
+| `rotate-salt [--salt-file F] [--show-versions]` | Rotate salt (archive current as `salt.vN`, generate new); old versions retained for historical ID lookup |
+
+Optional deps (`pip install -e ".[cluster]"`): `asyncpg`, `cryptography`, `redis` — all lazy-imported, missing → clear ImportError + fallback. Standalone needs none. See `docs/v2-enterprise-arch-upgrade.md` and `docs/m1-implementation-0830.md`.
+
 ### 12. HTTP API (`serve.py`)
 
 REST API for programmatic access (default port 11448).

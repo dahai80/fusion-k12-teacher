@@ -219,7 +219,7 @@ class TestContentGenerator:
 class TestModuleIntegrity:
     def test_all_modules_importable(self):
         import fusion_k12_teacher
-        assert fusion_k12_teacher.__version__ == "1.3.0"
+        assert fusion_k12_teacher.__version__ == "2.0.0a0"
 
     def test_cli_importable(self):
         from fusion_k12_teacher import cli

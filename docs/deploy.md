@@ -113,7 +113,7 @@ spec:
     spec:
       containers:
       - name: fusion-k12
-        image: fusion-k12-teacher:1.3.0
+        image: fusion-k12-teacher:2.0.0a0
         ports:
         - containerPort: 11448
         env:
@@ -157,7 +157,7 @@ fusion-k12 safety wordlist --add "新敏感词"
 curl http://localhost:11448/api/health
 
 # 预期返回
-# {"status": "ok", "version": "1.3.0"}
+# {"status": "ok", "version": "2.0.0a0"}
 ```
 
 ## 常见问题
