@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# E8: 每个层级配置须含的键集 — 加载时校验, typo (如 excersise_count) 立即暴露,
+# 不再被引擎 f-string 抛 KeyError 后被 gather 当层异常静默降级空 LayerContent。
+_REQUIRED_CONFIG_KEYS = frozenset({
+    "label", "vocabulary_level", "example_complexity", "exercise_count",
+    "hint_density", "scaffold_steps", "extension", "max_abstraction", "prompt_modifier",
+})
 
 LEVEL_CONFIGS: dict[str, dict[str, Any]] = {
     "struggling": {
@@ -55,3 +65,22 @@ LEVEL_CONFIGS: dict[str, dict[str, Any]] = {
         ),
     },
 }
+
+
+def _validate_level_configs() -> None:
+    """E8: 加载时校验各层级配置键集完整 — typo/缺键立即抛, 不静默空层。"""
+    for lvl, cfg in LEVEL_CONFIGS.items():
+        missing = _REQUIRED_CONFIG_KEYS - set(cfg.keys())
+        extra = set(cfg.keys()) - _REQUIRED_CONFIG_KEYS
+        if missing:
+            raise KeyError(
+                f"LEVEL_CONFIGS[{lvl!r}] 缺键 {sorted(missing)}, 须含 {sorted(_REQUIRED_CONFIG_KEYS)}"
+            )
+        if extra:
+            raise KeyError(
+                f"LEVEL_CONFIGS[{lvl!r}] 多键 {sorted(extra)}, 未知键可能 typo"
+            )
+    logger.debug("LEVEL_CONFIGS 键集校验通过: %s", list(LEVEL_CONFIGS.keys()))
+
+
+_validate_level_configs()

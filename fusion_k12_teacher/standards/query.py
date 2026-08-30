@@ -1,45 +1,12 @@
 from __future__ import annotations
 
 import logging
-import re
 
+from ._cjk import _cjk_tokens, _word_match  # E4: 单一 CJK 匹配实现, 不再各抄一份
 from .loader import StandardsLoader
 from .models import CoverageReport, KnowledgePoint
 
 logger = logging.getLogger(__name__)
-
-_CJK_RE = re.compile(r"[一-鿿]")
-
-
-def _cjk_tokens(text: str) -> list[str]:
-    """CJK+拉丁混合分词 — CJK 段取 2-gram, 拉丁段按空白切。
-
-    与 aligner._cjk_tokens 同逻辑, 按"per-module 隔离"约定本模块独立一份。
-    单字 CJK chunk 回退保留原字, 不丢弃。
-    """
-    text = text.lower().strip()
-    tokens: list[str] = []
-    for chunk in text.split():
-        if _CJK_RE.search(chunk):
-            tokens.extend(chunk[i:i + 2] for i in range(len(chunk) - 1))
-            tokens.append(chunk)
-        else:
-            tokens.append(chunk)
-    return [t for t in tokens if t]
-
-
-def _word_match(needle: str, haystack: str) -> bool:
-    """CJK 整词命中 — 用 bigram token 交集替代裸子串, 避免"加法"命中"参加法学"。
-
-    needle/haystack 均 bigram 分词; 至少 1 个 needle bigram 出现在 haystack token 集内才算命中。
-    拉丁词走精确 token 相等。无 bigram(needle<2 字)时回退裸子串(已由 loose 守门)。
-    """
-    if not needle:
-        return False
-    if len(needle) < 2:
-        return needle in haystack
-    hay_set = set(_cjk_tokens(haystack))
-    return any(tok in hay_set for tok in _cjk_tokens(needle))
 
 
 class StandardsQuery:
@@ -49,13 +16,11 @@ class StandardsQuery:
         self._loader = loader or StandardsLoader()
 
     def get_knowledge_points(self, subject: str, grade: str) -> list[KnowledgePoint]:
-        """获取某学科某年级的全部知识点。"""
-        points = self._loader.all_points()
-        result = []
-        for kp in points.values():
-            if kp.subject == subject and kp.grade == grade:
-                result.append(kp)
-        result.sort(key=lambda k: k.id)
+        """获取某学科某年级的全部知识点。
+
+        E6: 走 loader (subject,grade) 索引, 免 all_points() 浅拷贝整 dict + O(N) 扫描。
+        """
+        result = self._loader.get_knowledge_points(subject, grade)
         logger.debug(f"查询课标: {subject}/{grade} → {len(result)} 个知识点")
         return result
 
@@ -135,7 +100,10 @@ class StandardsQuery:
             logger.warning(f"未找到课标: {subject}/{grade}")
             return CoverageReport(subject=subject, grade=grade)
 
-        objectives_lower = [o.lower() for o in objectives]
+        # E10: 预计算每个 objective 的 token 集 + 主题子串, 复用 K*O 次, 不再每点重分词。
+        # _word_match(kp_desc, obj) 原每次重算 set(_cjk_tokens(obj)), 同一 obj 被 K 点重复分词。
+        obj_lower = [o.lower() for o in objectives]
+        obj_token_sets = [set(_cjk_tokens(o)) for o in obj_lower]
         covered = []
         missing = []
         details = []
@@ -145,10 +113,16 @@ class StandardsQuery:
             kp_desc_lower = kp.description.lower()
             # STD-4: CJK 裸子串 "kp.topic in obj" 把"加"判进"加权平均", 覆盖率虚高。
             # topic 字段允许子串(教学目标常含完整主题名); description 须整词命中。
-            is_covered = any(
-                kp_topic_lower in obj or _word_match(kp_desc_lower, obj)
-                for obj in objectives_lower
-            )
+            # E10: 用预计算的 obj_token_sets 做 bigram 命中, 复用免重分词。
+            is_covered = False
+            for obj_text, obj_set in zip(obj_lower, obj_token_sets):
+                if kp_topic_lower in obj_text:
+                    is_covered = True
+                    break
+                # description bigram 整词命中: 至少 1 个 kp_desc bigram 落在 obj token 集内
+                if any(tok in obj_set for tok in _cjk_tokens(kp_desc_lower)):
+                    is_covered = True
+                    break
             if is_covered:
                 covered.append(kp.id)
             else:

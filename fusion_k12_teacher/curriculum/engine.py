@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from .._parse import parse_json
+from .._prompt import build_prompt
 from ..ai_client import MLXClient
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
@@ -98,13 +98,16 @@ class CurriculumEngine:
         if grade_s not in GRADE_LEVELS:
             logger.warning("非标准年级: %s", grade_s)
         standards_str = ", ".join(sanitize_input(s, 100) for s in standards) if standards else "Common Core"
-        prompt = f"""你是一位经验丰富的K-12教师。请为以下课程生成完整教案：
+        # E12: prompt 经 build_prompt 模板层统一 sanitize 守门, 不再 f-string 手拼。
+        # 已 sanitize 的字段二次过 sanitize 对干净输入幂等; duration/standards_str 非裸用户输入原样注入。
+        prompt = build_prompt(
+            """你是一位经验丰富的K-12教师。请为以下课程生成完整教案：
 
-学科: {subject_s}
-年级: {grade_s}
-主题: {topic_s}
+学科: {subject}
+年级: {grade}
+主题: {topic}
 课时: {duration}分钟
-课程标准: {standards_str}
+课程标准: {standards}
 
 请返回JSON格式：
 {{
@@ -122,7 +125,13 @@ class CurriculumEngine:
         "advanced": "对学有余力学生的拓展",
         "ell": "对英语学习者的支持"
     }}
-}}"""
+}}""",
+            subject=subject_s,
+            grade=grade_s,
+            topic=topic_s,
+            duration=duration,
+            standards=standards_str,
+        )
         try:
             response = await self.mlx.chat([
                 {"role": "system", "content": "你是一位专业K-12教师，生成符合课程标准的结构化教案。"},
@@ -246,18 +255,5 @@ class CurriculumEngine:
             return {"unit_title": unit_s, "error": str(e)}
 
     def _parse_json(self, text: Any) -> Any:
-        """解析 LLM 返回的 JSON — 容忍 None/空串/代码块围栏 (ENG-5/6)。"""
-        if not isinstance(text, str) or not text.strip():
-            return None
-        text = text.strip()
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            text = match.group(1).strip()
-        else:
-            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
-            if obj_match:
-                text = obj_match.group(0)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+        # E1: 收敛至单一 _parse.parse_json, 不再各引擎手抄分叉实现
+        return parse_json(text)

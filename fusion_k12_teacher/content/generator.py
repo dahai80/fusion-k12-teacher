@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._parse import parse_json
 from ..ai_client import MLXClient
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
@@ -241,21 +240,5 @@ class ContentGenerator:
             return ""
 
     def _parse_json(self, text: Any) -> Any:
-        """解析 LLM JSON — None 安全 + 有界长度 + regex fence (CNT-3)。"""
-        if not isinstance(text, str) or not text.strip():
-            return None
-        if len(text) > 200000:
-            logger.warning("LLM 返回过长(%d 字符), 截断后再解析", len(text))
-            text = text[:200000]
-        text = text.strip()
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            text = match.group(1).strip()
-        else:
-            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
-            if obj_match:
-                text = obj_match.group(0)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+        """解析 LLM JSON — E1: 收敛至单一 _parse.parse_json (有界长度+平衡扫描)。"""
+        return parse_json(text)

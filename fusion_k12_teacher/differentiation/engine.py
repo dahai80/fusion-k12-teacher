@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import re
 from typing import Any
 
+from .._parse import parse_json
 from ..ai_client import MLXClient
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
@@ -65,9 +64,12 @@ class DifferentiationEngine:
         mlx: MLXClient | None = None,
         standards_query: StandardsQuery | None = None,
         content_filter: ContentFilter | None = None,
+        aligner: StandardsAligner | None = None,
     ):
         self.mlx = mlx or MLXClient()
-        self._aligner = StandardsAligner(standards_query)
+        # E9: aligner 可注入 — 原直接 new 致 engine 与具体 aligner 强耦合,
+        # 无法用假 aligner 隔离测试 engine, 替换对齐策略须改引擎源码。
+        self._aligner = aligner or StandardsAligner(standards_query)
         self._filter = content_filter or ContentFilter()
 
     def _filter_output(self, text: str, grade: str) -> str:
@@ -82,13 +84,14 @@ class DifferentiationEngine:
 
     @staticmethod
     def _set_layer(result: DifferentiatedContent, lvl: str, content: LayerContent) -> None:
-        """ENG-23: 显式校验字段存在再写 — setattr 依赖字段名精确匹配, 改名即静默写不存在属性。
-        hasattr 守门, 字段缺失记 warning 不写, 避免静默丢失或创建幽灵属性。
+        """E3: 写入 result.layers[lvl] — dict 存储, 新增层级免改 dataclass。
+
+        ENG-23 守门: 层级名须在 LEVEL_CONFIGS 内, 否则跳过避免写入幽灵层级。
         """
-        if not hasattr(result, lvl):
-            logger.warning("DifferentiatedContent 无字段 %s, 跳过赋值(可能字段已改名)", lvl)
+        if lvl not in LEVEL_CONFIGS:
+            logger.warning("层级 %s 不在 LEVEL_CONFIGS, 跳过赋值(可能配置已改名)", lvl)
             return
-        setattr(result, lvl, content)
+        result.layers[lvl] = content
 
     async def generate_differentiated_lesson(
         self,
@@ -107,7 +110,9 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        levels = ["struggling", "standard", "advanced"]
+        # E2: levels 取自 LEVEL_CONFIGS.keys() 单一来源, 不再三处硬编码,
+        # 新增层级只改 level_config.py 一处, 避免任一处漏改致该层静默不生成。
+        levels = list(LEVEL_CONFIGS.keys())
         layer_coros = [
             self._generate_layer(
                 subject_s, grade_s, topic_s, lvl, duration, standards_context
@@ -155,7 +160,8 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        levels = ["struggling", "standard", "advanced"]
+        # E2: levels 单一来源 LEVEL_CONFIGS.keys()
+        levels = list(LEVEL_CONFIGS.keys())
         quiz_coros = [
             self._generate_quiz_layer(
                 subject_s, grade_s, topic_s, lvl, num_questions, standards_context
@@ -191,7 +197,8 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        levels = ["struggling", "standard", "advanced"]
+        # E2: levels 单一来源 LEVEL_CONFIGS.keys()
+        levels = list(LEVEL_CONFIGS.keys())
         ws_coros = [
             self._generate_worksheet_layer(
                 subject_s, grade_s, topic_s, lvl, num_questions, standards_context
@@ -388,17 +395,5 @@ C组(挑战): 面向优等生，任务有挑战，重在拓展探究
         return []
 
     def _parse_json(self, text: Any) -> Any:
-        if not isinstance(text, str) or not text.strip():
-            return None
-        text = text.strip()
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            text = match.group(1).strip()
-        else:
-            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
-            if obj_match:
-                text = obj_match.group(0)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+        # E1: 收敛至单一 _parse.parse_json, 不再各引擎手抄分叉实现
+        return parse_json(text)

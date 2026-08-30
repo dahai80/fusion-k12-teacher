@@ -71,6 +71,11 @@ class ContentFilter:
         self.age_checker = age_checker or AgeChecker()
         self.mlx = mlx
         self.filter_level = filter_level or DEFAULT_FILTER_LEVEL
+        # A15: 可插拔规则管线 — 敏感词层 + 适龄层, 新增过滤规则追加到此列表即可
+        self._filters: list = [
+            self._filter_sensitive_words,
+            self._filter_age,
+        ]
         logger.info(
             f"ContentFilter 初始化, 词库: {self.wordlist.count} 词, "
             f"等级: {self.filter_level.level}"
@@ -83,79 +88,75 @@ class ContentFilter:
 
     def check_text(self, text: str, grade: str = "3") -> ContentCheckResult:
         # SEC-10: 任何异常 fail-closed (标记不安全), 不向调用方抛
-        result = ContentCheckResult(filtered_text=text)
-        try:
-            # SEC-12: 词库缺失 disabled, 最后防线不可用, fail-closed 拦截
-            if self.filter_level.sensitive_words and self.wordlist.disabled:
-                result.is_safe = False
-                self._escalate(result, "critical")
-                result.summary = "[拦截] 敏感词库未加载, 内容检查不可用"
-                return result
-            if self.filter_level.sensitive_words:
-                flagged = self.wordlist.check(text)
-                if flagged:
-                    result.flagged_words = flagged
-                    result.filtered_text = self._replace_words(text, flagged)
-                    result.is_safe = False
-                    self._escalate(result, "high")
-                    logger.warning(f"敏感词检出: {flagged}")
-
-            if self.filter_level.age_check:
-                age_issues = self.age_checker.check_content(text, grade)
-                if age_issues:
-                    result.age_issues = age_issues
-                    # SEC-11: 仅年龄命中时无词替换, 置占位提示避免原文原样透传
-                    if not result.filtered_text or result.filtered_text == text:
-                        result.filtered_text = "[内容因适龄问题已被拦截]"
-                    result.is_safe = False
-                    self._escalate(result, "medium")
-                    logger.warning(f"适龄问题: {age_issues}")
-        except Exception as exc:
-            logger.error("check_text 异常, fail-closed: %s", exc, exc_info=True)
-            result.is_safe = False
-            self._escalate(result, "critical")
-            result.summary = "[拦截] 内容检查内部异常"
-            return result
-
-        result.summary = self._build_summary(result)
-        return result
+        # A15: 规则层走可插拔 pipeline, 不再重复手写敏感词+适龄逻辑
+        return self._run_pipeline(text, grade, scope="input")
 
     def check_output(self, text: str, grade: str = "3") -> ContentCheckResult:
         # SEC-10: 输出校验同样 fail-closed
+        # A15: 复用 _run_pipeline(规则层单一实现), 不再重复 check_text 的逻辑分叉
+        return self._run_pipeline(text, grade, scope="output")
+
+    def _run_pipeline(self, text: str, grade: str, scope: str) -> ContentCheckResult:
+        """A15: 可插拔规则管线 — 各过滤层为独立 callable, 按序应用。
+        scope=input 走 sensitive_words+age_check 门控, scope=output 走 output_check 门控。
+        新增过滤规则只须追加 callable 到 self._filters, 不改核心管线。"""
         result = ContentCheckResult(filtered_text=text)
         try:
-            # SEC-12: 词库缺失 disabled, 输出检查不可用, fail-closed 拦截
-            if self.filter_level.output_check and self.wordlist.disabled:
+            # SEC-12: 词库缺失 disabled, 最后防线不可用, fail-closed 拦截
+            wordlist_enabled = (
+                self.filter_level.sensitive_words if scope == "input"
+                else self.filter_level.output_check
+            )
+            if wordlist_enabled and self.wordlist.disabled:
                 result.is_safe = False
                 self._escalate(result, "critical")
-                result.summary = "[拦截] 敏感词库未加载, 输出检查不可用"
+                result.summary = f"[拦截] 敏感词库未加载, {'输出' if scope == 'output' else '内容'}检查不可用"
                 return result
-            if self.filter_level.output_check:
-                flagged = self.wordlist.check(text)
-                if flagged:
-                    result.flagged_words = flagged
-                    result.filtered_text = self._replace_words(text, flagged)
-                    result.is_safe = False
-                    self._escalate(result, "high")
-                    logger.warning(f"输出敏感词检出: {flagged}")
-
-                age_issues = self.age_checker.check_content(text, grade)
-                if age_issues:
-                    result.age_issues = age_issues
-                    if not result.filtered_text or result.filtered_text == text:
-                        result.filtered_text = "[内容因适龄问题已被拦截]"
-                    result.is_safe = False
-                    self._escalate(result, "medium")
-                    logger.warning(f"输出适龄问题: {age_issues}")
+            # A15: 逐 filter 应用, 每个 filter 接收 (result, text, grade, scope) 就地 mutate result
+            for f in self._filters:
+                f(result, text, grade, scope)
         except Exception as exc:
-            logger.error("check_output 异常, fail-closed: %s", exc, exc_info=True)
+            logger.error("%s 管线异常, fail-closed: %s", scope, exc, exc_info=True)
             result.is_safe = False
             self._escalate(result, "critical")
-            result.summary = "[拦截] 输出检查内部异常"
+            result.summary = f"[拦截] {'输出' if scope == 'output' else '内容'}检查内部异常"
             return result
 
         result.summary = self._build_summary(result)
         return result
+
+    # A15: 规则层各 filter 独立 — 管线结构可插拔, FilterLevel 控制各层是否激活
+    def _filter_sensitive_words(self, result, text, grade, scope) -> None:
+        enabled = (
+            self.filter_level.sensitive_words if scope == "input"
+            else self.filter_level.output_check
+        )
+        if not enabled:
+            return
+        flagged = self.wordlist.check(text)
+        if flagged:
+            result.flagged_words = flagged
+            result.filtered_text = self._replace_words(text, flagged)
+            result.is_safe = False
+            self._escalate(result, "high")
+            logger.warning(f"{'输出' if scope == 'output' else '敏感'}词检出: {flagged}")
+
+    def _filter_age(self, result, text, grade, scope) -> None:
+        enabled = (
+            self.filter_level.age_check if scope == "input"
+            else self.filter_level.output_check
+        )
+        if not enabled:
+            return
+        age_issues = self.age_checker.check_content(text, grade)
+        if age_issues:
+            result.age_issues = age_issues
+            # SEC-11: 仅年龄命中时无词替换, 置占位提示避免原文原样透传
+            if not result.filtered_text or result.filtered_text == text:
+                result.filtered_text = "[内容因适龄问题已被拦截]"
+            result.is_safe = False
+            self._escalate(result, "medium")
+            logger.warning(f"适龄问题: {age_issues}")
 
     def filter_sensitive(self, text: str) -> str:
         flagged = self.wordlist.check(text)

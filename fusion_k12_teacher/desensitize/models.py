@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass, field
 
+from .._coerce import coerce_dict, coerce_int, coerce_str, coerce_str_list
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MASK_FIELDS = [
@@ -31,12 +33,12 @@ class DesensitizeConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "DesensitizeConfig":
         return cls(
-            name_mode=data.get("name_mode", "id"),
-            id_prefix=data.get("id_prefix", "S"),
-            fields_to_mask=data.get("fields_to_mask", list(DEFAULT_MASK_FIELDS)),
-            mask_char=data.get("mask_char", "*"),
-            mask_keep_chars=data.get("mask_keep_chars", 1),
-            salt=data.get("salt", ""),
+            name_mode=coerce_str(data.get("name_mode", "id")),
+            id_prefix=coerce_str(data.get("id_prefix", "S")),
+            fields_to_mask=coerce_str_list(data.get("fields_to_mask", list(DEFAULT_MASK_FIELDS))),
+            mask_char=coerce_str(data.get("mask_char", "*")),
+            mask_keep_chars=coerce_int(data.get("mask_keep_chars", 1), 1),
+            salt=coerce_str(data.get("salt", "")),
         )
 
 
@@ -63,9 +65,9 @@ class AnonymizeResult:
     @classmethod
     def from_dict(cls, data: dict) -> "AnonymizeResult":
         return cls(
-            original_count=data.get("original_count", 0),
-            anonymized_count=data.get("anonymized_count", 0),
-            name_map=data.get("name_map", {}),
-            masked_fields=data.get("masked_fields", []),
+            original_count=coerce_int(data.get("original_count", 0), 0),
+            anonymized_count=coerce_int(data.get("anonymized_count", 0), 0),
+            name_map=coerce_dict(data.get("name_map", {})),
+            masked_fields=coerce_str_list(data.get("masked_fields", [])),
             records=data.get("records", []),
         )

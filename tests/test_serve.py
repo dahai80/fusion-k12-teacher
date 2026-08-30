@@ -98,7 +98,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "1.1.0"
+        assert data["version"] == "1.2.0"
 
 
 class TestCurriculumPlan:
@@ -375,7 +375,8 @@ class TestDifferentiationEndpoint:
             "subject": "数学", "grade": "3", "topic": "分数", "duration": 45,
         })
         assert resp.status_code == 200
-        assert "struggling" in resp.json()
+        # E3: 分层内容改 layers dict, 顶层不再有 struggling 字段
+        assert "struggling" in resp.json()["layers"]
 
 
 class TestAuthEnforcement:

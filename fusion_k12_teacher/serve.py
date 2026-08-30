@@ -18,7 +18,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, model_validator
 
 from . import __version__
-from .agent import list_available_tasks, scheduler
+from .agent import list_available_tasks, register_all_engines, scheduler
 from .ai_client import MLXClient
 from .analytics import AnalyticsEngine, load_from_csv, load_from_json
 from .analytics.models import StudentAssessment, WeakPoint
@@ -117,9 +117,11 @@ async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
     # R1: 每请求现读 env — 密钥轮换后无需重启即生效。SRV-1 fail-closed: 未配置拒所有端点。
     configured = os.environ.get("FUSION_K12_API_KEY", "")
     if not configured:
+        # R3: 误配置(无 key)用 500 与未就绪(503)/限流(429)语义分离 —
+        # 原返 503 致运维监控无法区分"误配置"与"未就绪", 告警失真。
         logger.error("FUSION_K12_API_KEY 未配置, 拒绝受保护端点 (fail-closed)")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="API key not configured; set FUSION_K12_API_KEY",
         )
     if not api_key or not secrets.compare_digest(api_key, configured):
@@ -166,6 +168,8 @@ async def lifespan(app: FastAPI):
         # A9: build_engines 内含 loader.load_all() 同步磁盘 I/O, 放线程池
         # 避免阻塞事件循环 — 大课标库首次加载数百毫秒, 否则并发请求全挂起。
         bundle = await asyncio.to_thread(build_engines)
+        # A14: 注册与构造分离 — 工厂纯构造, 此处显式注册全局 registry(agent 执行器按名查引擎)
+        register_all_engines(bundle=bundle)
         mlx_client = bundle.mlx
         curriculum_engine = bundle.curriculum
         assessment_engine = bundle.assessment
@@ -187,6 +191,8 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error("lifespan 启动失败, 清理已分配资源: %s", exc, exc_info=True)
         _ready = False
+        # R2: 释放已构造的 mlx/scheduler, 并清空所有引擎全局 —
+        # 原 re-raise 后半数全局已赋值、半数仍 None, worker 残留半套引擎。
         try:
             await scheduler.aclose()
         except Exception as e:
@@ -196,6 +202,14 @@ async def lifespan(app: FastAPI):
                 await mlx_client.close()
             except Exception as e:
                 logger.warning("mlx_client.close 失败(启动异常清理): %s", e)
+        # 清空引擎全局, 防重启时残留半初始化态
+        for name in (
+            "mlx_client", "curriculum_engine", "assessment_engine", "subject_expert",
+            "personalization_engine", "content_generator", "differentiation_engine",
+            "standards_query", "standards_loader", "analytics_engine",
+            "content_filter", "sensitive_wordlist",
+        ):
+            globals()[name] = None
         raise
     yield
     logger.info("Fusion-K12-Teacher API shutting down")
@@ -390,13 +404,15 @@ async def content_generate(req: ContentGenerateRequest, _: str = Depends(require
         ws = await content_generator.generate_worksheet(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
+        # A13: worksheet 失败统一转 502, error 不入 200 body —
+        # 原返 200 + ws.error 泄露内部错误细节, 与 _check_engine_error 转的设计自相矛盾。
+        _check_engine_error(ws, "content/worksheet")
         return {
             "type": "worksheet",
             "title": ws.title,
             "sections": ws.sections,
             "answer_key": ws.answer_key,
             "instructions": ws.instructions,
-            "error": ws.error,
         }
 
 
@@ -524,20 +540,18 @@ _ALLOWED_DATA_DIRS: list[Path] = []
 
 
 def _init_allowed_dirs():
+    # R7: 单一真源 — 复用 analytics.loader._allowed_data_dirs(), 不再 serve 侧重复定义。
+    # 原两套允许目录来源分叉, 改一处忘改另一处致路径校验失效或过严。
+    from .analytics.loader import _allowed_data_dirs
     global _ALLOWED_DATA_DIRS
-    project_root = Path(__file__).resolve().parent.parent
-    _ALLOWED_DATA_DIRS = [
-        (project_root / "data").resolve(),
-        (project_root / "examples").resolve(),
-        (Path.cwd() / "data").resolve(),
-    ]
+    _ALLOWED_DATA_DIRS = _allowed_data_dirs()
     logger.info("allowed data dirs: %s", [str(d) for d in _ALLOWED_DATA_DIRS])
 
 
 def _check_allowed_path(path: str) -> Path:
     """校验 data_path 在允许目录内 (SRV-5: is_relative_to 精确匹配，非前缀)。
 
-    AGT-2: 复用 loader.validate_data_path 白名单, CLI/tasks/serve 同源校验。
+    AGT-2/R7: 复用 loader.validate_data_path 白名单, CLI/tasks/serve 同源校验。
     """
     try:
         from .analytics.loader import DataPathError, validate_data_path

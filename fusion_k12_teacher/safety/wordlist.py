@@ -32,6 +32,8 @@ class SensitiveWordList:
     def _rebuild_matcher(self) -> None:
         # SECb-P1: 单正则一次扫描, 替代 O(W×N) 逐词 in 子串
         # SEC-23: 局部构建, compile 成功才赋值, 失败保留旧 matcher 不污染 _words 状态
+        # E16: 全量重编译 — 仅 load(首次/批量)与 remove(无法增量剥离单词)调用。
+        # add 走 _extend_matcher 增量拼接, 不重编译整条 alternation。
         if not self._words:
             self._matcher = re.compile(r"$^")
             return
@@ -40,6 +42,21 @@ class SensitiveWordList:
             new_matcher = re.compile("|".join(escaped))
         except re.error as e:
             logger.error("敏感词 matcher 构建失败, 保留旧 matcher: %s", e)
+            raise
+        self._matcher = new_matcher
+
+    def _extend_matcher(self, word: str) -> None:
+        """E16: 增量拼接 — 仅 escape+拼接新词, 不重编译整条 alternation。
+        O(1) 词而非 O(W)。失败抛 re.error 由调用方回滚 _words。"""
+        if not self._words:
+            self._matcher = re.compile(r"$^")
+            return
+        try:
+            new_part = re.escape(word)
+            # 旧 matcher 已是 alternation, 直接 | 拼新词即可
+            new_matcher = re.compile(self._matcher.pattern + "|" + new_part)
+        except re.error as e:
+            logger.error("敏感词 matcher 增量构建失败: %s", e)
             raise
         self._matcher = new_matcher
 
@@ -76,11 +93,13 @@ class SensitiveWordList:
             return
         self._words.add(w)
         # SEC-23: matcher 构建失败时回滚新增词, 不留静默缺失状态
+        # E16: 增量拼接而非全量重编译 — 已在 _words 内的词不重新 escape
         try:
-            self._rebuild_matcher()
+            self._extend_matcher(w)
         except re.error:
             logger.error("新增词 %r 导致 matcher 构建失败, 已回滚", w)
             self._words.discard(w)
+            self._rebuild_matcher()
 
     def remove(self, word: str) -> None:
         self._words.discard(_normalize(word.strip()))

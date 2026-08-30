@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from pathlib import Path
 
 from .models import CurriculumStandard, KnowledgePoint
@@ -18,38 +19,61 @@ class StandardsLoader:
         self._data_dir = data_dir or DATA_DIR
         self._standards: dict[str, CurriculumStandard] = {}
         self._points_index: dict[str, KnowledgePoint] = {}
+        # E6: (subject, grade) -> list[KnowledgePoint] 索引, get_knowledge_points 免全量扫描。
+        self._sg_index: dict[tuple[str, str], list[KnowledgePoint]] = {}
         self._loaded = False
         self._failed_files: list[str] = []
+        # R11: threading.Lock 保护懒加载临界区 — 异步服务器首请求并发触发时
+        # 多协程同时 _load_file/_register 会重复加载 + 临时双注册。
+        self._load_lock = threading.Lock()
 
     def load_all(self) -> dict[str, CurriculumStandard]:
         """加载 data 目录下所有 JSON 课标文件。
 
         STD-8: 返 dict 快照(浅拷贝) — 防调用方改可变内部 _standards。
         与 STD-6 all_points/all_standards 同策略, 不用 MappingProxyType(活视图)。
+        R11: 加锁保护检查-置位, 避免并发首加载重复加载。
         """
         if self._loaded:
             return dict(self._standards)
 
-        if not self._data_dir.exists():
-            logger.warning(f"课标数据目录不存在: {self._data_dir}")
+        with self._load_lock:
+            # double-check: 持锁后他线程可能已加载完
+            if self._loaded:
+                return dict(self._standards)
+
+            if not self._data_dir.exists():
+                logger.warning(f"课标数据目录不存在: {self._data_dir}")
+                self._loaded = True
+                return dict(self._standards)
+
+            for json_file in sorted(self._data_dir.glob("*.json")):
+                try:
+                    self._load_file(json_file)
+                except Exception as e:
+                    self._failed_files.append(str(json_file))
+                    logger.error(f"加载课标文件失败 {json_file}: {e}")
+
+            # E6: 扫描完后建 (subject,grade) 索引
+            self._rebuild_sg_index()
+
             self._loaded = True
+            logger.info(
+                f"课标加载完成: {len(self._standards)} 个标准, {len(self._points_index)} 个知识点"
+                + (f", 失败文件: {len(self._failed_files)}" if self._failed_files else "")
+            )
+            if self._failed_files:
+                logger.warning("以下课标文件加载失败(已跳过): %s", self._failed_files)
             return dict(self._standards)
 
-        for json_file in sorted(self._data_dir.glob("*.json")):
-            try:
-                self._load_file(json_file)
-            except Exception as e:
-                self._failed_files.append(str(json_file))
-                logger.error(f"加载课标文件失败 {json_file}: {e}")
-
-        self._loaded = True
-        logger.info(
-            f"课标加载完成: {len(self._standards)} 个标准, {len(self._points_index)} 个知识点"
-            + (f", 失败文件: {len(self._failed_files)}" if self._failed_files else "")
-        )
-        if self._failed_files:
-            logger.warning("以下课标文件加载失败(已跳过): %s", self._failed_files)
-        return dict(self._standards)
+    def _rebuild_sg_index(self) -> None:
+        """E6: 构建 (subject, grade) -> list[KnowledgePoint] 索引。"""
+        self._sg_index.clear()
+        for kp in self._points_index.values():
+            key = (kp.subject, kp.grade)
+            self._sg_index.setdefault(key, []).append(kp)
+        for pts in self._sg_index.values():
+            pts.sort(key=lambda k: k.id)
 
     @property
     def failed_files(self) -> list[str]:
@@ -90,6 +114,17 @@ class StandardsLoader:
         self._standards[std.id] = std
         for kp in std.knowledge_points:
             self._points_index[kp.id] = kp
+
+    def get_knowledge_points(self, subject: str, grade: str) -> list[KnowledgePoint]:
+        """E6: 按 (subject, grade) 索引取知识点, 返快照 list 免全量扫描。
+
+        供 StandardsQuery.get_knowledge_points 复用 — 原每次 all_points() 浅拷贝整 dict
+        再 O(N) 过滤, 现走预建索引, 已按 id 排序。
+        """
+        if not self._loaded:
+            self.load_all()
+        pts = self._sg_index.get((subject, grade), [])
+        return list(pts)
 
     def get_standard(self, std_id: str) -> CurriculumStandard | None:
         """按 ID 获取课标。"""
@@ -141,6 +176,10 @@ class StandardsLoader:
         """强制重新加载。"""
         self._standards.clear()
         self._points_index.clear()
+        # R10: 清失败文件列表 — 原 reload 不清, 跨 reload 累积陈旧失败条目,
+        # 已修复文件仍报失败, failed_files 永久失真。
+        self._failed_files.clear()
+        self._sg_index.clear()
         self._loaded = False
         return self.load_all()
 

@@ -1,39 +1,13 @@
 from __future__ import annotations
 
 import logging
-import re
 
 from ..safety.filter import sanitize_input
+from ._cjk import _cjk_tokens, _word_match  # E4: 单一 CJK 实现, 不再各抄一份
 from .models import AlignmentContext
-
-# A10: 复用 query._word_match (CJK bigram 整词命中), 与 find_by_topic 主路径对齐,
-# 不再 fallback 裸子串。_cjk_tokens 本模块另用于 validate_alignment, 保留本地一份。
-from .query import StandardsQuery, _word_match
+from .query import StandardsQuery
 
 logger = logging.getLogger(__name__)
-
-_CJK_RE = re.compile(r"[一-鿿]")
-
-
-def _cjk_tokens(text: str) -> list[str]:
-    """中文 + 空格混合分词 — CJK 段取 2-gram, 拉丁段按空白切 (STD-6/7)。
-
-    STD-2: 单字 CJK 主题产 0 token (range(0) 无 bigram, len>=2 筛掉), 导致对齐全漏;
-    单字回退保留原 chunk, 避免空 token 集恒假。
-    """
-    text = text.lower().strip()
-    tokens: list[str] = []
-    for chunk in text.split():
-        if _CJK_RE.search(chunk):
-            tokens.extend(chunk[i:i + 2] for i in range(len(chunk) - 1))
-            if len(chunk) >= 2:
-                tokens.append(chunk)
-            else:
-                # STD-2: 单字 CJK chunk 回退保留, 不丢弃
-                tokens.append(chunk)
-        else:
-            tokens.append(chunk)
-    return [t for t in tokens if len(t) >= 1]
 
 
 class StandardsAligner:
@@ -132,7 +106,7 @@ class StandardsAligner:
     def validate_alignment(
         self, subject: str, grade: str, generated_objectives: list
     ) -> dict:
-        """验证生成内容是否覆盖课标必修(basic)知识点 — CJK bigram 分词 (STD-7)。"""
+        """验证生成内容是否覆盖课标必修(basic)知识点 — CJK 整词命中 (STD-7/E5)。"""
         all_points = self._query.get_knowledge_points(subject, grade)
         must_cover = [kp for kp in all_points if kp.difficulty_level == "basic"]
 
@@ -142,18 +116,26 @@ class StandardsAligner:
 
         covered = []
         missing = []
-        obj_tokens: list[str] = []
-        for o in generated_objectives:
-            obj_tokens.extend(_cjk_tokens(str(o)))
-        obj_blob = " ".join(obj_tokens)
+        # E5: 在原始 objectives 文本上匹配, 不再 bigram-join 成 obj_blob。
+        # 原实现把 bigram 列表用空格拼成 blob, bigram 间被空格隔断,
+        # 3 字及以上 CJK 主题(如"加权法")永不子串命中, 必修知识点覆盖被静默低估。
+        obj_texts = [str(o).lower() for o in generated_objectives]
+        obj_token_sets = [set(_cjk_tokens(o)) for o in obj_texts]
 
         for kp in must_cover:
             kp_topic_lower = kp.topic.lower()
-            kp_tokens = _cjk_tokens(kp.topic + " " + kp.description)
-            # STD-5: any(tok in obj_tokens) 是 list 精确成员, bigram 偏移 1 即漏;
-            # 改 tok in obj_blob 子串命中 (obj_blob L133 已拼, token 间以空格隔开,
-            # 跨 token 子串不会假拼)。topic 整词保留子串, description 走 bigram 子串。
-            if kp_topic_lower in obj_blob or any(tok in obj_blob for tok in kp_tokens):
+            kp_desc_lower = kp.description.lower()
+            is_covered = False
+            for obj_text, obj_set in zip(obj_texts, obj_token_sets):
+                # topic 走原始文本子串(教学目标常含完整主题名, 多字 CJK 不被空格截断)
+                if kp_topic_lower and kp_topic_lower in obj_text:
+                    is_covered = True
+                    break
+                # description 走 bigram 整词命中 — 至少 1 个 kp_desc bigram 落在 obj token 集内
+                if kp_desc_lower and any(tok in obj_set for tok in _cjk_tokens(kp_desc_lower)):
+                    is_covered = True
+                    break
+            if is_covered:
                 covered.append(kp.id)
             else:
                 missing.append(kp.id)

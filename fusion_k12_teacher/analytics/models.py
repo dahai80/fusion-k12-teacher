@@ -6,39 +6,16 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._coerce import coerce_dict_list, coerce_float, coerce_str, coerce_str_dict
+
 logger = logging.getLogger(__name__)
 
 
-def _coerce_float(val: Any, default: float = 0.0) -> float:
-    # ENG-3: 防御字符串/null/None 传入下游统计
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-def _coerce_str(val: Any) -> str:
-    if val is None:
-        return ""
-    return str(val)
-
-
-def _coerce_str_dict(val: Any) -> dict[str, float]:
-    if not isinstance(val, dict):
-        return {}
-    out: dict[str, float] = {}
-    for k, v in val.items():
-        try:
-            out[str(k)] = float(v)
-        except (TypeError, ValueError):
-            out[str(k)] = 0.0
-    return out
-
-
-def _coerce_dict_list(val: Any) -> list[dict[str, Any]]:
-    if not isinstance(val, list):
-        return []
-    return [x for x in val if isinstance(x, dict)]
+# E13: _coerce_* 收敛至 _coerce.py 单实现, 保留模块内别名兼容既有 from_dict 调用
+_coerce_float = coerce_float
+_coerce_str = coerce_str
+_coerce_str_dict = coerce_str_dict
+_coerce_dict_list = coerce_dict_list
 
 
 @dataclass
@@ -96,6 +73,9 @@ class StudentAssessment:
 @dataclass
 class WeakPoint:
     """薄弱知识点。"""
+    # E15: question_id 与 knowledge_point_id 分离 — 原代码把 resp.question_id 当
+    # knowledge_point_id 写入, 题号污染知识点 ID 语义。各自独立字段, 题号归题号。
+    question_id: str = ""
     knowledge_point_id: str = ""
     knowledge_point_name: str = ""
     error_rate: float = 0.0
@@ -105,6 +85,7 @@ class WeakPoint:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "question_id": self.question_id,
             "knowledge_point_id": self.knowledge_point_id,
             "knowledge_point_name": self.knowledge_point_name,
             "error_rate": self.error_rate,
@@ -116,6 +97,7 @@ class WeakPoint:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WeakPoint:
         return cls(
+            question_id=data.get("question_id", ""),
             knowledge_point_id=data.get("knowledge_point_id", ""),
             knowledge_point_name=data.get("knowledge_point_name", ""),
             error_rate=data.get("error_rate", 0.0),
