@@ -7,6 +7,25 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
+
+
+def _migrate_standard(data: dict[str, Any], version: str) -> dict[str, Any]:
+    """E7: 课标 schema 版本迁移 — 已知版本间显式转换字段布局, 非 loader 整文件静默跳过。
+
+    新增 schema 版本时在此登记迁移函数: 把新版本字段映射回 v1.0 布局后按 v1.0 加载,
+    避免"课标 schema 升级到 2.0 时全部新格式文件被静默丢弃, 运行时课标消失无报错"。
+    未知版本(无迁移路径)仍抛 ValueError 让 loader 记失败文件显式暴露。
+    """
+    if version == "1.0":
+        return data
+    # 未来新增版本迁移在此扩展, 例:
+    # if version == "2.0":
+    #     data = _migrate_1_to_2(data)  # 字段重命名/重组
+    #     return data
+    raise ValueError(
+        f"课标 {data.get('id', '?')} schema_version={version} 不受支持"
+        f"(已知: {sorted(_SUPPORTED_SCHEMA_VERSIONS)}), 无迁移路径, 拒绝加载以免数据损坏"
+    )
 # STD-9: difficulty_level 枚举白名单 — typo (basik) 会被当非 basic, aligner 永不强制 must_cover。
 _VALID_DIFFICULTY_LEVELS = {"basic", "standard", "advanced"}
 
@@ -94,13 +113,9 @@ class CurriculumStandard:
                 data.get("id", "?"),
             )
             ver = "1.0"
-        # STD-7: 已知版本白名单; 未知版本(如 "2.0")字段布局不兼容, 静默按 v1.0 加载
-        # 会错位映射字段 → 数据损坏。直接抛错让调用方显式处理(loader 记录失败文件并跳过)。
-        if ver not in _SUPPORTED_SCHEMA_VERSIONS:
-            raise ValueError(
-                f"课标 {data.get('id', '?')} schema_version={ver} 不受支持"
-                f"(已知: {sorted(_SUPPORTED_SCHEMA_VERSIONS)}), 拒绝加载以免数据损坏"
-            )
+        # STD-7/E7: 已知版本走迁移函数显式转换; 未知版本无迁移路径抛 ValueError
+        # 让 loader 记失败文件显式暴露, 非整文件静默跳过课标消失无报错。
+        data = _migrate_standard(data, ver)
         return cls(
             id=data.get("id", ""),
             name=data.get("name", ""),

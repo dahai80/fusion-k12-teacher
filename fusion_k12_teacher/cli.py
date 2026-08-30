@@ -10,7 +10,7 @@ import os
 import click
 
 from . import __app_name__, __version__
-from .agent import list_available_tasks, scheduler
+from .agent import list_available_tasks, register_all_engines, scheduler
 from .analytics import load_from_csv, load_from_json
 from .analytics.models import WeakPoint
 from .desensitize import DataAnonymizer, DesensitizeConfig
@@ -70,6 +70,8 @@ def cli(ctx, verbose, model):
     logging.basicConfig(level=level, format="%(levelname)-8s %(message)s")
     ctx.ensure_object(dict)
     bundle = build_engines(model=model)
+    # A14: 注册与构造分离 — 工厂不再副作用注册, 此处显式注册全局 registry
+    register_all_engines(bundle=bundle)
     ctx.obj["mlx"] = bundle.mlx
     ctx.obj["curriculum"] = bundle.curriculum
     ctx.obj["assessment"] = bundle.assessment
@@ -266,9 +268,11 @@ async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
     click.echo()
     click.echo(f"📄 三层分层工作纸: {result.topic}")
     click.echo(f"   学科: {result.subject} | 年级: {result.grade}")
-    for level_name in ["struggling", "standard", "advanced"]:
-        layer = getattr(result, level_name)
-        label = {"struggling": "学困生", "standard": "中等生", "advanced": "优等生"}[level_name]
+    # E3: layers 改 dict, 遍历 result.layers 按 LEVEL_CONFIGS label 显示
+    from .differentiation.level_config import LEVEL_CONFIGS
+    for level_name in result.layers:
+        layer = result.layers[level_name]
+        label = LEVEL_CONFIGS.get(level_name, {}).get("label", level_name)
         click.echo(f"   [{label}] {len(layer.exercises)} 道题")
     click.echo()
 

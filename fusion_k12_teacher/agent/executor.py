@@ -62,6 +62,8 @@ registry = EngineRegistry()
 
 
 def register_all_engines(
+    bundle: Any = None,
+    *,
     curriculum=None,
     assessment=None,
     subjects=None,
@@ -71,7 +73,21 @@ def register_all_engines(
     analytics=None,
     standards_query=None,
 ) -> EngineRegistry:
-    """注册所有引擎到全局注册表。"""
+    """注册所有引擎到全局注册表。
+
+    A14: 工厂(build_engines)纯构造, 注册由调用方显式调用本函数。
+    bundle 优先(传 EngineBundle 一键注册), 否则按具名参数注册。
+    """
+    # A14: 传 bundle 时一键取字段, 否则用具名参数
+    if bundle is not None:
+        curriculum = getattr(bundle, "curriculum", None)
+        assessment = getattr(bundle, "assessment", None)
+        subjects = getattr(bundle, "subjects", None)
+        personalization = getattr(bundle, "personalization", None)
+        content = getattr(bundle, "content", None)
+        differentiation = getattr(bundle, "differentiation", None)
+        analytics = getattr(bundle, "analytics", None)
+        standards_query = getattr(bundle, "standards_query", None)
     if curriculum:
         registry.register("curriculum", curriculum)
     if assessment:
@@ -131,8 +147,10 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     )
     try:
         if is_coro:
-            # AGT-7: 超时取消协程本体, 但底层 httpx 请求可能不响应取消; shield 包裹
-            # 确保取消信号下发, 并在 finally 记录, 让运维知晓后端可能仍在跑。
+            # R13: 超时取消协程本体 — asyncio.wait_for 到点抛 TimeoutError 并取消被等协程,
+            # 但底层 httpx 请求可能不响应取消, 后端 fusion-mlx 仍在跑(长任务超时堆积)。
+            # 不用 asyncio.shield (shield 会阻止取消信号到达 method, 反而无法超时取消)。
+            # 此处诚实文档: 超时不保证后端终止, 仅取消本地等待; 后端长任务须靠其自身超时。
             raw = await asyncio.wait_for(method(**resolved_params), timeout=_STEP_TIMEOUT)
         else:
             raw = method(**resolved_params)

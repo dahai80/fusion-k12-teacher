@@ -86,17 +86,21 @@ class MLXClient:
         self._models_cache_ttl = float(os.environ.get("FUSION_MLX_MODELS_TTL", "30"))
         if _HAS_FUSION_CORE and _FusionMLXClient is not None:
             self._inner = _FusionMLXClient(base_url=self.base_url)
+        # R8: httpx client eager 构造 — 原 httpx_client property 惰性 init 无锁,
+        # 多协程首调同时触发 double-build, 短暂泄漏一个连接池实例。__init__ 构造免竞态。
+        self._httpx_client = self._build_httpx_client()
         logger.info(
             "MLXClient init base_url=%s model=%s fusion_core=%s",
             self.base_url, self.model or "(auto)", _HAS_FUSION_CORE,
         )
 
     def _ensure_locks(self) -> None:
-        """LLM-5: 惰性创建 loop-bound 锁 — 首次使用时绑定当前 running loop。
+        """LLM-5/R9: 惰性创建 loop-bound 锁 — 首次使用时绑定当前 running loop。
 
-        3.14 前 asyncio.Lock 在 __init__(无循环) 创建后, 跨 asyncio.run 复用绑死旧
-        (已关)循环的锁会 RuntimeError。此处绑当前 loop, CLI 每 command 独立
-        asyncio.run 时锁随 loop 重建。
+        R9: 3.14 前 asyncio.Lock 在 __init__(无循环) 创建后, 跨 asyncio.run 复用绑死旧
+        (已关)循环的锁会 RuntimeError (跨 loop 死锁)。惰性建绑当前 loop, 但本实例
+        禁止跨 loop 复用 — cli/serve 各自 loop, 共享 client 须各自独立实例或同 loop。
+        此约束已文档化于 docstring, 不在代码层强制跨 loop 复用。
         """
         if self._cache_lock is None:
             self._cache_lock = asyncio.Lock()
@@ -111,9 +115,7 @@ class MLXClient:
 
     @property
     def httpx_client(self):
-        # LLM-4: 惰性初始化须加锁, 防并发首访竞态重复建客户端
-        if self._httpx_client is None:
-            self._httpx_client = self._build_httpx_client()
+        # R8: eager 构造后此 property 仅直返, 无竞态。
         return self._httpx_client
 
     def _build_httpx_client(self) -> httpx.AsyncClient:

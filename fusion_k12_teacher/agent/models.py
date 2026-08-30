@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._coerce import coerce_bool, coerce_dict, coerce_str, coerce_str_list
+
 
 @dataclass
 class TaskStep:
@@ -28,11 +30,11 @@ class TaskStep:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> TaskStep:
         return cls(
-            engine=d.get("engine", ""),
-            method=d.get("method", ""),
-            params=d.get("params", {}),
-            output_key=d.get("output_key", ""),
-            depends_on=d.get("depends_on", []),
+            engine=coerce_str(d.get("engine", "")),
+            method=coerce_str(d.get("method", "")),
+            params=coerce_dict(d.get("params", {})),
+            output_key=coerce_str(d.get("output_key", "")),
+            depends_on=coerce_str_list(d.get("depends_on", [])),
         )
 
 
@@ -65,14 +67,14 @@ class TeachingTask:
     def from_dict(cls, d: dict[str, Any]) -> TeachingTask:
         steps = [TaskStep.from_dict(s) for s in d.get("steps", [])]
         return cls(
-            id=d.get("id", ""),
-            name=d.get("name", ""),
-            task_type=d.get("task_type", "scheduled"),
-            schedule=d.get("schedule", ""),
+            id=coerce_str(d.get("id", "")),
+            name=coerce_str(d.get("name", "")),
+            task_type=coerce_str(d.get("task_type", "scheduled")),
+            schedule=coerce_str(d.get("schedule", "")),
             steps=steps,
-            enabled=d.get("enabled", True),
-            last_run=d.get("last_run", ""),
-            last_status=d.get("last_status", ""),
+            enabled=coerce_bool(d.get("enabled", True)),
+            last_run=coerce_str(d.get("last_run", "")),
+            last_status=coerce_str(d.get("last_status", "")),
         )
 
 
@@ -100,10 +102,10 @@ class TaskResult:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> TaskResult:
         return cls(
-            task_id=d.get("task_id", ""),
-            status=d.get("status", "pending"),
-            started_at=d.get("started_at", ""),
-            completed_at=d.get("completed_at", ""),
-            step_results=d.get("step_results", {}),
-            summary=d.get("summary", ""),
+            task_id=coerce_str(d.get("task_id", "")),
+            status=coerce_str(d.get("status", "pending")),
+            started_at=coerce_str(d.get("started_at", "")),
+            completed_at=coerce_str(d.get("completed_at", "")),
+            step_results=coerce_dict(d.get("step_results", {})),
+            summary=coerce_str(d.get("summary", "")),
         )

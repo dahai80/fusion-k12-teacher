@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._parse import parse_json
 from ..ai_client import MLXClient
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
@@ -241,18 +242,5 @@ class AssessmentEngine:
             return {"criteria": criteria or [], "error": str(e)}
 
     def _parse_json(self, text: Any) -> Any:
-        """解析 LLM 返回的 JSON — 容忍 None/空串/代码块围栏 (ENG-5/6)。"""
-        if not isinstance(text, str) or not text.strip():
-            return None
-        text = text.strip()
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            text = match.group(1).strip()
-        else:
-            obj_match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
-            if obj_match:
-                text = obj_match.group(0)
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+        # E1: 收敛至单一 _parse.parse_json, 不再各引擎手抄分叉实现
+        return parse_json(text)

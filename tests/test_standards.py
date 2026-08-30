@@ -286,17 +286,20 @@ class TestDifferentiationModels:
         assert len(d["examples"]) == 1
 
     def test_differentiated_content_to_dict(self):
+        # E3: layers 改 dict
         dc = DifferentiatedContent(
             topic="分数",
             grade="3",
             subject="数学",
-            struggling=LayerContent(explanation="基础讲解"),
-            standard=LayerContent(explanation="标准讲解"),
-            advanced=LayerContent(explanation="拓展讲解"),
+            layers={
+                "struggling": LayerContent(explanation="基础讲解"),
+                "standard": LayerContent(explanation="标准讲解"),
+                "advanced": LayerContent(explanation="拓展讲解"),
+            },
         )
         d = dc.to_dict()
         assert d["topic"] == "分数"
-        assert d["struggling"]["explanation"] == "基础讲解"
+        assert d["layers"]["struggling"]["explanation"] == "基础讲解"
 
     def test_group_task_to_dict(self):
         gt = GroupTask(group_name="A组", task_description="基础任务")
@@ -352,9 +355,10 @@ class TestDifferentiationEngineMock:
         assert result.topic == "分数"
         assert result.subject == "数学"
         assert result.grade == "3"
-        assert isinstance(result.struggling, LayerContent)
-        assert isinstance(result.standard, LayerContent)
-        assert isinstance(result.advanced, LayerContent)
+        # E3: layers 改 dict, 三层应在 layers 内
+        assert isinstance(result.layers["struggling"], LayerContent)
+        assert isinstance(result.layers["standard"], LayerContent)
+        assert isinstance(result.layers["advanced"], LayerContent)
 
     @pytest.mark.asyncio
     async def test_generate_differentiated_quiz(self):
@@ -371,9 +375,10 @@ class TestDifferentiationEngineMock:
         self.engine.mlx.chat = AsyncMock(side_effect=Exception("LLM error"))
         result = await self.engine.generate_differentiated_lesson("数学", "3", "分数")
         assert isinstance(result, DifferentiatedContent)
-        assert result.struggling.explanation == ""
-        assert result.standard.explanation == ""
-        assert result.advanced.explanation == ""
+        # E3: 失败层降级空 LayerContent, 走 layers dict
+        assert result.layers["struggling"].explanation == ""
+        assert result.layers["standard"].explanation == ""
+        assert result.layers["advanced"].explanation == ""
 
     @pytest.mark.asyncio
     async def test_parse_json_with_code_block(self):

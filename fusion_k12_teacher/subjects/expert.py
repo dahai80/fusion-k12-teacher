@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._parse import parse_json
 from ..ai_client import MLXClient
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
@@ -170,15 +170,5 @@ class SubjectExpert:
             return {"error": str(e)}
 
     def _parse_json(self, text: str) -> Any:
-        # ENG-7: None/非字符串守卫, 避免下游 .strip() 崩溃
-        if not isinstance(text, str) or not text:
-            return None
-        text = text.strip()
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+        # E1: 收敛至单一 _parse.parse_json (原 split-based 变体已分叉)
+        return parse_json(text)

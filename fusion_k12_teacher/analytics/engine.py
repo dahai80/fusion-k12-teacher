@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import datetime
 from typing import Any
 
+from .._coerce import coerce_float, coerce_int, coerce_str_list
+from .._parse import parse_json
 from ..ai_client import MLXClient
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
@@ -24,62 +25,10 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-def _coerce_float(val: Any, default: float = 0.0) -> float:
-    try:
-        return float(val)
-    except (TypeError, ValueError):
-        return default
-
-
-def _coerce_int(val: Any, default: int = 0) -> int:
-    try:
-        return int(val)
-    except (TypeError, ValueError):
-        try:
-            return int(float(val))
-        except (TypeError, ValueError):
-            return default
-
-
-def _coerce_str_list(val: Any) -> list[str]:
-    if isinstance(val, list):
-        return [str(x) for x in val]
-    if isinstance(val, str):
-        return [val]
-    return []
-
-
-def _extract_first_json(text: str) -> str:
-    # ENG-5: 平衡括号扫描, 取首个完整 JSON 对象/数组, 替代贪婪正则 \{.*\}
-    # 贪婪正则在多对象文本("{"a":1} 说明 {"b":2}")会跨界抓到无效串。
-    start = -1
-    close_ch = ""
-    depth = 0
-    in_str = False
-    escape = False
-    for i, c in enumerate(text):
-        if in_str:
-            if escape:
-                escape = False
-            elif c == "\\":
-                escape = True
-            elif c == '"':
-                in_str = False
-            continue
-        if c == '"':
-            in_str = True
-            continue
-        if c in "{[":
-            if depth == 0:
-                start = i
-                close_ch = "}" if c == "{" else "]"
-            depth += 1
-        elif c in "}]":
-            if depth > 0:
-                depth -= 1
-                if depth == 0 and start >= 0 and c == close_ch:
-                    return text[start : i + 1]
-    return ""
+# E13: _coerce_* 收敛至 _coerce.py 单实现, 保留别名兼容引擎内既有调用
+_coerce_float = coerce_float
+_coerce_int = coerce_int
+_coerce_str_list = coerce_str_list
 
 
 class AnalyticsEngine:
@@ -178,18 +127,21 @@ class AnalyticsEngine:
             rethrow_if_fatal(e)
             llm_err = str(e)
 
+        # E14: 单一 now 快照 — 原两次 datetime.now() 非原子, 跨午夜时 period(前一天)
+        # 与 generated_at(后一天) 不一致。一次取值保证同一时刻。
+        now = datetime.now()
         return ClassProfile(
             class_id=class_id,
             subject=subject,
             grade=grade,
-            period=datetime.now().strftime("%Y-%m-%d"),
+            period=now.strftime("%Y-%m-%d"),
             total_students=total_students,
             avg_score=round(avg_score, 1),
             score_distribution=score_distribution,
             weak_knowledge_points=weak_points,
             strong_knowledge_points=strong_points,
             student_risk_levels=risk_levels,
-            generated_at=datetime.now().isoformat(),
+            generated_at=now.isoformat(),
             error=llm_err,
         )
 
@@ -566,8 +518,11 @@ class AnalyticsEngine:
                 continue
             error_rate = stats["wrong"] / stats["total"]
             if error_rate >= 0.3:
+                # E15: qid 是题号(question_id), 非知识点 ID —
+                # knowledge_point_id 留空待课标对齐填充, 不再用题号冒充。
                 weak.append(WeakPoint(
-                    knowledge_point_id=qid,
+                    question_id=qid,
+                    knowledge_point_id="",
                     knowledge_point_name=qid,
                     error_rate=round(error_rate, 2),
                     affected_students=list(stats["students"]),
@@ -719,22 +674,6 @@ class AnalyticsEngine:
 """
 
     def _parse_json(self, text: Any) -> Any:
-        if not isinstance(text, str) or not text.strip():
-            return None
-        # ENG-20: 顶部有界长度, 防超长响应撑爆解析/下游; 仅 content 路径单独 cap 不够
-        if len(text) > 200000:
-            logger.warning("LLM 返回过长(%d 字符), 截断后再解析", len(text))
-            text = text[:200000]
-        text = text.strip()
-        # ENG-5: 优先取 ```json``` 代码块, 否则用平衡括号扫描取首个完整 JSON
-        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            candidate = match.group(1).strip()
-        else:
-            candidate = _extract_first_json(text)
-        if not candidate:
-            return None
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            return None
+        # E1: 收敛至单一 _parse.parse_json — 含有界长度+平衡括号扫描+围栏提取
+        # (原本地 _extract_first_json 已迁至 _parse.py, 各引擎共用同一实现)
+        return parse_json(text)

@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._coerce import coerce_str, coerce_str_list
+
 # SEC-7/SEC-8: 统一分隔符绕过字符类。
 # 之前 wordlist/age_checker/filter 三处正则分叉, filter 漏 BOM, 三处均漏
 # 逗号/分号/冒号/感叹号/软连字符/全角/破折号, "杀,人" "杀;人" 可绕过敏感词检测。
@@ -57,11 +59,11 @@ class ContentCheckResult:
     def from_dict(cls, d: dict[str, Any]) -> ContentCheckResult:
         return cls(
             is_safe=d.get("is_safe", True),
-            risk_level=d.get("risk_level", "safe"),
-            flagged_words=d.get("flagged_words", []),
-            age_issues=d.get("age_issues", []),
-            filtered_text=d.get("filtered_text", ""),
-            summary=d.get("summary", ""),
+            risk_level=coerce_str(d.get("risk_level", "safe")),
+            flagged_words=coerce_str_list(d.get("flagged_words", [])),
+            age_issues=coerce_str_list(d.get("age_issues", [])),
+            filtered_text=coerce_str(d.get("filtered_text", "")),
+            summary=coerce_str(d.get("summary", "")),
         )
 
 

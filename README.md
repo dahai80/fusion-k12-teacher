@@ -313,8 +313,9 @@ pytest tests/ -v
 - **Compliant with Chinese regulations** — No cross-border data transfer
 - **Student Privacy** — All student data stays on device
 - **Data Desensitization** — Salted-hash name→ID (non-deterministic, non-reversible), fixed-width field masking (no length/domain leakage, GB/T 35273 aligned). `name_map` never serialized by default.
-- **Input Sanitization** — `sanitize_input()` truncates length, strips control chars, isolates prompt-injection attempts before every engine call.
-- **Output Filtering** — Generated content (worksheets, parent letters) passes through `ContentFilter.check_output()` (sensitive words + age-appropriate) before reaching students/parents.
+- **Input Sanitization** — `sanitize_input()` truncates length, strips control chars, isolates prompt-injection attempts before every engine call. Prompts assembled via `build_prompt()` (`_prompt.py`) which auto-sanitizes all string variables at the template layer — no per-field hand-sanitize, no "forgot to sanitize" injection surface.
+- **Output Filtering** — Generated content (worksheets, parent letters) passes through `ContentFilter.check_output()` (sensitive words + age-appropriate) before reaching students/parents. Filter layers are a pluggable pipeline (`_filters` list) — new rules append without editing check methods.
+- **Defensive Parsing** — LLM output parsed by single `parse_json()` (`_parse.py`); all `from_dict()` coercions routed through single `_coerce.py` — malformed LLM types degrade predictably instead of raising `TypeError`.
 - **API Hardening** — Optional `X-API-Key` auth, per-IP sliding-window rate limit, allowed-directory path validation (`is_relative_to`, no prefix bypass), async file I/O off the event loop.
 - **Graceful-but-Visible Failure** — Engine failures set an `error` flag on result dataclasses instead of raising; parent-communication failure returns empty (never leaks internal error strings).
 

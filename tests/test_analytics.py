@@ -282,8 +282,9 @@ class TestAnalyticsEngineStats:
         ]
         weak = self.engine._calc_weak_points(assessments)
         assert len(weak) >= 1
-        wp_ids = [wp.knowledge_point_id for wp in weak]
-        assert "分数加减" in wp_ids or "分数乘除" in wp_ids
+        # E15: 题号(question_id)与知识点 ID 分离 — 此处 question_id 存主题名
+        wp_qids = [wp.question_id for wp in weak]
+        assert "分数加减" in wp_qids or "分数乘除" in wp_qids
 
     def test_strong_points_calculation(self):
         assessments = [

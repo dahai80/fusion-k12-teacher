@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from .agent import register_all_engines
 from .ai_client import MLXClient
 from .analytics import AnalyticsEngine
 from .assessment import AssessmentEngine
@@ -54,16 +53,10 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
     standards_query = StandardsQuery(loader)
     differentiation = DifferentiationEngine(mlx, standards_query, content_filter)
     analytics = AnalyticsEngine(mlx, standards_query, content_filter)
-    register_all_engines(
-        curriculum=curriculum,
-        assessment=assessment,
-        subjects=subjects,
-        personalization=personalization,
-        content=content,
-        differentiation=differentiation,
-        analytics=analytics,
-        standards_query=standards_query,
-    )
+    # A14: build_engines 纯构造, 不再副作用注册全局 registry。
+    # 注册与构造分离 — 调用方(cli/serve)显式调 register_all_engines(bundle...)。
+    # 原 build_engines 内调 register_all_engines mutate 模块级 registry(executor.py:61),
+    # 构造与注册耦合, 测试建 bundle 也污染全局, 工厂非纯。现拆离。
     logger.info("引擎构建完成: model=%s", mlx.model or "(auto)")
     return EngineBundle(
         mlx=mlx,
