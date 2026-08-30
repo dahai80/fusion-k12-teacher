@@ -9,6 +9,7 @@ from .salt_provider import (
     FileSaltProvider,
     RandomFallbackSaltProvider,
     SaltProvider,
+    VersionedSaltProvider,
     get_salt_provider,
 )
 from .wordlist import SensitiveWordList
@@ -26,6 +27,7 @@ __all__ = [
     "RandomFallbackSaltProvider",
     "SaltProvider",
     "SensitiveWordList",
+    "VersionedSaltProvider",
     "get_salt_provider",
 ]
 

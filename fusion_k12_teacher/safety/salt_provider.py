@@ -167,6 +167,116 @@ class RandomFallbackSaltProvider(SaltProvider):
         return self._salt
 
 
+class VersionedSaltProvider(SaltProvider):
+    # M1-T8: 版本化 salt — 当前 salt 用于新写入, 历史版本保留用于解析旧 ID。
+    # salt 文件存当前; 归档文件 salt.vN 存历史 (N=版本号)。
+    # rotate() 生成新 salt, 当前归档为下一版本号, 新值写入主文件。
+
+    def __init__(self, path: str | None = None):
+        self._path = path or os.environ.get(_SALT_FILE_ENV, _DEFAULT_SALT_FILE)
+        self._cached: str | None = None
+
+    def get_salt(self) -> str:
+        if self._cached is not None:
+            return self._cached
+        try:
+            with open(self._path, encoding="utf-8") as f:
+                salt = f.read().strip()
+            if salt:
+                self._cached = salt
+                return salt
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            logger.warning("VersionedSaltProvider 读取失败: %s", e)
+        # 无 salt → 生成并持久化 (同 RandomFallback 逻辑)
+        self._cached = secrets.token_hex(16)
+        self._write_current(self._cached)
+        return self._cached
+
+    def _write_current(self, salt: str) -> None:
+        try:
+            os.makedirs(os.path.dirname(self._path) or ".", exist_ok=True)
+            fd = os.open(
+                self._path,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                0o600,
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(salt)
+        except OSError as e:
+            logger.warning("VersionedSaltProvider 写入失败: %s", e)
+
+    def _archive_versions(self) -> list[tuple[int, str]]:
+        """已归档的历史版本 [(版本号, salt)] 升序 (不含当前)。"""
+        import re
+        versions: list[tuple[int, str]] = []
+        d = os.path.dirname(self._path) or "."
+        base = os.path.basename(self._path)
+        try:
+            for name in os.listdir(d):
+                m = re.fullmatch(re.escape(base) + r"\.v(\d+)", name)
+                if not m:
+                    continue
+                try:
+                    with open(os.path.join(d, name), encoding="utf-8") as f:
+                        s = f.read().strip()
+                    if s:
+                        versions.append((int(m.group(1)), s))
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        versions.sort()
+        return versions
+
+    def current_version(self) -> int:
+        archived = self._archive_versions()
+        return (max(v for v, _ in archived) + 1) if archived else 1
+
+    def list_versions(self) -> list[tuple[int, str]]:
+        """返回 [(版本号, salt)] 升序 — 历史归档 + 当前 (当前为最高版本)。"""
+        versions = self._archive_versions()
+        cur_ver = self.current_version()
+        versions.append((cur_ver, self.get_salt()))
+        return versions
+
+    def get_salt_for_version(self, version: int) -> str:
+        """按版本号取历史 salt — 旧 ID 解析用。"""
+        for v, s in self.list_versions():
+            if v == version:
+                return s
+        logger.warning("salt 版本 %d 不存在, 回退当前 salt", version)
+        return self.get_salt()
+
+    def rotate(self) -> tuple[int, str]:
+        """轮换 salt — 当前归档为当前版本号, 生成新 salt 写主文件 (新版本号+1)。
+
+        返回 (新版本号, 新 salt)。旧版本保留供 get_salt_for_version 回查历史 ID。
+        """
+        cur_ver = self.current_version()
+        cur = self.get_salt()
+        archive_path = f"{self._path}.v{cur_ver}"
+        try:
+            os.makedirs(os.path.dirname(archive_path) or ".", exist_ok=True)
+            fd = os.open(
+                archive_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(cur)
+        except OSError as e:
+            logger.warning("归档旧 salt 失败 (v%d): %s", cur_ver, e)
+        new_salt = secrets.token_hex(16)
+        self._write_current(new_salt)
+        self._cached = new_salt
+        new_ver = cur_ver + 1
+        logger.info("salt 已轮换: 旧 v%d 归档, 新当前 v%d", cur_ver, new_ver)
+        return new_ver, new_salt
+
+
+
 class _ExplicitSaltProvider(SaltProvider):
     def __init__(self, salt: str):
         self._salt = salt

@@ -885,6 +885,32 @@ def migrate(from_db, to_dsn, dry_run):
         raise SystemExit(1)
 
 
+@cli.command("rotate-salt")
+@click.option("--salt-file", "salt_file", default=None, help="salt 文件路径 (默认 ~/.fusion-k12/salt)")
+@click.option("--show-versions", is_flag=True, help="仅列出所有版本, 不轮换")
+def rotate_salt(salt_file, show_versions):
+    """M1-T8: salt 轮换 — 当前 salt 归档为历史版本, 生成新 salt 写主文件。
+
+    旧版本保留用于解析历史脱敏 ID (反向回查), 新 salt 用于后续新写入。
+    轮换后历史 ID 与新 ID 不同 (同姓名), 属预期行为。
+    """
+    from .safety.salt_provider import VersionedSaltProvider
+
+    prov = VersionedSaltProvider(salt_file)
+    if show_versions:
+        versions = prov.list_versions()
+        click.echo(f"📋 salt 版本 (共 {len(versions)} 个):")
+        for v, s in versions:
+            masked = s[:6] + "..." + s[-4:]
+            click.echo(f"   v{v}: {masked}")
+        return
+    new_ver, new_salt = prov.rotate()
+    masked = new_salt[:6] + "..." + new_salt[-4:]
+    logger.info("salt 轮换完成: 新版本 v%d", new_ver)
+    click.echo(f"✅ salt 已轮换 → v{new_ver}: {masked}")
+    click.echo("   旧版本已归档, 历史脱敏 ID 仍可解析 (反向回查用旧版本 salt)")
+
+
 def main():
     cli()
 
