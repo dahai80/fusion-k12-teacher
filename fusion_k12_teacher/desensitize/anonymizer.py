@@ -3,8 +3,8 @@ import hashlib
 import json
 import logging
 import os
-import secrets
 
+from ..safety.salt_provider import get_salt_provider
 from .models import AnonymizeResult, DesensitizeConfig
 
 logger = logging.getLogger(__name__)
@@ -13,45 +13,6 @@ _SALT_ENV = "FUSION_K12_SALT"
 # A4: salt 文件路径可跨节点统一指向共享挂载点 (env 覆盖), 非每节点本地随机。
 _SALT_FILE_ENV = "FUSION_K12_SALT_FILE"
 _SALT_FILE = os.environ.get(_SALT_FILE_ENV, os.path.expanduser("~/.fusion-k12/salt"))
-
-
-def _resolve_salt(explicit: str) -> str:
-    # A4: salt 必须跨节点统一分发 — 显式 > 环境变量 > 共享 0600 密钥文件。
-    # 末位随机回退仅单机可用, 多节点部署会致同一学生跨节点得不同 ID (PII 断链)。
-    # 回退时显式告警, 运维须据日志分发统一 salt, 不可静默每节点独立生成。
-    if explicit:
-        return explicit
-    env_salt = os.environ.get(_SALT_ENV)
-    if env_salt:
-        return env_salt
-    try:
-        with open(_SALT_FILE, encoding="utf-8") as f:
-            s = f.read().strip()
-            if s:
-                return s
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        logger.warning("读取 salt 文件失败: %s", exc)
-    # A4: 随机回退 = 单机模式, 多节点场景 PII 跨节点断链。loud warning 告知运维。
-    logger.error(
-        "脱敏 salt 未显式配置(FUSION_K12_SALT/FUSION_K12_SALT_FILE), "
-        "回退到本节点随机 salt。多节点部署将致同一学生跨节点 ID 不一致, "
-        "须分发统一 salt 文件或设环境变量。"
-    )
-    s = secrets.token_hex(16)
-    try:
-        os.makedirs(os.path.dirname(_SALT_FILE), exist_ok=True)
-        fd = os.open(
-            _SALT_FILE,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o600,
-        )
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(s)
-    except OSError as exc:
-        logger.warning("持久化 salt 文件失败, 使用进程内随机 salt: %s", exc)
-    return s
 
 
 def _hash_id(name: str, salt: str, prefix: str) -> str:
@@ -97,7 +58,9 @@ class DataAnonymizer:
         map_file: str | None = None,
     ):
         self.config = config or DesensitizeConfig()
-        self.salt = _resolve_salt(self.config.salt)
+        # M1-T7: salt 来源抽象为 SaltProvider, 替换内联 _resolve_salt。
+        self._salt_provider = get_salt_provider(self.config.salt)
+        self.salt = self._salt_provider.get_salt()
         self._name_map: dict[str, str] = {}
         self._reverse_map: dict[str, str] = {}
         # A5: 反匿名表持久化文件 — 显式 map_file 或 env 设置才持久化 (可逆场景)。
