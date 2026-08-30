@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import json
 import logging
 import os
 import secrets
@@ -9,11 +10,15 @@ from .models import AnonymizeResult, DesensitizeConfig
 logger = logging.getLogger(__name__)
 
 _SALT_ENV = "FUSION_K12_SALT"
-_SALT_FILE = os.path.expanduser("~/.fusion-k12/salt")
+# A4: salt 文件路径可跨节点统一指向共享挂载点 (env 覆盖), 非每节点本地随机。
+_SALT_FILE_ENV = "FUSION_K12_SALT_FILE"
+_SALT_FILE = os.environ.get(_SALT_FILE_ENV, os.path.expanduser("~/.fusion-k12/salt"))
 
 
 def _resolve_salt(explicit: str) -> str:
-    # SEC-2: 去硬编码 salt — 显式 > 环境变量 > 0600 密钥文件 > 首次随机生成并持久化
+    # A4: salt 必须跨节点统一分发 — 显式 > 环境变量 > 共享 0600 密钥文件。
+    # 末位随机回退仅单机可用, 多节点部署会致同一学生跨节点得不同 ID (PII 断链)。
+    # 回退时显式告警, 运维须据日志分发统一 salt, 不可静默每节点独立生成。
     if explicit:
         return explicit
     env_salt = os.environ.get(_SALT_ENV)
@@ -28,6 +33,12 @@ def _resolve_salt(explicit: str) -> str:
         pass
     except OSError as exc:
         logger.warning("读取 salt 文件失败: %s", exc)
+    # A4: 随机回退 = 单机模式, 多节点场景 PII 跨节点断链。loud warning 告知运维。
+    logger.error(
+        "脱敏 salt 未显式配置(FUSION_K12_SALT/FUSION_K12_SALT_FILE), "
+        "回退到本节点随机 salt。多节点部署将致同一学生跨节点 ID 不一致, "
+        "须分发统一 salt 文件或设环境变量。"
+    )
     s = secrets.token_hex(16)
     try:
         os.makedirs(os.path.dirname(_SALT_FILE), exist_ok=True)
@@ -76,11 +87,60 @@ def _mask_generic(value: str, mask_char: str) -> str:
 
 
 class DataAnonymizer:
-    def __init__(self, config: DesensitizeConfig | None = None):
+    # A5: 反匿名表持久化路径 env 覆盖 — 多节点指向共享挂载, 反匿名不随进程重启丢失。
+    _MAP_FILE_ENV = "FUSION_K12_NAME_MAP_FILE"
+    _DEFAULT_MAP_FILE = os.path.expanduser("~/.fusion-k12/name_map.json")
+
+    def __init__(
+        self,
+        config: DesensitizeConfig | None = None,
+        map_file: str | None = None,
+    ):
         self.config = config or DesensitizeConfig()
         self.salt = _resolve_salt(self.config.salt)
         self._name_map: dict[str, str] = {}
         self._reverse_map: dict[str, str] = {}
+        # A5: 反匿名表持久化文件 — 显式 map_file 或 env 设置才持久化 (可逆场景)。
+        # 默认不落盘: 上传/单向脱敏 (R6) 不污染 home dir; 需反匿名持久化时显式传路径或设 env。
+        self._map_file = map_file or os.environ.get(self._MAP_FILE_ENV) or None
+
+    def _load_map(self) -> None:
+        # A5: 启动/反匿名前从持久化文件加载反匿名表, 重启后仍可还原。
+        # 反匿名表含 name->ID 双向, 文件须 0600 保护, 不与脱敏数据同处存放。
+        if not self._map_file:
+            return
+        try:
+            with open(self._map_file, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                # name_map: {name\x00seq: id}, reverse_map: {id: name}
+                nm = data.get("name_map", {})
+                rv = data.get("reverse_map", {})
+                if isinstance(nm, dict) and isinstance(rv, dict):
+                    self._name_map.update(nm)
+                    self._reverse_map.update(rv)
+                    logger.info("加载反匿名表: %d 条", len(rv))
+        except FileNotFoundError:
+            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("加载反匿名表失败: %s", exc)
+
+    def _save_map(self) -> None:
+        # A5: 反匿名表原子写盘 (tmp+os.replace), 0600 权限, 与脱敏数据生命周期绑定。
+        if not self._map_file:
+            return
+        try:
+            os.makedirs(os.path.dirname(self._map_file), exist_ok=True)
+            tmp = self._map_file + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"name_map": self._name_map, "reverse_map": self._reverse_map},
+                    f, ensure_ascii=False,
+                )
+            os.replace(tmp, self._map_file)
+        except OSError as exc:
+            logger.warning("持久化反匿名表失败: %s", exc)
 
     def anonymize_name(self, name: str, seq: str = "") -> str:
         # SEC-15: 传入 seq(记录序号)时键含序号, 同名不同记录得到不同 ID, 避免合并串号;
@@ -94,12 +154,16 @@ class DataAnonymizer:
         anon_id = _hash_id(f"{name}:{seq}" if seq else name, self.salt, self.config.id_prefix)
         self._name_map[map_key] = anon_id
         self._reverse_map[anon_id] = name
+        # A5: 每次新增映射即持久化, 防进程重启丢反匿名表。
+        self._save_map()
         # SEC-1: 不记录原始姓名, 仅返回掩码 ID
         return anon_id
 
     def deanonymize_name(self, anon_id: str) -> str:
-        # SEC-20: 未知 ID 静默返回原值 — 重启后映射丢失, 姓名/学号字段留伪名串无告警。
-        # 记 warning 并返原值(可逆失败的尽力而为), 调用方知反匿名不完整。
+        # A5: 反匿名前懒加载持久化表 — 即使新进程实例也能还原历史脱敏 ID。
+        # SEC-20: 未知 ID 返原值并告警 — 调用方知反匿名不完整。
+        if not self._reverse_map:
+            self._load_map()
         if anon_id in self._reverse_map:
             return self._reverse_map[anon_id]
         logger.warning("deanonymize 未知 ID, 映射缺失(可能映射已丢失): %s", anon_id)

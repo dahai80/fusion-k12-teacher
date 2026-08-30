@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from ..ai_client import MLXClient
-from ..safety.filter import sanitize_input
+from ..safety.filter import ContentFilter, sanitize_input
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,20 @@ class CurriculumEngine:
     - 单元/学期课程规划
     """
 
-    def __init__(self, mlx: MLXClient | None = None):
+    def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
+        # A6: 全引擎统一安全过滤 — LLM 生成内容送学生前过 check_output。
+        self._filter = content_filter or ContentFilter()
+
+    def _filter_output(self, text: str, grade: str) -> str:
+        # A6: 命中不当内容替换掩码并告警, 不让敏感内容直达学生。
+        if not isinstance(text, str) or not text:
+            return text
+        check = self._filter.check_output(text, grade)
+        if not check.is_safe:
+            logger.warning("教案内容检出不当, 已过滤: %s", check.summary)
+            return check.filtered_text
+        return text
 
     async def generate_lesson_plan(
         self,
@@ -120,11 +132,16 @@ class CurriculumEngine:
                 plan = LessonPlan(
                     id=f"lp_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}",
                     subject=subject_s, grade=grade_s, title=data.get("title", topic_s),
-                    duration_minutes=duration, objectives=data.get("objectives", []),
-                    materials=data.get("materials", []),
-                    procedures=data.get("procedures", []),
-                    assessment=data.get("assessment", ""),
-                    homework=data.get("homework", ""),
+                    duration_minutes=duration,
+                    objectives=[self._filter_output(o, grade_s) for o in data.get("objectives", [])],
+                    materials=[self._filter_output(m, grade_s) for m in data.get("materials", [])],
+                    procedures=[
+                        {k: self._filter_output(v, grade_s) if isinstance(v, str) else v
+                         for k, v in p.items()}
+                        for p in data.get("procedures", [])
+                    ],
+                    assessment=self._filter_output(data.get("assessment", ""), grade_s),
+                    homework=self._filter_output(data.get("homework", ""), grade_s),
                     standards_aligned=standards or [],
                     differentiation=data.get("differentiation", {}),
                     created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -163,7 +180,21 @@ class CurriculumEngine:
             questions = self._parse_json(response)
             if isinstance(questions, list):
                 # ENG-13: 题项非 dict(string/None)时跳过, points 非 int 容错, 不再崩
-                safe_q = [q for q in questions if isinstance(q, dict)]
+                # A6: 题干/选项/答案过安全过滤, 直达学生须无不当内容
+                safe_q = []
+                for q in questions:
+                    if not isinstance(q, dict):
+                        continue
+                    fq = dict(q)
+                    for k in ("question", "answer", "explanation"):
+                        if isinstance(fq.get(k), str):
+                            fq[k] = self._filter_output(fq[k], grade_s)
+                    if isinstance(fq.get("options"), list):
+                        fq["options"] = [
+                            self._filter_output(o, grade_s) if isinstance(o, str) else o
+                            for o in fq["options"]
+                        ]
+                    safe_q.append(fq)
                 total = 0
                 for q in safe_q:
                     try:
@@ -199,6 +230,10 @@ class CurriculumEngine:
             if isinstance(data, dict):
                 if "unit_title" not in data:
                     data["unit_title"] = unit_s
+                # A6: 单元计划文本字段过安全过滤
+                for k, v in list(data.items()):
+                    if isinstance(v, str):
+                        data[k] = self._filter_output(v, grade_s)
                 return data
             logger.error("单元计划生成失败: LLM 返回空或无法解析")
             return {"unit_title": unit_s, "error": "LLM 返回空或无法解析"}

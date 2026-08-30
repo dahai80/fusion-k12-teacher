@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -38,19 +39,61 @@ _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 _API_KEY = os.environ.get("FUSION_K12_API_KEY", "")
 _RATE_WINDOW = int(os.environ.get("FUSION_K12_RATE_WINDOW", "60"))
 _RATE_MAX = int(os.environ.get("FUSION_K12_RATE_MAX", "60"))
+# A1: 跨进程共享速率限制状态文件 — uvicorn --workers N / 多节点各进程共一份令牌桶。
+# env 覆盖可指向共享挂载点; 留空回退进程内限流(仅单 worker 正确)。
+_RATE_STATE_FILE = os.environ.get("FUSION_K12_RATE_STATE_FILE", "")
 
 
 class _RateLimiter:
-    """进程内滑动窗口限流 (SRV-2) — 按 client IP 限速。"""
+    """滑动窗口限流 (SRV-2) — 按 client IP 限速。
 
-    def __init__(self, window: int, max_req: int):
+    A1: 优先用 fcntl 文件锁 + 共享状态文件, 多 worker/多节点共用一份配额。
+    无共享文件(单 worker)时回退进程内 deque。
+    """
+
+    def __init__(self, window: int, max_req: int, state_file: str = ""):
         self._window = window
         self._max = max_req
+        self._state_file = state_file
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = asyncio.Lock()
 
+    def _check_shared(self, key: str, now: float) -> bool:
+        # A1: 文件锁保护跨进程读写 — 读整文件 → 更新该 key 的 deque → 原子写回。
+        import fcntl
+        os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
+        fd = os.open(self._state_file, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            data: dict[str, list[float]] = {}
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+                raw = os.read(fd, 1 << 20).decode("utf-8")
+                if raw.strip():
+                    data = json.loads(raw)
+            except (OSError, json.JSONDecodeError):
+                data = {}
+            hits = deque(data.get(key, []))
+            cutoff = now - self._window
+            while hits and hits[0] < cutoff:
+                hits.popleft()
+            if len(hits) >= self._max:
+                return False
+            hits.append(now)
+            data[key] = list(hits)
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, json.dumps(data).encode("utf-8"))
+            return True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
     async def check(self, key: str) -> bool:
         now = time.monotonic()
+        if self._state_file:
+            # 文件 I/O 放线程池, 不阻塞 event loop
+            return await asyncio.to_thread(self._check_shared, key, now)
         async with self._lock:
             dq = self._hits[key]
             cutoff = now - self._window
@@ -62,7 +105,7 @@ class _RateLimiter:
             return True
 
 
-_rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX)
+_rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX, _RATE_STATE_FILE)
 
 
 async def _client_key(request: Request) -> str:
@@ -376,7 +419,7 @@ class StandardsQueryRequest(BaseModel):
 # ── Standards (v0.3) ──
 
 @app.get("/api/standards/list")
-async def standards_list(subject: str = "", grade: str = ""):
+async def standards_list(subject: str = "", grade: str = "", _: str = Depends(require_api_key)):
     """列出课标知识点。"""
     logger.info("standards/list: subject=%s grade=%s", subject, grade)
     if subject and grade:
@@ -586,7 +629,8 @@ async def analytics_class_report(req: ClassReportRequest, _: str = Depends(requi
 async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
     """上传学情数据 — 持久化到允许目录并返回路径，供后续 analytics 调用使用 (SRV-6)。
 
-    不再"假装接受"，校验+落盘+返回可用的 data_path。
+    R6: 未成年人姓名强制脱敏后落盘 (PII 不明文持久化); 逐记录 schema 校验拒绝畸形注入;
+    日志只记计数与文件名, 不记绝对路径。
     """
     logger.info("analytics/upload: %d records, format=%s", len(req.data), req.format)
     if req.format != "json":
@@ -594,24 +638,53 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="only json format supported",
         )
+    # R6: 上传入口强制脱敏 — student_name 落盘前转掩码 ID, 未成年人 PII 不明文存储。
+    # 共享 anonymizer 单例: 多次上传同一学生姓名得同一掩码, 便于学情分析关联。
+    anonymizer = DataAnonymizer(DesensitizeConfig(fields_to_mask=["student_name"]))
     assessments = []
-    for item in req.data:
+    rejected = 0
+    for idx, item in enumerate(req.data):
+        # R6: 逐记录 schema 校验 — 非 dict / 缺 student_id / total_score 越界 拒绝, 不静默吞畸形。
+        if not isinstance(item, dict):
+            rejected += 1
+            logger.warning("analytics/upload: 记录 #%d 非 dict, 拒绝", idx)
+            continue
+        sid = item.get("student_id", "")
+        if not sid or not isinstance(sid, str):
+            rejected += 1
+            logger.warning("analytics/upload: 记录 #%d 缺 student_id, 拒绝", idx)
+            continue
+        total = item.get("total_score", 0.0)
+        max_score = item.get("max_score", 100.0)
         try:
+            if float(total) < 0 or float(max_score) <= 0:
+                rejected += 1
+                logger.warning("analytics/upload: 记录 #%d 分数越界 (total=%s max=%s), 拒绝", idx, total, max_score)
+                continue
+        except (TypeError, ValueError):
+            rejected += 1
+            logger.warning("analytics/upload: 记录 #%d 分数非数值, 拒绝", idx)
+            continue
+        try:
+            # R6: student_name 经 anonymizer 脱敏后构造, 落盘为掩码 ID
+            raw_name = str(item.get("student_name", "") or "")
+            anon_name = anonymizer.anonymize_name(raw_name, seq=str(idx)) if raw_name else ""
             a = StudentAssessment(
-                student_id=item.get("student_id", ""),
-                student_name=item.get("student_name", ""),
+                student_id=sid,
+                student_name=anon_name,
                 assessment_id=item.get("assessment_id", ""),
                 subject=item.get("subject", ""),
                 grade=item.get("grade", ""),
                 date=item.get("date", ""),
-                total_score=item.get("total_score", 0.0),
-                max_score=item.get("max_score", 100.0),
+                total_score=total,
+                max_score=max_score,
                 scores=item.get("scores", {}),
                 responses=item.get("responses", []),
             )
             assessments.append(a)
         except Exception as e:
-            logger.warning("analytics/upload: skip bad record: %s", e)
+            rejected += 1
+            logger.warning("analytics/upload: 记录 #%d 构造失败, 拒绝: %s", idx, e)
     import json as _json
     dest_dir = _ALLOWED_DATA_DIRS[0] if _ALLOWED_DATA_DIRS else Path.cwd() / "data"
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -623,9 +696,11 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             _json.dump([a.to_dict() for a in assessments], f, ensure_ascii=False, indent=2)
 
     await asyncio.to_thread(_write)
-    logger.info("analytics/upload: persisted %d records to %s", len(assessments), dest)
+    # R6: 日志只记计数与文件名, 不记绝对路径 (防路径信息泄露)
+    logger.info("analytics/upload: persisted %d records (rejected %d) -> %s", len(assessments), rejected, dest.name)
     return {
         "accepted": len(assessments),
+        "rejected": rejected,
         "total": len(req.data),
         # SRV-10: 仅回传文件名, 不泄露服务端绝对路径
         "filename": dest.name,
@@ -660,7 +735,7 @@ class AgentScheduleRequest(BaseModel):
 # ── Agent (v0.5) ──
 
 @app.get("/api/agent/tasks")
-async def agent_list_tasks():
+async def agent_list_tasks(_: str = Depends(require_api_key)):
     """列出可用任务。"""
     tasks = list_available_tasks()
     registered = scheduler.list_tasks()
@@ -697,7 +772,7 @@ async def agent_schedule_task(req: AgentScheduleRequest, _: str = Depends(requir
 
 
 @app.get("/api/agent/history")
-async def agent_history(limit: int = 20):
+async def agent_history(limit: int = 20, _: str = Depends(require_api_key)):
     """查看执行历史。"""
     history = scheduler.get_history(limit=limit)
     return {"total": len(history), "history": [r.to_dict() for r in history]}
@@ -755,7 +830,7 @@ async def safety_wordlist(
 
 
 @app.get("/api/safety/wordlist")
-async def safety_wordlist_list():
+async def safety_wordlist_list(_: str = Depends(require_api_key)):
     """列出敏感词库。"""
     return {"count": sensitive_wordlist.count, "words": sensitive_wordlist.list_words()}
 
