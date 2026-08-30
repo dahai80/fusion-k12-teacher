@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS name_map (
 );
 """
 
+# M1-T6: 加密列 — name_hash (sha256 查询键) + name_encrypted (AES-GCM 可逆)。
+_ADD_CRYPTO_COLS = [
+    "ALTER TABLE name_map ADD COLUMN IF NOT EXISTS name_hash TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE name_map ADD COLUMN IF NOT EXISTS name_encrypted TEXT NOT NULL DEFAULT ''",
+]
+
 
 class PostgresRepository(Repository):
     """集群 Postgres 持久化后端 — asyncpg 连接池。
@@ -74,6 +80,8 @@ class PostgresRepository(Repository):
         )
         async with self._pool.acquire() as conn:
             await conn.execute(_SCHEMA)
+            for sql in _ADD_CRYPTO_COLS:
+                await conn.execute(sql)
         logger.info("PostgresRepository 连接池就绪: %s", self._dsn_redacted())
         return self._pool
 
@@ -97,7 +105,15 @@ class PostgresRepository(Repository):
             rows = await conn.fetch("SELECT payload FROM task_history ORDER BY id ASC")
         return [json.loads(r["payload"]) for r in rows]
 
-    async def asave_name_map(self, name_map: dict[str, str], reverse_map: dict[str, str]) -> None:
+    async def asave_name_map(
+        self,
+        name_map: dict[str, str],
+        reverse_map: dict[str, str],
+        cipher: object | None = None,
+    ) -> None:
+        # M1-T6: cipher 非空 → name_hash(sha256)+name_encrypted(AES-GCM); 空则明文兼容。
+        import hashlib
+
         await self.ensure_pool()
         async with self._pool.acquire() as conn:
             async with conn.transaction():
@@ -105,23 +121,44 @@ class PostgresRepository(Repository):
                 rows = []
                 for key, anon_id in name_map.items():
                     rev = reverse_map.get(anon_id, "")
-                    rows.append((key, anon_id, rev))
+                    if cipher is not None:
+                        nh = hashlib.sha256(key.encode("utf-8")).hexdigest()
+                        ne = cipher.encrypt(rev) if rev else ""
+                        rows.append((key, anon_id, rev, nh, ne))
+                    else:
+                        rows.append((key, anon_id, rev, "", ""))
                 if rows:
                     await conn.executemany(
-                        "INSERT INTO name_map (map_key, anon_id, reverse) VALUES ($1, $2, $3)",
+                        "INSERT INTO name_map (map_key, anon_id, reverse, name_hash, name_encrypted) "
+                        "VALUES ($1, $2, $3, $4, $5)",
                         rows,
                     )
 
-    async def aload_name_map(self) -> tuple[dict[str, str], dict[str, str]]:
+    async def aload_name_map(
+        self, cipher: object | None = None
+    ) -> tuple[dict[str, str], dict[str, str]]:
         await self.ensure_pool()
         async with self._pool.acquire() as conn:
-            rows = await conn.fetch("SELECT map_key, anon_id, reverse FROM name_map")
+            rows = await conn.fetch(
+                "SELECT map_key, anon_id, reverse, name_encrypted FROM name_map"
+            )
         name_map: dict[str, str] = {}
         reverse_map: dict[str, str] = {}
         for r in rows:
-            name_map[r["map_key"]] = r["anon_id"]
-            if r["reverse"]:
-                reverse_map[r["anon_id"]] = r["reverse"]
+            ne = r["name_encrypted"]
+            if ne and cipher is not None:
+                try:
+                    real = cipher.decrypt(ne)
+                except Exception as e:
+                    logger.warning("name_map 解密失败, 回退明文: %s", e)
+                    real = r["reverse"]
+                name_map[r["map_key"]] = r["anon_id"]
+                if real:
+                    reverse_map[r["anon_id"]] = real
+            else:
+                name_map[r["map_key"]] = r["anon_id"]
+                if r["reverse"]:
+                    reverse_map[r["anon_id"]] = r["reverse"]
         return name_map, reverse_map
 
     # ── 同步适配 (满足 Repository 抽象, cluster 模式实际用 async) ──
@@ -135,13 +172,22 @@ class PostgresRepository(Repository):
         import asyncio
         return asyncio.get_event_loop().run_until_complete(self.aload_history())
 
-    def save_name_map(self, name_map: dict[str, str], reverse_map: dict[str, str]) -> None:
+    def save_name_map(
+        self,
+        name_map: dict[str, str],
+        reverse_map: dict[str, str],
+        cipher: object | None = None,
+    ) -> None:
         import asyncio
-        asyncio.get_event_loop().run_until_complete(self.asave_name_map(name_map, reverse_map))
+        asyncio.get_event_loop().run_until_complete(
+            self.asave_name_map(name_map, reverse_map, cipher)
+        )
 
-    def load_name_map(self) -> tuple[dict[str, str], dict[str, str]]:
+    def load_name_map(
+        self, cipher: object | None = None
+    ) -> tuple[dict[str, str], dict[str, str]]:
         import asyncio
-        return asyncio.get_event_loop().run_until_complete(self.aload_name_map())
+        return asyncio.get_event_loop().run_until_complete(self.aload_name_map(cipher))
 
     async def aclose(self) -> None:
         if self._pool is not None:
