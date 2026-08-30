@@ -114,3 +114,28 @@ class TestSchedulerRepoIntegration:
         assert len(sched2._history) == 1
         assert sched2._history[0].task_id == "weekly_prep"
         repo.close()
+
+
+class TestMigrateCLI:
+    def test_migrate_dry_run(self, tmp_path):
+        # M1-T3: dry-run 仅读源库预览, 不连 Postgres
+        from click.testing import CliRunner
+
+        from fusion_k12_teacher.cli import cli
+
+        db = str(tmp_path / "src.db")
+        repo = SQLiteRepository(db)
+        repo.save_history([{"task_id": "t1", "ts": "1"}, {"task_id": "t2", "ts": "2"}])
+        repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"})
+        repo.close()
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["migrate", "--from-db", db, "--to-dsn", "postgresql://u:p@localhost/db", "--dry-run"],
+        )
+        assert result.exit_code == 0, result.output
+        assert "历史 2 条" in result.output
+        assert "脱敏映射 1 条" in result.output
+        assert "未写入" in result.output
+

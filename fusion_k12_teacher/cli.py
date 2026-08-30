@@ -834,6 +834,57 @@ def desensitize_export(input_file, output, mode):
     click.echo(f"✅ 映射表已导出(0600, 独立受限目录): {map_path}")
 
 
+@cli.command()
+@click.option("--from-db", "from_db", required=True, help="源 SQLite 路径 (standalone)")
+@click.option("--to-dsn", "to_dsn", required=True, help="目标 Postgres DSN (cluster)")
+@click.option("--dry-run", is_flag=True, help="仅预览迁移记录数, 不写入")
+def migrate(from_db, to_dsn, dry_run):
+    """M1-T3: 单机→集群数据迁移 — 导出 standalone SQLite (history/name_map) 导入 Postgres。
+
+    schema 由目标后端构造时自建 (CREATE TABLE IF NOT EXISTS), 无需 Alembic。
+    迁移不可逆回滚, 源库只读不删。
+    """
+    from .repository import SQLiteRepository
+    try:
+        from .repository import PostgresRepository
+    except ImportError as e:
+        click.echo(f"❌ 目标 Postgres 后端不可用: {e}")
+        click.echo("   安装: pip install -e '.[cluster]'")
+        raise SystemExit(1)
+
+    src = SQLiteRepository(from_db)
+    history = src.load_history()
+    name_map, reverse_map = src.load_name_map()
+    src.close()
+    logger.info("迁移源读取: history=%d 条, name_map=%d 条", len(history), len(name_map))
+    click.echo(f"📦 源数据: 历史 {len(history)} 条, 脱敏映射 {len(name_map)} 条")
+
+    if dry_run:
+        click.echo("🔍 --dry-run: 仅预览, 未写入目标")
+        return
+
+    async def _run():
+        dst = PostgresRepository(to_dsn)
+        await dst.asave_history(history)
+        await dst.asave_name_map(name_map, reverse_map)
+        # 验证: 回读比对
+        loaded_hist = await dst.aload_history()
+        loaded_nm, _ = await dst.aload_name_map()
+        await dst.aclose()
+        return loaded_hist, loaded_nm
+
+    loaded_hist, loaded_nm = asyncio.run(_run())
+    ok_hist = len(loaded_hist) == len(history)
+    ok_nm = len(loaded_nm) == len(name_map)
+    logger.info("迁移目标验证: history %s, name_map %s", ok_hist, ok_nm)
+    if ok_hist and ok_nm:
+        click.echo(f"✅ 迁移完成: 历史 {len(loaded_hist)} 条, 脱敏映射 {len(loaded_nm)} 条")
+    else:
+        click.echo(f"⚠️ 迁移后数量不符 (历史 {len(loaded_hist)}/{len(history)}, "
+                   f"映射 {len(loaded_nm)}/{len(name_map)}) — 请检查目标库")
+        raise SystemExit(1)
+
+
 def main():
     cli()
 
