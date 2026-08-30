@@ -55,6 +55,16 @@ class AnalyticsEngine:
             return check.filtered_text
         return text
 
+    @staticmethod
+    def _mask_sid(sid: Any) -> str:
+        # P1-2/P1-3: 学生 ID 属 PII, 进 prompt / 入 API 返回前脱敏为短哈希前缀,
+        # 不落原始 ID。同输入同输出 (无 salt, 仅遮蔽), 供聚合统计与风险标注。
+        s = str(sid or "")
+        if not s:
+            return ""
+        import hashlib
+        return "S" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:6]
+
     async def build_class_profile(
         self,
         class_id: str,
@@ -79,8 +89,10 @@ class AnalyticsEngine:
             pcts = [a.percentage for a in assessments]
             avg_score = sum(pcts) / len(pcts) if pcts else 0.0
             score_distribution = self._calc_score_distribution(pcts)
-            weak_points = self._calc_weak_points(assessments)
-            strong_points = self._calc_strong_points(assessments)
+            # P3: 单遍扫描得 weak+strong, 不再各调一遍 _calc_point_stats (双遍 assessments×responses)。
+            topic_stats = self._calc_point_stats(assessments)
+            weak_points = self._weak_from_stats(topic_stats)
+            strong_points = self._strong_from_stats(topic_stats)
             risk_levels = self._calc_risk_levels(assessments)
         except Exception as exc:
             logger.error("build_class_profile 统计计算失败, 降级到空统计: %s", exc, exc_info=True)
@@ -107,7 +119,7 @@ class AnalyticsEngine:
                         knowledge_point_id=str(wp.get("knowledge_point_id", "")),
                         knowledge_point_name=self._filter_output(str(wp.get("knowledge_point_name", "")), grade),
                         error_rate=max(0.0, min(_coerce_float(wp.get("error_rate")), 1.0)),
-                        affected_students=_coerce_str_list(wp.get("affected_students")),
+                        affected_students=[self._mask_sid(s) for s in _coerce_str_list(wp.get("affected_students"))],
                         common_mistakes=[
                             self._filter_output(m, grade) for m in _coerce_str_list(wp.get("common_mistakes"))
                         ],
@@ -130,6 +142,8 @@ class AnalyticsEngine:
         # E14: 单一 now 快照 — 原两次 datetime.now() 非原子, 跨午夜时 period(前一天)
         # 与 generated_at(后一天) 不一致。一次取值保证同一时刻。
         now = datetime.now()
+        # P1-2: 学生风险键含原始学生 ID (PII), 出引擎前统一脱敏 — API 返回 + 报告 prompt 都不再落原始 ID。
+        masked_risk = {self._mask_sid(k): v for k, v in risk_levels.items()}
         return ClassProfile(
             class_id=class_id,
             subject=subject,
@@ -140,7 +154,7 @@ class AnalyticsEngine:
             score_distribution=score_distribution,
             weak_knowledge_points=weak_points,
             strong_knowledge_points=strong_points,
-            student_risk_levels=risk_levels,
+            student_risk_levels=masked_risk,
             generated_at=now.isoformat(),
             error=llm_err,
         )
@@ -339,7 +353,8 @@ class AnalyticsEngine:
             error_id="err-fallback",
             error_type="unknown",
             frequency=len(wrong),
-            sample_responses=[str(r.get("student_answer", "")) for r in wrong[:3]],
+            # P1-1: 降级回退不落原始学生作答 (PII), 仅占位保留样本数, 原文不入 API 返回。
+            sample_responses=[f"<作答样本{i+1} 已脱敏>" for i in range(min(3, len(wrong)))],
             root_cause="分析失败，需人工检查",
             remediation="建议人工复核错题",
         )]
@@ -355,6 +370,10 @@ class AnalyticsEngine:
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         sid_s = sanitize_input(student_id, 50)
+        # P1-17: daily_homework_review 把 analyze_errors 的 list[ErrorAnalysis] 当 weak_points 传入,
+        # ErrorAnalysis 无 knowledge_point_name/to_dict → AttributeError 被吞成空方案。
+        # 统一规整为 WeakPoint: 缺接口者从 ErrorAnalysis 字段映射, 不再崩。
+        weak_points = [self._to_weak_point(w) for w in weak_points] if weak_points else []
         if not weak_points:
             return RemedialPlan(student_id=sid_s, subject=subject_s, grade=grade_s)
 
@@ -443,7 +462,7 @@ class AnalyticsEngine:
             for wp in class_profile.weak_knowledge_points[:5]
         )
         risk_str = "\n".join(
-            f"  - {sid}: {level}"
+            f"  - {self._mask_sid(sid)}: {level}"
             for sid, level in list(class_profile.student_risk_levels.items())[:5]
         )
 
@@ -481,6 +500,26 @@ class AnalyticsEngine:
 
     # ── 统计辅助方法 ──
 
+    def _to_weak_point(self, item: Any) -> WeakPoint:
+        # P1-17: 规整传入对象为 WeakPoint — 支持 ErrorAnalysis (无 knowledge_point_name/to_dict)。
+        if isinstance(item, WeakPoint):
+            return item
+        if isinstance(item, dict):
+            return WeakPoint(
+                knowledge_point_id=str(item.get("knowledge_point_id", "")),
+                knowledge_point_name=str(item.get("knowledge_point_name", item.get("error_type", ""))),
+                error_rate=float(item.get("error_rate", 0.5)),
+            )
+        # ErrorAnalysis-like: duck-type 读字段
+        kp_name = getattr(item, "knowledge_point_name", "") or getattr(item, "error_type", "")
+        kp_id = getattr(item, "knowledge_point_id", "")
+        freq = getattr(item, "frequency", 1)
+        return WeakPoint(
+            knowledge_point_id=str(kp_id or ""),
+            knowledge_point_name=str(kp_name or "unknown"),
+            error_rate=min(1.0, float(freq) / 10.0) if freq else 0.5,
+        )
+
     def _calc_score_distribution(self, pcts: list[float]) -> dict[str, int]:
         # ENG-8: 入参为百分比 (0-100), 桶阈值与百分比一致, 非百分制测验不再全员落低分桶
         dist = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0, "0-59": 0}
@@ -497,7 +536,9 @@ class AnalyticsEngine:
                 dist["0-59"] += 1
         return dist
 
-    def _calc_weak_points(self, assessments: list[StudentAssessment]) -> list[WeakPoint]:
+    def _calc_point_stats(self, assessments: list[StudentAssessment]) -> dict[str, dict[str, Any]]:
+        # P3: 单遍扫描 assessments×responses 同时统计 weak/strong 所需字段,
+        # 替代原 _calc_weak_points + _calc_strong_points 各扫一遍 (1000生×50题 双遍)。
         topic_stats: dict[str, dict[str, Any]] = {}
         for a in assessments:
             for resp in a.responses:
@@ -505,13 +546,21 @@ class AnalyticsEngine:
                 if not qid:
                     continue
                 if qid not in topic_stats:
-                    topic_stats[qid] = {"total": 0, "wrong": 0, "wrong_answers": [], "students": set()}
-                topic_stats[qid]["total"] += 1
-                if not resp.get("correct", True):
-                    topic_stats[qid]["wrong"] += 1
-                    topic_stats[qid]["wrong_answers"].append(resp.get("student_answer", ""))
-                    topic_stats[qid]["students"].add(a.student_id)
+                    topic_stats[qid] = {
+                        "total": 0, "wrong": 0, "correct": 0,
+                        "wrong_answers": [], "students": set(),
+                    }
+                stats = topic_stats[qid]
+                stats["total"] += 1
+                if resp.get("correct", True):
+                    stats["correct"] += 1
+                else:
+                    stats["wrong"] += 1
+                    stats["wrong_answers"].append(resp.get("student_answer", ""))
+                    stats["students"].add(a.student_id)
+        return topic_stats
 
+    def _weak_from_stats(self, topic_stats: dict[str, dict[str, Any]]) -> list[WeakPoint]:
         weak = []
         for qid, stats in topic_stats.items():
             if stats["total"] < 2:
@@ -525,30 +574,25 @@ class AnalyticsEngine:
                     knowledge_point_id="",
                     knowledge_point_name=qid,
                     error_rate=round(error_rate, 2),
-                    affected_students=list(stats["students"]),
+                    affected_students=[self._mask_sid(s) for s in stats["students"]],
                     common_mistakes=stats["wrong_answers"][:3],
                 ))
         weak.sort(key=lambda w: w.error_rate, reverse=True)
         return weak[:10]
 
-    def _calc_strong_points(self, assessments: list[StudentAssessment]) -> list[str]:
-        topic_stats: dict[str, dict[str, int]] = {}
-        for a in assessments:
-            for resp in a.responses:
-                qid = resp.get("question_id", resp.get("question", ""))
-                if not qid:
-                    continue
-                if qid not in topic_stats:
-                    topic_stats[qid] = {"total": 0, "correct": 0}
-                topic_stats[qid]["total"] += 1
-                if resp.get("correct", True):
-                    topic_stats[qid]["correct"] += 1
-
+    def _strong_from_stats(self, topic_stats: dict[str, dict[str, Any]]) -> list[str]:
         strong = []
         for qid, stats in topic_stats.items():
             if stats["total"] >= 2 and stats["correct"] / stats["total"] >= 0.8:
                 strong.append(qid)
         return strong[:5]
+
+    def _calc_weak_points(self, assessments: list[StudentAssessment]) -> list[WeakPoint]:
+        # 公开入口 (测试直调) — 单独扫一遍; build_class_profile 走合并路径免双遍。
+        return self._weak_from_stats(self._calc_point_stats(assessments))
+
+    def _calc_strong_points(self, assessments: list[StudentAssessment]) -> list[str]:
+        return self._strong_from_stats(self._calc_point_stats(assessments))
 
     def _calc_risk_levels(self, assessments: list[StudentAssessment]) -> dict[str, str]:
         student_scores: dict[str, list[float]] = {}

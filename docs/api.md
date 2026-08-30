@@ -320,7 +320,7 @@ Base URL: `http://localhost:11448`
 GET /api/health
 ```
 
-Response: `{"status": "ok", "version": "1.0.2"}`
+Response: `{"status": "ok", "version": "1.3.0"}`
 
 ### Curriculum Plan
 
@@ -488,6 +488,28 @@ GET /api/standards/list?subject=数学&grade=3
 POST /api/standards/query
 {"subject": "数学", "grade": "3", "topic": "分数"}
 ```
+
+### Standards Align (v1.3.0)
+
+课标对齐上下文 — 返回主题对应知识点/必修/拓展/前置。
+
+```
+POST /api/standards/align
+{"subject": "数学", "grade": "3", "topic": "分数"}
+```
+
+Response: `{"subject", "grade", "topic", "knowledge_points", "must_cover", "optional_advanced", "curriculum_codes", "suggested_objectives", "prerequisite_count"}`
+
+### Standards Coverage (v1.3.0)
+
+课标覆盖报告 — 校验教学目标对知识点的覆盖度。
+
+```
+POST /api/standards/coverage
+{"subject": "数学", "grade": "3", "objectives": ["理解分数的意义"]}
+```
+
+Response: `{"subject", "grade", "total_points", "covered_points", "coverage_ratio", "missing_points", "details"}`
 
 ### Differentiated Lesson Plan
 

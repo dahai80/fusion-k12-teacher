@@ -50,8 +50,33 @@ curl http://localhost:11448/api/health
 
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
-| `FUSION_MLX_URL` | `http://fusion-mlx:11432` | fusion-mlx 后端地址 |
-| `FUSION_K12_PORT` | `11448` | HTTP API 端口 |
+| `FUSION_MLX_URL` | `http://localhost:11432/v1` | fusion-gateway/MLX 后端地址 (gateway:11432, mlx 本体:11434) |
+| `FUSION_MLX_MODEL` | (自动选择) | 指定模型 ID, 留空则 `_auto_select_model` 跳过非聊天模型 |
+| `FUSION_MLX_API_KEY` | (空) | gateway/MLX 鉴权 key (401/403 触发 NonDegradableError) |
+| `FUSION_MLX_CONNECT_TIMEOUT` | `10` | 连接超时秒 |
+| `FUSION_MLX_READ_TIMEOUT` | `120` | 推理读超时秒 |
+| `FUSION_MLX_MAX_RETRIES` | `2` | 瞬态错误重试次数 |
+| `FUSION_MLX_MAX_CONCURRENCY` | `4` | 全局 LLM 并发信号量 (防本地单卡 OOM) |
+| `FUSION_MLX_MODELS_TTL` | `30` | 模型列表缓存秒 |
+| `FUSION_K12_PORT` | `11448` | HTTP API 端口 (serve 命令读取) |
+| `FUSION_K12_API_KEY` | (空) | API 鉴权 key (客户端 X-API-Key 头); 空则仅回环免鉴权 |
+| `FUSION_K12_ADMIN_API_KEY` | (空) | 管理 key (词表增删等敏感操作) |
+| `FUSION_K12_RATE_LIMIT` | `60` | 每客户端每分钟请求上限 |
+| `FUSION_K12_RATE_WINDOW` | `60` | 限流滑动窗口秒 |
+| `FUSION_K12_RATE_STATE_FILE` | (空) | 跨进程共享限流状态文件 (多 worker) |
+| `FUSION_K12_HOME` | `~/.fusion-k12` | 数据根目录 |
+| `FUSION_K12_HISTORY_FILE` | `$HOME/history.json` | agent 任务历史持久化 |
+| `FUSION_K12_SCHEDULER_DB` | (空→Memory) | scheduler SQLite 持久化路径 (配置即启用 SQLAlchemyJobStore) |
+| `FUSION_K12_SCHEDULER_PIDFILE` | `$HOME/scheduler.pid` | cron 跨进程互斥 pidfile |
+| `FUSION_K12_INSTANCE_LOCK` | `$HOME/serve.lock` | serve 单实例锁 |
+| `FUSION_K12_DATA_DIR` | `包内 data/` | 课标/敏感词等数据目录 |
+| `FUSION_K12_SALT` / `FUSION_K12_SALT_FILE` | (随机回退) | 脱敏 salt (多节点须统一分发) |
+| `FUSION_K12_NAME_MAP_FILE` | (空→不落盘) | 反匿名表持久化路径 |
+| `FUSION_K12_LIVE_TESTS` | `0` | 测试用: 1 启用真实 LLM 用例 |
+| `FUSION_K12_CRON_RETRIES` | `1` | cron 任务失败重试次数 |
+| `LOG_LEVEL` / `FUSION_K12_LOG_LEVEL` | `INFO` | 日志级别 |
+
+完整可配置项见根目录 `.env.example`。
 
 ### 数据持久化
 
@@ -88,7 +113,7 @@ spec:
     spec:
       containers:
       - name: fusion-k12
-        image: fusion-k12-teacher:1.0.2
+        image: fusion-k12-teacher:1.3.0
         ports:
         - containerPort: 11448
         env:
@@ -132,7 +157,7 @@ fusion-k12 safety wordlist --add "新敏感词"
 curl http://localhost:11448/api/health
 
 # 预期返回
-# {"status": "ok", "version": "1.0.2"}
+# {"status": "ok", "version": "1.3.0"}
 ```
 
 ## 常见问题
@@ -156,3 +181,35 @@ huggingface-cli download Qwen/Qwen3.5-9B
 ### Q: Docker 内无法访问 fusion-mlx
 
 检查 `docker-compose.yml` 中 `FUSION_MLX_URL` 配置，确保指向正确的服务名。
+
+## 运维手册 (Runbook)
+
+### 轮换 API Key
+
+1. 生成新 key: `python -c "import secrets;print(secrets.token_hex(24))"`
+2. 更新 `FUSION_K12_API_KEY` (compose env 或 K8s Secret)
+3. 重启服务: `docker-compose restart fusion-k12` / `kubectl rollout restart deploy/fusion-k12`
+4. 同步更新所有客户端的 `X-API-Key` 头
+
+### 重启服务
+
+```bash
+# Docker
+docker-compose restart fusion-k12
+# 单机 CLI
+~/claude-home/fusion-mlx/start.sh stop
+fusion-k12 serve  # 单实例锁防重复启动
+```
+
+### 更换推理模型
+
+1. 下载模型: `HF_ENDPOINT=https://hf-mirror.com huggingface-cli download <model>`
+2. 启动/确认 fusion-mlx 已加载: `~/claude-home/fusion-mlx/start.sh status`
+3. 设 `FUSION_MLX_MODEL=<model-id>` 或留空自动选择, 重启 k12 服务
+
+### 恢复备份
+
+- **数据卷** (`k12-data`): history.json / scheduler.db / salt / 上传数据 — `docker volume` 定期快照
+- **反匿名表** (`FUSION_K12_NAME_MAP_FILE`): 与脱敏数据生命周期绑定, 单独加密存储, 勿与脱敏数据同处
+- **salt** (`FUSION_K12_SALT_FILE`): 多节点须共享同一 salt, 否则同一学生跨节点 ID 断链; 备份后务必分发到所有节点
+- 恢复: 挂回对应卷/文件后重启服务即可; scheduler.db 恢复后 cron 调度自动续接

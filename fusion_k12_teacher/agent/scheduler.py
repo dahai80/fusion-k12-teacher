@@ -26,7 +26,12 @@ from .tasks import build_task, list_available_tasks
 
 logger = logging.getLogger(__name__)
 
-HISTORY_JSON = os.path.join(os.path.dirname(__file__), "data", "history.json")
+# P1-11: history 落盘路径改 env 配置 (Dockerfile 设 FUSION_K12_HISTORY_FILE 指向可写卷),
+# 不再写死包内 data/ (只读 / 容器重建即丢)。默认 ~/.fusion-k12/history.json。
+HISTORY_JSON = os.environ.get(
+    "FUSION_K12_HISTORY_FILE",
+    os.path.join(os.path.expanduser("~/.fusion-k12"), "history.json"),
+)
 # A3: pidfile 锁 — cli agent_start 与 serve lifespan 共用同一 scheduler 单例,
 # 双臂触发同一 cron 会导致重复执行。持锁进程 arm, 未持锁进程跳过。
 _PIDFILE = os.environ.get(
@@ -200,6 +205,25 @@ class TaskScheduler:
             logger.warning("pidfile 已被其它进程持有, 本进程跳过 cron arm, 避免重复调度")
             return False
 
+    def _build_jobstore(self):
+        # P1-12: env 指定 sqlite 路径则用 SQLiteJobStore (持久化), 否则 MemoryJobStore。
+        db = os.environ.get("FUSION_K12_SCHEDULER_DB", "")
+        if db:
+            db_path = os.path.expanduser(db)
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            # P1-12: 惰性 import — sqlalchemy 非必装依赖, 仅配 sqlite 持久化时需要。
+            try:
+                from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+            except ImportError as e:
+                logger.error(
+                    "FUSION_K12_SCHEDULER_DB 已配但 sqlalchemy 缺失, 回退 MemoryJobStore: %s", e
+                )
+                return MemoryJobStore()
+            logger.info("调度器使用 SQLiteJobStore: %s", db_path)
+            return SQLAlchemyJobStore(url=f"sqlite:///{db_path}")
+        logger.info("调度器使用 MemoryJobStore (未配 FUSION_K12_SCHEDULER_DB, 重启丢调度)")
+        return MemoryJobStore()
+
     def start(self) -> None:
         if self._running:
             return
@@ -208,7 +232,10 @@ class TaskScheduler:
             self._running = False
             return
         self._scheduler = AsyncIOScheduler(
-            jobstores={"default": MemoryJobStore()},
+            # P1-12: SQLiteJobStore 持久化 cron 作业 — 跨进程/重启不丢调度。
+            # env FUSION_K12_SCHEDULER_DB 指定 sqlite 路径 (Dockerfile 默认 ~/.fusion-k12),
+            # 留空回退 MemoryJobStore (单进程内存, 重启即丢)。
+            jobstores={"default": self._build_jobstore()},
         )
         try:
             self._scheduler.start()
@@ -284,7 +311,18 @@ class TaskScheduler:
             pass
 
         async def _job():
-            await self.run_task(task.id)
+            # P3: cron 任务失败自动重试 (env 可配次数), 超限 loud 告警, 不再仅 APScheduler 静默记日志。
+            max_retries = int(os.environ.get("FUSION_K12_CRON_RETRIES", "1"))
+            for attempt in range(max_retries + 1):
+                try:
+                    await self.run_task(task.id)
+                    return
+                except Exception as exc:
+                    if attempt < max_retries:
+                        logger.warning("cron 任务 %s 第 %d 次失败, 重试: %s", task.id, attempt + 1, exc)
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                        continue
+                    logger.error("cron 任务 %s 重试耗尽仍失败: %s", task.id, exc)
 
         cron_kwargs = self._parse_cron(task.schedule)
         self._scheduler.add_job(
@@ -307,10 +345,26 @@ class TaskScheduler:
                 result[_CRON_KEYS[i]] = part
         return result
 
+    # P1-4: history.json 落盘前擦除疑似学生 PII 字段 (student_answer/responses 等),
+    # 引擎层已脱敏, 此处为防御纵深 — 防止上游 dataclass 新增字段回显原始作答。
+    _PII_KEYS = ("student_answer", "student_answers", "responses", "sample_responses")
+    _PII_MASK = "<已脱敏>"
+
+    @classmethod
+    def _scrub_pii(cls, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {
+                k: (cls._PII_MASK if k in cls._PII_KEYS else cls._scrub_pii(v))
+                for k, v in obj.items()
+            }
+        if isinstance(obj, list):
+            return [cls._scrub_pii(x) for x in obj]
+        return obj
+
     def _save_history(self) -> None:
         try:
             os.makedirs(os.path.dirname(self._history_path), exist_ok=True)
-            data = [r.to_dict() for r in self._history[-self._max_history:]]
+            data = [self._scrub_pii(r.to_dict()) for r in self._history[-self._max_history:]]
             tmp_path = self._history_path + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)

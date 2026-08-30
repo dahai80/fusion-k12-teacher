@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from ..safety.filter import sanitize_input
 from ._cjk import _cjk_tokens, _word_match  # E4: 单一 CJK 实现, 不再各抄一份
@@ -17,7 +18,9 @@ class StandardsAligner:
         self._query = query or StandardsQuery()
         # A7: 按 (subject,grade,topic) 缓存 AlignmentContext — 单主题 lesson+quiz+worksheet
         # 生成时 align() 对同三元组重复计算 3 次, 课标数据不变时缓存命中免重复扫描。
+        # P3: 缓存加上限 — 主题集实际有界, 但防异常输入(随机 topic)撑爆内存, 超 _MAX_CACHE 驱逐最旧。
         self._cache: dict[tuple[str, str, str], AlignmentContext] = {}
+        self._max_cache = int(os.environ.get("FUSION_K12_ALIGN_CACHE_MAX", "500"))
 
     def align(
         self, subject: str, grade: str, topic: str
@@ -67,6 +70,9 @@ class StandardsAligner:
             f"{len(points)} 知识点, {len(must_cover)} 必修, {len(optional_advanced)} 拓展"
         )
         # A7: 入缓存, 后续同三元组命中免重复计算
+        # P3: 超 _max_cache 驱逐最旧条目 (dict 保插入序, 弹首项), 防 random-topic 撑爆内存
+        if len(self._cache) >= self._max_cache and cache_key not in self._cache:
+            self._cache.pop(next(iter(self._cache)), None)
         self._cache[cache_key] = ctx
         return ctx
 

@@ -18,6 +18,9 @@ jobs:
       - run: pip install ruff
       - run: ruff check .
 
+  # P2: offline 套件 — mock 全覆盖, CI (ubuntu, 无 fusion-mlx) 可跑。
+  # live 套件 (test_core 真实 LLM) 标 @pytest.mark.live, 默认 skip,
+  # 本机显式设 FUSION_K12_LIVE_TESTS=1 + fusion-mlx 运行时才跑。
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -30,4 +33,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[test]"
-      - run: pytest tests/ -q
+      # P2: -m "not live" 跳过真实 LLM 用例; conftest 双保险 (未开 FUSION_K12_LIVE_TESTS 时 live skip)
+      - run: pytest tests/ -q -m "not live" --cov=fusion_k12_teacher --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml

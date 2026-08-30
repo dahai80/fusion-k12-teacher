@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import logging.config
 import os
 import secrets
 import time
@@ -30,10 +31,41 @@ from .differentiation import DifferentiationEngine
 from .engines import build_engines
 from .personalization import PersonalizationEngine
 from .safety import ContentFilter, SensitiveWordList
-from .standards import StandardsLoader, StandardsQuery
+from .standards import StandardsAligner, StandardsLoader, StandardsQuery
 from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_logging() -> None:
+    # P2: serve 经 uvicorn 启动, cli.py basicConfig 仅 CLI 路径生效, serve 路径无配置。
+    # 统一 dictConfig: env LOG_LEVEL 调级别, 带时间/级别/模块, 免裸 getLogger 无格式。
+    level = os.environ.get("LOG_LEVEL", os.environ.get("FUSION_K12_LOG_LEVEL", "INFO")).upper()
+    fmt = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {"default": {"format": fmt, "datefmt": "%Y-%m-%d %H:%M:%S"}},
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "stream": "ext://sys.stderr",
+            }
+        },
+        "root": {"level": level, "handlers": ["console"]},
+    })
+
+
+_configure_logging()
+
+
+def _mask_sid(sid: Any) -> str:
+    # P2: 学生 ID 属 PII, 日志中不落原文, 统一短哈希前缀 (与 analytics._mask_sid 同策略)。
+    import hashlib
+    s = str(sid or "")
+    return "S" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:6] if s else ""
+
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 # R1: API key 改每请求读 env — 运行期轮换密钥即时生效, 不再导入时固化。模块常量留空,
@@ -132,6 +164,24 @@ async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
     return api_key
 
 
+async def require_admin_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
+    # P1-5: 敏感词库写操作(add/remove)需管理员密钥, 普通 key 不可改全局规则。
+    # admin key 独立 env FUSION_K12_ADMIN_API_KEY; 未配置则禁用写接口(fail-closed)。
+    configured = os.environ.get("FUSION_K12_ADMIN_API_KEY", "")
+    if not configured:
+        logger.error("FUSION_K12_ADMIN_API_KEY 未配置, 拒绝敏感词写操作 (fail-closed)")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="admin key not configured; set FUSION_K12_ADMIN_API_KEY",
+        )
+    if not api_key or not secrets.compare_digest(api_key, configured):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin privileges required",
+        )
+    return api_key
+
+
 async def _require_ready() -> None:
     # SRV-4: lifespan 未完成时引擎为 None, 拦截启动期请求返 503
     if not _ready:
@@ -149,22 +199,73 @@ content_generator: ContentGenerator | None = None
 differentiation_engine: DifferentiationEngine | None = None
 standards_query: StandardsQuery | None = None
 standards_loader: StandardsLoader | None = None
+# P3: 暴露课标对齐/覆盖报告路由, 之前仅 DifferentiationEngine 内部用。
+standards_aligner: StandardsAligner | None = None
 analytics_engine: AnalyticsEngine | None = None
 content_filter: ContentFilter | None = None
 sensitive_wordlist: SensitiveWordList | None = None
 # SRV-4: lifespan 完成前引擎为 None, 以 _ready 标志拦截启动期请求
 _ready: bool = False
+# P1-8: 单实例锁 — serve 进程级互斥, 防多 worker/多实例并发跑同一套引擎+调度器。
+# fcntl flock LOCK_EX|LOCK_NB: 持锁方继续启动, 未持锁方启动即拒 (cli/serve/uvicorn --workers N 统一受限)。
+_INSTANCE_LOCKFILE = os.environ.get(
+    "FUSION_K12_INSTANCE_LOCK",
+    os.path.expanduser("~/.fusion-k12/serve.lock"),
+)
+_instance_lockfd: int | None = None
+
+
+def _acquire_instance_lock() -> bool:
+    global _instance_lockfd
+    if _instance_lockfd is not None:
+        return True
+    try:
+        import fcntl
+    except ImportError:
+        logger.warning("fcntl 不可用, 跳过单实例锁")
+        return True
+    try:
+        os.makedirs(os.path.dirname(_INSTANCE_LOCKFILE), exist_ok=True)
+        fd = os.open(_INSTANCE_LOCKFILE, os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.ftruncate(fd, 0)
+        os.write(fd, f"{os.getpid()}\n".encode())
+        _instance_lockfd = fd
+        logger.info("获取单实例锁 (pid=%d): %s", os.getpid(), _INSTANCE_LOCKFILE)
+        return True
+    except OSError:
+        logger.error("单实例锁已被占用, 另一实例正在运行: %s — 拒绝启动", _INSTANCE_LOCKFILE)
+        return False
+
+
+def _release_instance_lock() -> None:
+    global _instance_lockfd
+    if _instance_lockfd is None:
+        return
+    try:
+        import fcntl
+        fcntl.flock(_instance_lockfd, fcntl.LOCK_UN)
+    except (OSError, ImportError):
+        pass
+    try:
+        os.close(_instance_lockfd)
+    except OSError:
+        pass
+    _instance_lockfd = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global mlx_client, curriculum_engine, assessment_engine
     global subject_expert, personalization_engine, content_generator
-    global differentiation_engine, standards_query, standards_loader
+    global differentiation_engine, standards_query, standards_loader, standards_aligner
     global analytics_engine, content_filter, sensitive_wordlist
     global _ready
     # SRV-5: 构建失败时 yield 不执行, 须 try/except 清理已分配资源
     try:
+        # P1-8: 单实例锁 — 未持锁则拒绝启动, 防 uvicorn --workers N 多实例跑同套引擎/调度器。
+        if not _acquire_instance_lock():
+            raise RuntimeError(f"单实例锁已被占用: {_INSTANCE_LOCKFILE}")
         # A9: build_engines 内含 loader.load_all() 同步磁盘 I/O, 放线程池
         # 避免阻塞事件循环 — 大课标库首次加载数百毫秒, 否则并发请求全挂起。
         bundle = await asyncio.to_thread(build_engines)
@@ -179,8 +280,12 @@ async def lifespan(app: FastAPI):
         differentiation_engine = bundle.differentiation
         standards_query = bundle.standards_query
         standards_loader = bundle.standards_loader
+        # P3: 复用 bundle 同一 StandardsQuery 构对齐器, 与 DifferentiationEngine 内部同实例。
+        standards_aligner = StandardsAligner(query=bundle.standards_query)
         analytics_engine = bundle.analytics
-        content_filter = ContentFilter()
+        # P1-9: 复用 bundle 共享 ContentFilter — 敏感词/年龄规则一份, 不在 serve 内
+        # 再各自构造致规则双份不同步 (engines.build_engines 已注入 7 引擎同实例)。
+        content_filter = bundle.content_filter
         sensitive_wordlist = SensitiveWordList()
         scheduler.load_default_tasks()
         scheduler.load_history()
@@ -206,10 +311,11 @@ async def lifespan(app: FastAPI):
         for name in (
             "mlx_client", "curriculum_engine", "assessment_engine", "subject_expert",
             "personalization_engine", "content_generator", "differentiation_engine",
-            "standards_query", "standards_loader", "analytics_engine",
+            "standards_query", "standards_loader", "standards_aligner", "analytics_engine",
             "content_filter", "sensitive_wordlist",
         ):
             globals()[name] = None
+        _release_instance_lock()
         raise
     yield
     logger.info("Fusion-K12-Teacher API shutting down")
@@ -223,6 +329,7 @@ async def lifespan(app: FastAPI):
             await mlx_client.close()
         except Exception as e:
             logger.warning("mlx_client.close 失败: %s", e)
+    _release_instance_lock()
 
 
 app = FastAPI(
@@ -303,7 +410,34 @@ class ContentGenerateRequest(BaseModel):
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": __version__}
+    # P1-10: health 探测后端 fusion-mlx 可达性, 非静态返回。
+    # /api/health = liveness (进程在) + 后端探测; /api/ready = readiness (引擎就绪)。
+    backend = "unknown"
+    if mlx_client is not None:
+        try:
+            # list_models 是 async, 直接 await (自带缓存+锁); to_thread 会漏 await 返未决协程
+            models = await mlx_client.list_models()
+            backend = "ok" if models is not None else "down"
+        except Exception as e:
+            logger.warning("health: fusion-mlx 探测失败: %s", e)
+            backend = "down"
+    status_code = status.HTTP_200_OK if backend != "down" else status.HTTP_503_SERVICE_UNAVAILABLE
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ok" if backend != "down" else "degraded", "backend": backend, "version": __version__},
+    )
+
+
+@app.get("/api/ready")
+async def ready():
+    # P1-10: readiness — 引擎全就绪返 200, 否则 503。供 K8s readinessProbe / Docker HEALTHCHECK。
+    if not _ready or mlx_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="service not ready",
+        )
+    return {"status": "ready", "version": __version__}
 
 
 # ── Curriculum ──
@@ -352,7 +486,7 @@ async def subject_explain(req: SubjectExplainRequest, _: str = Depends(require_a
 
 @app.post("/api/personalize/path")
 async def personalize_path(req: PersonalizePathRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    logger.info("personalize/path: student=%s", req.student_id)
+    logger.info("personalize/path: student=%s", _mask_sid(req.student_id))
     grade = req.progress.get("grade", "3")
     subject = req.progress.get("subject", "数学")
     goal = req.progress.get("goal", "综合提升")
@@ -380,11 +514,17 @@ async def content_generate(req: ContentGenerateRequest, _: str = Depends(require
         result = await content_generator.generate_flashcards(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
+        # P3: flashcards 降级返空列表 → 显式 502, 与 worksheet/game 一致, 不恒 200 空对象
+        if not result:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="flashcards generation failed")
         return {"type": "flashcards", "items": result}
     elif req.style == "slides":
         result = await content_generator.generate_lesson_slides(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
+        # P3: slides 降级返空列表 → 502, 语义统一
+        if not result:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="slides generation failed")
         return {"type": "slides", "items": result}
     elif req.style == "game":
         result = await content_generator.generate_educational_game(
@@ -414,6 +554,195 @@ async def content_generate(req: ContentGenerateRequest, _: str = Depends(require
             "answer_key": ws.answer_key,
             "instructions": ws.instructions,
         }
+
+
+# ── Assessment 扩展 (P1-13: 补齐 essay/report/rubric 路由) ──
+
+class AssessmentEssayRequest(BaseModel):
+    essay: str = Field(..., max_length=5000, description="学生作文")
+
+class AssessmentReportRequest(BaseModel):
+    student: str = Field(..., max_length=50, description="学生姓名/ID")
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    history: list[dict[str, Any]] = Field(default_factory=list, max_length=50, description="学习记录")
+
+class AssessmentRubricRequest(BaseModel):
+    assignment_type: str = Field(..., max_length=50, description="作业类型")
+    grade: str = Field(..., max_length=4, description="年级")
+
+
+@app.post("/api/assessment/essay")
+async def assessment_essay(req: AssessmentEssayRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("assessment/essay: essay=%s...", req.essay[:30])
+    result = await assessment_engine.grade_essay(essay=req.essay)
+    _check_engine_error(result, "assessment/essay")
+    return result.__dict__
+
+
+@app.post("/api/assessment/report")
+async def assessment_report(req: AssessmentReportRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("assessment/report: student=%s subject=%s", req.student, req.subject)
+    result = await assessment_engine.generate_report(
+        student=req.student, subject=req.subject, grade=req.grade, history=req.history,
+    )
+    _check_engine_error(result, "assessment/report")
+    return result.__dict__
+
+
+@app.post("/api/assessment/rubric")
+async def assessment_rubric(req: AssessmentRubricRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("assessment/rubric: type=%s grade=%s", req.assignment_type, req.grade)
+    result = await assessment_engine.generate_rubric(
+        assignment_type=req.assignment_type, grade=req.grade,
+    )
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="rubric failed")
+    return result
+
+
+# ── Subject 扩展 (P1-14: 补齐 exercise/stem_project/language_activity 路由) ──
+
+class SubjectExerciseRequest(BaseModel):
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field(..., max_length=100, description="主题")
+    difficulty: str = Field("medium", max_length=20, description="难度 easy/medium/hard")
+
+class SubjectStemRequest(BaseModel):
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field(..., max_length=100, description="主题")
+    duration: str = Field("2课时", max_length=20, description="时长")
+
+class SubjectLanguageRequest(BaseModel):
+    grade: str = Field(..., max_length=4, description="年级")
+    language: str = Field(..., max_length=20, description="语言")
+    skill: str = Field(..., max_length=20, description="技能")
+    theme: str = Field(..., max_length=100, description="主题")
+
+
+@app.post("/api/subject/exercise")
+async def subject_exercise_route(req: SubjectExerciseRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("subject/exercise: subject=%s topic=%s", req.subject, req.topic)
+    result = await subject_expert.generate_exercise(
+        subject=req.subject, grade=req.grade, topic=req.topic, difficulty=req.difficulty,
+    )
+    # P3: 降级路径现设 .error, 触发 502 而非 200 + question="生成失败"
+    _check_engine_error(result, "subject/exercise")
+    return result.__dict__
+
+
+@app.post("/api/subject/stem-project")
+async def subject_stem_project(req: SubjectStemRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("subject/stem-project: grade=%s topic=%s", req.grade, req.topic)
+    result = await subject_expert.stem_project(grade=req.grade, topic=req.topic, duration=req.duration)
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="stem_project failed")
+    return result
+
+
+@app.post("/api/subject/language-activity")
+async def subject_language_activity(req: SubjectLanguageRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("subject/language-activity: language=%s skill=%s", req.language, req.skill)
+    result = await subject_expert.language_activity(
+        grade=req.grade, language=req.language, skill=req.skill, theme=req.theme,
+    )
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="language_activity failed")
+    return result
+
+
+# ── Curriculum 扩展 (P1-15: 补齐 quiz/unit_plan 路由) ──
+
+class CurriculumQuizRequest(BaseModel):
+    grade: str = Field(..., max_length=4, description="年级")
+    subject: str = Field(..., max_length=20, description="学科")
+    topic: str = Field(..., max_length=100, description="主题")
+    num_questions: int = Field(10, ge=1, le=50, description="题目数量")
+
+class CurriculumUnitPlanRequest(BaseModel):
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    unit_title: str = Field(..., max_length=100, description="单元主题")
+    weeks: int = Field(4, ge=1, le=20, description="周数")
+
+
+@app.post("/api/curriculum/quiz")
+async def curriculum_quiz(req: CurriculumQuizRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("curriculum/quiz: grade=%s subject=%s topic=%s", req.grade, req.subject, req.topic)
+    quiz = await curriculum_engine.generate_quiz(
+        subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
+    )
+    _check_engine_error(quiz, "curriculum/quiz")
+    return quiz.to_dict()
+
+
+@app.post("/api/curriculum/unit-plan")
+async def curriculum_unit_plan(req: CurriculumUnitPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("curriculum/unit-plan: subject=%s grade=%s unit=%s", req.subject, req.grade, req.unit_title)
+    result = await curriculum_engine.generate_unit_plan(
+        subject=req.subject, grade=req.grade, unit_title=req.unit_title, weeks=req.weeks,
+    )
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="unit_plan failed")
+    return result
+
+
+# ── Personalize 扩展 (P1-16: 补齐 diagnose/recommend 路由) ──
+
+class PersonalizeDiagnoseRequest(BaseModel):
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    responses: list[dict[str, Any]] = Field(default_factory=list, max_length=50, description="答题记录")
+
+class PersonalizeRecommendRequest(BaseModel):
+    student: str = Field(..., max_length=50, description="学生")
+    grade: str = Field(..., max_length=4, description="年级")
+    subject: str = Field(..., max_length=20, description="学科")
+    weakness: str = Field(..., max_length=200, description="薄弱点")
+
+
+@app.post("/api/personalize/diagnose")
+async def personalize_diagnose(req: PersonalizeDiagnoseRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("personalize/diagnose: subject=%s grade=%s", req.subject, req.grade)
+    result = await personalization_engine.diagnose_skills(
+        subject=req.subject, grade=req.grade, responses=req.responses,
+    )
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="diagnose failed")
+    return result
+
+
+@app.post("/api/personalize/recommend")
+async def personalize_recommend(req: PersonalizeRecommendRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("personalize/recommend: student=%s weakness=%s", req.student, req.weakness[:30])
+    result = await personalization_engine.recommend_resources(
+        student=req.student, grade=req.grade, subject=req.subject, weakness=req.weakness,
+    )
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="recommend failed")
+    return result
+
+
+# ── Content 扩展 (parent_communication 路由) ──
+
+class ContentParentCommRequest(BaseModel):
+    student: str = Field(..., max_length=50, description="学生姓名/ID")
+    grade: str = Field(..., max_length=4, description="年级")
+    subject: str = Field(..., max_length=20, description="学科")
+    topic: str = Field(..., max_length=100, description="主题")
+
+
+@app.post("/api/content/parent-communication")
+async def content_parent_communication(req: ContentParentCommRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    logger.info("content/parent-communication: student=%s subject=%s", req.student, req.subject)
+    result = await content_generator.generate_parent_communication(
+        student=req.student, grade=req.grade, subject=req.subject, topic=req.topic,
+    )
+    # generate_parent_communication 失败返空串 (CNT-2: 不外泄错误), 空串表示失败 → 502
+    if not result:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="parent communication failed")
+    return {"content": result}
 
 
 # ── Request Models (v0.3) ──
@@ -467,6 +796,57 @@ async def standards_query_endpoint(req: StandardsQueryRequest, _: str = Depends(
     return {
         "total": len(points),
         "knowledge_points": [p.to_dict() for p in points],
+    }
+
+
+# P3: 暴露课标对齐/覆盖报告 — 之前仅 DifferentiationEngine 内部用, 无 CLI/serve 直达路由。
+class StandardsAlignRequest(BaseModel):
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    topic: str = Field(..., max_length=100, description="主题")
+
+
+class StandardsCoverageRequest(BaseModel):
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: str = Field(..., max_length=4, description="年级")
+    objectives: list[str] = Field(..., min_length=1, max_length=50, description="教学目标")
+
+
+@app.post("/api/standards/align")
+async def standards_align(req: StandardsAlignRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """课标对齐 — 返回主题对应知识点/必修/拓展/前置。"""
+    if standards_aligner is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
+    ctx = standards_aligner.align(subject=req.subject, grade=req.grade, topic=req.topic)
+    return {
+        "subject": req.subject,
+        "grade": req.grade,
+        "topic": req.topic,
+        "knowledge_points": [kp.to_dict() for kp in ctx.knowledge_points],
+        "must_cover": ctx.must_cover,
+        "optional_advanced": ctx.optional_advanced,
+        "curriculum_codes": ctx.curriculum_codes,
+        "suggested_objectives": ctx.suggested_objectives,
+        "prerequisite_count": len(ctx.prerequisites),
+    }
+
+
+@app.post("/api/standards/coverage")
+async def standards_coverage(req: StandardsCoverageRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """课标覆盖报告 — 校验教学目标对知识点的覆盖度。"""
+    if standards_query is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
+    report = standards_query.validate_coverage(
+        subject=req.subject, grade=req.grade, objectives=req.objectives,
+    )
+    return {
+        "subject": report.subject,
+        "grade": report.grade,
+        "total_points": report.total_points,
+        "covered_points": report.covered_points,
+        "coverage_ratio": report.coverage_ratio,
+        "missing_points": report.missing_points,
+        "details": report.details,
     }
 
 
@@ -529,6 +909,21 @@ class AnalyticsUploadRequest(BaseModel):
     data: list[dict[str, Any]] = Field(..., max_length=1000, description="评估数据(JSON数组)")
     format: str = Field("json", max_length=10, description="数据格式: json")
 
+    # P2: 单记录大小无界 → 巨记录内存耗尽。限定每记录 JSON 序列化字节上限。
+    _MAX_RECORD_BYTES = 64 * 1024
+
+    @model_validator(mode="after")
+    def _bound_record_size(self):
+        import json as _j
+        for i, rec in enumerate(self.data):
+            try:
+                size = len(_j.dumps(rec, ensure_ascii=False))
+            except (TypeError, ValueError):
+                raise ValueError(f"记录 #{i} 不可序列化")
+            if size > self._MAX_RECORD_BYTES:
+                raise ValueError(f"记录 #{i} 超过单记录上限 {self._MAX_RECORD_BYTES} 字节 (实际 {size})")
+        return self
+
 class ContentWorksheetDiffRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: str = Field(..., max_length=4, description="年级")
@@ -590,7 +985,7 @@ async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(req
 @app.post("/api/analytics/student-profile")
 async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
     """生成学生个体画像。"""
-    logger.info("analytics/student-profile: student=%s subject=%s grade=%s", req.student_id, req.subject, req.grade)
+    logger.info("analytics/student-profile: student=%s subject=%s grade=%s", _mask_sid(req.student_id), req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
     profile = await analytics_engine.build_student_profile(
@@ -611,23 +1006,37 @@ async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(r
     errors = await analytics_engine.analyze_errors(
         subject=req.subject, grade=req.grade, responses=responses,
     )
+    # P2: analyze_errors 降级返含 error_id=err-fallback 的兜底条目, 检查 error 透传失败状态。
+    if errors and getattr(errors[0], "error_type", "") == "unknown" and errors[0].root_cause == "分析失败，需人工检查":
+        logger.warning("analytics/error-analysis 降级回退")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="error-analysis failed",
+        )
     return {"total": len(errors), "errors": [e.to_dict() for e in errors]}
 
 
 @app.post("/api/analytics/remedial")
 async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
     """生成补救教学方案。"""
-    logger.info("analytics/remedial: student=%s subject=%s grade=%s", req.student_id, req.subject, req.grade)
+    logger.info("analytics/remedial: student=%s subject=%s grade=%s", _mask_sid(req.student_id), req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
     student_profile = await analytics_engine.build_student_profile(
         student_id=req.student_id, subject=req.subject, grade=req.grade, history=history,
     )
     _check_engine_error(student_profile, "analytics/student-profile")
-    weak_points = [
-        WeakPoint(knowledge_point_id=wn, knowledge_point_name=wn, error_rate=0.5)
-        for wn in list(student_profile.knowledge_mastery.keys())[:5]
-    ]
+    # P2: 不再凭空 fabricate error_rate=0.5 — 从 knowledge_mastery 派生真实薄弱点。
+    # 掌握度 < 60 视薄弱, error_rate = 1 - mastery/100; 无薄弱点则返空方案 (而非喂假数据)。
+    weak_points = []
+    for kp, mastery in student_profile.knowledge_mastery.items():
+        if mastery < 60:
+            weak_points.append(WeakPoint(
+                knowledge_point_id="",
+                knowledge_point_name=str(kp),
+                error_rate=round(max(0.0, min(1.0, 1.0 - mastery / 100.0)), 2),
+            ))
+    weak_points = weak_points[:5]
     plan = await analytics_engine.generate_remedial_plan(
         student_id=req.student_id, subject=req.subject, grade=req.grade, weak_points=weak_points,
     )
@@ -662,8 +1071,9 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             detail="only json format supported",
         )
     # R6: 上传入口强制脱敏 — student_name 落盘前转掩码 ID, 未成年人 PII 不明文存储。
+    # P2: fields_to_mask 用全默认集 (phone/email/id_number/address 同掩), 不再仅 student_name。
     # 共享 anonymizer 单例: 多次上传同一学生姓名得同一掩码, 便于学情分析关联。
-    anonymizer = DataAnonymizer(DesensitizeConfig(fields_to_mask=["student_name"]))
+    anonymizer = DataAnonymizer(DesensitizeConfig())
     assessments = []
     rejected = 0
     for idx, item in enumerate(req.data):
@@ -692,6 +1102,15 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             # R6: student_name 经 anonymizer 脱敏后构造, 落盘为掩码 ID
             raw_name = str(item.get("student_name", "") or "")
             anon_name = anonymizer.anonymize_name(raw_name, seq=str(idx)) if raw_name else ""
+            # P2: responses 含学生原始作答 (PII), 落盘前对 student_answer 字段脱敏, 不明文持久化。
+            raw_responses = item.get("responses", []) or []
+            scrubbed_responses = []
+            for r in raw_responses:
+                if isinstance(r, dict):
+                    r = dict(r)
+                    if "student_answer" in r and isinstance(r["student_answer"], str):
+                        r["student_answer"] = anonymizer.mask_field(r["student_answer"], "student_answer")
+                scrubbed_responses.append(r)
             a = StudentAssessment(
                 student_id=sid,
                 student_name=anon_name,
@@ -702,7 +1121,7 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
                 total_score=total,
                 max_score=max_score,
                 scores=item.get("scores", {}),
-                responses=item.get("responses", []),
+                responses=scrubbed_responses,
             )
             assessments.append(a)
         except Exception as e:
@@ -739,6 +1158,7 @@ async def content_worksheet_diff(req: ContentWorksheetDiffRequest, _: str = Depe
     result = await differentiation_engine.generate_differentiated_worksheet(
         subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
     )
+    _check_engine_error(result, "content/worksheet-diff")
     return result.to_dict()
 
 
@@ -780,6 +1200,7 @@ async def agent_run_task(req: AgentRunRequest, _: str = Depends(require_api_key)
         _check_allowed_path(req.data_path)
         run_kwargs["data_path"] = req.data_path
     result = await scheduler.run_task(req.task_id, **run_kwargs)
+    _check_engine_error(result, "agent/run")
     return result.to_dict()
 
 
@@ -836,7 +1257,7 @@ async def safety_filter(req: SafetyFilterRequest, _: str = Depends(require_api_k
 @app.post("/api/safety/wordlist")
 async def safety_wordlist(
     req: SafetyWordlistRequest,
-    _: str = Depends(require_api_key),
+    _: str = Depends(require_admin_api_key),
     _r: None = Depends(_require_ready),
 ):
     """管理敏感词库。"""

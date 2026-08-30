@@ -81,6 +81,18 @@ class CurriculumEngine:
             return check.filtered_text
         return text
 
+    def _filter_dict(self, obj: Any, grade: str, depth: int = 0) -> Any:
+        # P2: 递归过滤嵌套 dict/list 中的字符串值, 防 LLM 返回的 differentiation 携带不当内容直送师生。
+        if depth > 5:
+            return obj
+        if isinstance(obj, dict):
+            return {k: self._filter_dict(v, grade, depth + 1) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self._filter_dict(x, grade, depth + 1) for x in obj]
+        if isinstance(obj, str):
+            return self._filter_output(obj, grade)
+        return obj
+
     async def generate_lesson_plan(
         self,
         subject: str,
@@ -153,7 +165,8 @@ class CurriculumEngine:
                     assessment=self._filter_output(data.get("assessment", ""), grade_s),
                     homework=self._filter_output(data.get("homework", ""), grade_s),
                     standards_aligned=standards or [],
-                    differentiation=data.get("differentiation", {}),
+                    # P2: differentiation 是 LLM 返回的嵌套 dict, 字符串值须经 _filter_output, 不直送师生。
+                    differentiation=self._filter_dict(data.get("differentiation", {}), grade_s),
                     created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 )
                 return plan

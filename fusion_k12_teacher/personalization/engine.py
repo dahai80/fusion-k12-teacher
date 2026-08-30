@@ -25,6 +25,7 @@ class LearningPath:
     estimated_duration: str = ""
     prerequisites: list[str] = field(default_factory=list)
     goals: list[str] = field(default_factory=list)
+    error: str = ""
 
 
 class PersonalizationEngine:
@@ -86,7 +87,8 @@ class PersonalizationEngine:
         except Exception as e:
             logger.error(f"学习路径生成失败: {e}")
             rethrow_if_fatal(e)
-        return LearningPath(student_id=student, grade=grade, subject=subject)
+            return LearningPath(student_id=student, grade=grade, subject=subject, error=str(e))
+        return LearningPath(student_id=student, grade=grade, subject=subject, error="LLM 返回空或无法解析")
 
     async def diagnose_skills(self, subject: str, grade: str, responses: list[dict]) -> dict[str, Any]:
         """诊断学生能力水平。"""

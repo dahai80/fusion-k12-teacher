@@ -51,6 +51,20 @@ class _ModelNotFound(Exception):
     pass
 
 
+# P1-19: 全局 LLM 并发信号量 — 限制同时 in-flight 的推理请求数, 防本地单卡 OOM/排队雪崩。
+# scheduler._concurrency 仅覆盖 agent 任务, 普通引擎并发无界。env 可调。
+_LLM_MAX_CONCURRENCY = int(os.environ.get("FUSION_MLX_MAX_CONCURRENCY", "4"))
+_llm_semaphore: asyncio.Semaphore | None = None
+
+
+def _llm_sem() -> asyncio.Semaphore:
+    # 惰性建, 绑当前 running loop (同 _ensure_locks 理由 — 跨 loop 复用锁/信号量会 RuntimeError)
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(_LLM_MAX_CONCURRENCY)
+    return _llm_semaphore
+
+
 _HAS_FUSION_CORE = False
 _FusionMLXClient: Any = None
 try:
@@ -125,8 +139,12 @@ class MLXClient:
         )
 
     def _auth_headers(self) -> dict[str, str]:
-        # LLM-4: 每次请求读 env, 运行期换 key 即时生效, 不在客户端创建时固化
-        return {"Authorization": f"Bearer {os.environ.get('FUSION_MLX_API_KEY', 'local')}"}
+        # LLM-4: 每次请求读 env, 运行期换 key 即时生效, 不在客户端创建时固化。
+        # P1-20: 无 key 时不发 Bearer 头 (原默认 Bearer local 对需认证网关必 401)。
+        key = os.environ.get("FUSION_MLX_API_KEY", "")
+        if key:
+            return {"Authorization": f"Bearer {key}"}
+        return {}
 
     async def chat(
         self,
@@ -146,7 +164,9 @@ class MLXClient:
         for attempt in range(self._max_retries + 1):
             used_model = self.model or _env_model()
             try:
-                return await self._dispatch_chat(messages, used_model, temperature, max_tokens)
+                # P1-19: 全局并发信号量限流 — 超并发请求排队等待, 不雪崩本地推理
+                async with _llm_sem():
+                    return await self._dispatch_chat(messages, used_model, temperature, max_tokens)
             except _TRANSIENT_ERRORS as e:
                 last_exc = e
                 if attempt < self._max_retries:
@@ -181,6 +201,9 @@ class MLXClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
+            except NonDegradableError:
+                # P2: 认证/服务端硬错不可降级 — 直接上抛, 不吞成 httpx 重试 (与 _chat_httpx A12 一致)
+                raise
             except Exception as e:
                 logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
         return await self._chat_httpx(messages, model, temperature, max_tokens)
@@ -204,14 +227,16 @@ class MLXClient:
         # A12: 认证错(401/403)/服务端硬错(5xx)不可降级 — 须上抛暴露, 不被引擎 blanket except 吞成空对象。
         # classify 在 raise_for_status 前先判, 命中则抛 NonDegradableError (EngineError 子类)。
         if classify_http_status(resp.status_code):
-            raise NonDegradableError(f"LLM HTTP {resp.status_code}: {str(resp.text)[:200]}")
+            # P2: 不内嵌响应正文 (可能含学生 PII), 只报状态码 + 短由
+            raise NonDegradableError(f"LLM HTTP {resp.status_code}")
         resp.raise_for_status()
         # LLM-3: 网关非标结构无 KeyError/IndexError 防御会直接崩, 降级空串并记日志
+        # P2: 不记响应正文 (PII 风险), 只记解析异常类型
         try:
             body = resp.json()
             return body["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError, ValueError) as e:
-            logger.error("LLM 响应结构异常, 无法解析 content: %s | body: %s", e, str(resp.text)[:300])
+            logger.error("LLM 响应结构异常, 无法解析 content: %s", type(e).__name__)
             return ""
 
     async def list_models(self) -> list[dict[str, Any]]:

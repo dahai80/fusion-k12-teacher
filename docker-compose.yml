@@ -7,8 +7,18 @@ services:
       - "11448:11448"
     environment:
       - FUSION_MLX_URL=http://fusion-mlx:11432
+      # P2: 跨容器共享脱敏 salt + API key, 避免每容器独立 salt 致同一学生跨容器 ID 断链。
+      - FUSION_K12_SALT_FILE=/data/salt
+      - FUSION_K12_API_KEY=${FUSION_K12_API_KEY:?set FUSION_K12_API_KEY}
+      - FUSION_K12_HOME=/data
+      - FUSION_K12_HISTORY_FILE=/data/history.json
+      - FUSION_K12_SCHEDULER_DB=/data/scheduler.db
+      - FUSION_K12_INSTANCE_LOCK=/data/serve.lock
     depends_on:
       - fusion-mlx
+    volumes:
+      # P2: k12 数据持久化卷 (history/scheduler.db/salt/上传数据), 容器重建不丢。
+      - k12-data:/data
     restart: unless-stopped
 
   fusion-mlx:
@@ -21,3 +31,4 @@ services:
 
 volumes:
   mlx-models:
+  k12-data:

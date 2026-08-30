@@ -241,7 +241,11 @@ class DataAnonymizer:
             self.reset()
         return out
 
-    def get_name_map(self) -> dict[str, str]:
+    def get_name_map(self, name: str = "") -> dict[str, str]:
+        # P2: 默认仍返全量(向后兼容)但 loud warning; 传 name 则仅返单条, 避免一次性暴露整张反匿名表。
+        if name:
+            anon = self._name_map.get(name)
+            return {name: anon} if anon else {}
         logger.warning("get_name_map 被调用 — 返回可逆映射表，注意保管，勿随脱敏数据一并存储")
         return dict(self._name_map)
 
