@@ -351,13 +351,13 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 
 | # | 任务 | P | W | 依赖 | 说明 |
 |---|------|---|---|------|------|
-| T13 | 审计事件模型 + 中间件埋点 | P1 | 3 | — | `audit/event.py` + FastAPI 中间件, 复用 student_hash |
-| T14 | 审计持久化 + 留存/归档 | P2 | 2 | T13,T2 | audit_events 表, 定时归档清理 |
-| T15 | 审计导出接口 | P2 | 1 | T13 | `/api/audit/export` 管理员 key, JSON/CSV |
-| T16 | Prometheus 指标端点 | P1 | 2 | — | `/api/metrics`, 6 核心指标 §4.5 |
-| T17 | ConfigProvider + 热更新 | P2 | 3 | — | env/file/center 三实现, 可变配置后台刷新 |
-| T18 | liveness/readiness/startup 探针 | P1 | 1 | T10 | `/api/health` + `/api/ready` |
-| T19 | 优雅上下线 (SIGTERM drain) | P2 | 1 | T10 | drain 超时可配 |
+| T13 | 审计事件模型 + 中间件埋点 ✅ | P1 | 3 | — | `audit/event.py` + FastAPI 中间件, 复用 student_hash |
+| T14 | 审计持久化 + 留存/归档 ✅ | P2 | 2 | T13,T2 | audit_events 表, 定时归档清理 |
+| T15 | 审计导出接口 ✅ | P2 | 1 | T13 | `/api/audit/export` 管理员 key, JSON/CSV |
+| T16 | Prometheus 指标端点 ✅ | P1 | 2 | — | `/api/metrics`, 6 核心指标 §4.5 |
+| T17 | ConfigProvider + 热更新 ✅ | P2 | 3 | — | env/file/center 三实现, 可变配置后台刷新 |
+| T18 | liveness/readiness/startup 探针 ✅ | P1 | 1 | T10 | `/api/health` + `/api/ready` |
+| T19 | 优雅上下线 (SIGTERM drain) ✅ | P2 | 1 | T10 | drain 超时可配 |
 
 ### 5.5 部署与对接
 
@@ -375,10 +375,21 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 |--------|------|------|------|------|
 | M1 基础底座 | Repository + 加密 + salt | T1-T9 | v2.0-alpha | 持久化抽象 + PII 加密, 单机模式回归绿 |
 | M2 无状态化 ✅ | 单例移除 + 并发 + 缓存 | T10-T12 | v2.0-beta (2.0.0b0) | 多实例可跑, scheduler 跨实例去重, Redis 限流接入, 367 测试绿 |
-| M3 可观测 | 审计 + 指标 + 配置热更 | T13-T19 | v2.0-rc | 审计留存, 指标端点, 探针, 热更新 |
+| M3 可观测 ✅ | 审计 + 指标 + 配置热更 | T13-T19 | v2.0-rc (2.0.0rc) | 审计留存+导出, Prometheus 指标端点, 配置热更新, 探针, SIGTERM 排水, 403 测试绿 |
 | M4 集群发布 | 部署模板 + 对接 + 压测 | T20-T22 | **v2.0** | k8s 模板, 网关对接, 集成测试绿, 商用就绪 |
 
 每里程碑独立可验证, M1 后单机形态仍全功能 (向后兼容硬约束)。
+
+### M3 落地记录 (v2.0.0rc)
+
+- **T13 审计事件 + 中间件** — `audit/` 模块: `AuditEvent` dataclass (trace_id/route/method/status/duration/student_hash/llm_model/client_ip/error), `new_trace_id()` (uuid4 hex), `hash_pii()` (sha1 短哈希, 不落原文)。`serve.py:audit_middleware` 每请求注入 `X-Trace-Id` 响应头, 排除 `/api/health|ready|metrics`, 学生标识从 body `student_id`/`sid` 提取哈希。
+- **T14 审计持久化** — `AuditLogger` 内存缓冲 + 批量 flush (batch=50) 至 `Repository.audit_events` 表; 无 repo 时仅内存 (cap=5000), flush 不清缓冲保留供 `recent()`。SQLite/Postgres repo 实现 `save_audit`/`load_audit(since_ts,limit)`/`purge_audit(before_ts)`, base 默认 no-op。lifespan 启动注入 scheduler.repo, 关闭 `aclose()` flush 剩余。
+- **T15 审计导出** — `/api/audit/export` (admin key `FUSION_K12_ADMIN_API_KEY`), `format=json|csv`, `since` 参数, `limit` 上限 10000。CSV 用 DictWriter + Content-Disposition。
+- **T16 Prometheus 指标** — `metrics.py` stdlib 零依赖: `_Counter`/`_Histogram`/`_Gauge` (threading.Lock), `_HIST_BUCKETS=(0.01..30.0)`, 6 核心指标 (request_total/llm_call_total 带标签, request_duration/llm_duration 直方图, active_jobs/db_pool_inuse gauge)。`/api/metrics` 输出 exposition format `text/plain; version=0.0.4`。`ai_client._dispatch_chat` finally 块 `record_llm()`。
+- **T17 配置热更新** — `config/` 模块: `ConfigProvider` ABC (get/refresh/on_change/start/stop + 后台轮询线程), `EnvProvider` (静态快照), `FileProvider` (mtime 轮询 KEY=VALUE 文件)。可热更新项白名单: `FUSION_MLX_MODEL`/`FUSION_K12_RATE_LIMIT`/`FUSION_K12_SALT`/`FUSION_K12_LOG_LEVEL`。`get_config()` 工厂 (`FUSION_K12_CONFIG_FILE` 指定文件→FileProvider, 否则 EnvProvider)。lifespan 启动 `cfg.start()` + 注册 `_on_config_change` 回调刷新 mlx_client.model / rate_limiter._max / anonymizer.salt / 日志级别, 不重建引擎。salt 值日志脱敏。
+- **T18 探针** — 已有 `/api/health` (liveness + backend 探测 list_models) + `/api/ready` (readiness), 验证补全, 无新增。
+- **T19 优雅上下线** — 全局 `_inflight` 计数 + `_inflight_zero` asyncio.Event + `_draining` 标志。audit_middleware drain 期返 503+Connection:close 拒绝新请求 (探针除外), 正常请求 inc/dec 计数。`_drain_inflight()` 等归零或 `FUSION_K12_DRAIN_TIMEOUT` (默认 30s) 超时。`_install_sigterm_handler()` 注册 SIGTERM 提前置 `_draining` (uvicorn SIGTERM→lifespan shutdown 完成实际关闭)。
+- **测试**: `test_audit.py` (14), `test_config.py` (13), `test_serve.py` 新增 TestGracefulDrain/TestAuditServe/TestMetricsServe (9)。全量 **403 passed, 0 failed, 22 skipped**, ruff clean。真实 LLM 测试需 `FUSION_MLX_API_KEY` (fusion-gateway Bearer 认证)。
 
 ## 七、风险与回滚
 

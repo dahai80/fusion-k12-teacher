@@ -264,6 +264,18 @@ M2 (v2.0.0b0) makes the service horizontally scalable: multiple instances share 
 - **Redis cache / rate-limit backend** (T12): `cache/` module — `CacheBackend` ABC + `LocalCache` (in-process LRU+TTL, standalone default) + `RedisCache` (async `redis.asyncio`, cluster). `get_cache()` factory selects by mode (Redis missing/unreachable → fallback `LocalCache`). `_RateLimiter` in cluster mode uses shared Redis `INCR` counter for unified rate limiting across instances.
   - Env: `FUSION_K12_REDIS_URL` (cluster only).
 
+### 11c. Observability & Operations (`audit/`, `metrics.py`, `config/`) — v2.0 M3
+
+M3 (v2.0.0rc) adds audit, metrics, hot-reload config, and graceful drain for production operability.
+
+- **Audit** (T13/T14/T15): `audit/` module — `AuditEvent` per-request record (trace_id/route/method/status/duration/student_hash/llm_model/client_ip), `hash_pii()` never stores raw PII. `AuditLogger` buffers in-memory + batch-flushes (batch=50) to `Repository.audit_events` table (SQLite/Postgres). `audit_middleware` injects `X-Trace-Id` response header; student ID hashed from request body. Export: `/api/audit/export` (admin key `FUSION_K12_ADMIN_API_KEY`, `format=json|csv`, `since`, `limit≤10000`). Purge: `Repository.purge_audit(before_ts)`.
+- **Prometheus metrics** (T16): `metrics.py` (stdlib, zero-dep) — 6 core metrics: `k12_request_total{route,status}`, `k12_request_duration_seconds{route}` (histogram), `k12_llm_call_total{model,status}`, `k12_llm_duration_seconds` (histogram), `k12_active_jobs`, `k12_db_pool_inuse`. Exposition format at `/api/metrics` (admin key). LLM calls recorded in `ai_client._dispatch_chat`.
+- **Config hot-reload** (T17): `config/` module — `ConfigProvider` ABC + `EnvProvider` (static snapshot) + `FileProvider` (mtime polling). Hot-reloadable whitelist: `FUSION_MLX_MODEL`, `FUSION_K12_RATE_LIMIT`, `FUSION_K12_SALT`, `FUSION_K12_LOG_LEVEL`. Background poll thread calls `_on_config_change` to refresh `mlx_client.model` / `rate_limiter._max` / `anonymizer.salt` / log level — no engine rebuild. Non-hot items (DB/ports/data_key) need rolling restart.
+  - Env: `FUSION_K12_CONFIG_FILE` (set → FileProvider with hot-reload; unset → static EnvProvider), `FUSION_K12_CONFIG_POLL` (poll interval, default 5s).
+- **Probes** (T18): `/api/health` (liveness + backend probe via `list_models`), `/api/ready` (readiness) — already present, verified.
+- **Graceful drain** (T19): SIGTERM → `_draining` flag rejects new business requests (503 + `Connection: close`, probes exempt) → `_drain_inflight()` waits in-flight requests to zero or `FUSION_K12_DRAIN_TIMEOUT` (default 30s) → lifespan shutdown closes resources. In-flight counter tracked in `audit_middleware`.
+  - Env: `FUSION_K12_DRAIN_TIMEOUT` (default 30s).
+
 ### 12. HTTP API (`serve.py`)
 
 REST API for programmatic access (default port 11448).
@@ -297,6 +309,9 @@ REST API for programmatic access (default port 11448).
 | `/api/safety/wordlist` | POST | Add/remove sensitive words |
 | `/api/desensitize/anonymize` | POST | Anonymize student records |
 | `/api/desensitize/export` | POST | Export desensitized data |
+| `/api/audit/export` | GET | Export audit events (admin key, JSON/CSV) |
+| `/api/metrics` | GET | Prometheus metrics (admin key) |
+| `/api/ready` | GET | Readiness probe |
 
 ---
 

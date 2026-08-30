@@ -35,6 +35,21 @@ CREATE TABLE IF NOT EXISTS task_lock (
     acquired_ts REAL    NOT NULL,
     ttl         REAL    NOT NULL
 );
+CREATE TABLE IF NOT EXISTS audit_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT    NOT NULL,
+    trace_id     TEXT    NOT NULL DEFAULT '',
+    route        TEXT    NOT NULL DEFAULT '',
+    method       TEXT    NOT NULL DEFAULT '',
+    status       INTEGER NOT NULL DEFAULT 0,
+    duration_ms  REAL    NOT NULL DEFAULT 0,
+    student_hash TEXT    NOT NULL DEFAULT '',
+    llm_model    TEXT    NOT NULL DEFAULT '',
+    llm_status   TEXT    NOT NULL DEFAULT '',
+    client_ip    TEXT    NOT NULL DEFAULT '',
+    error        TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts);
 """
 
 # M1-T6: 加密列 — name_hash (sha256 查询键, 无明文) + name_encrypted (AES-GCM 可逆)。
@@ -222,6 +237,68 @@ class SQLiteRepository(Repository):
             cur = self._conn.execute(
                 "DELETE FROM task_lock WHERE acquired_ts + ttl < ?",
                 (self._now(),),
+            )
+            self._conn.commit()
+            return cur.rowcount
+
+    # ── M3-T14: 审计持久化 ──
+
+    def save_audit(self, records: list[dict[str, Any]]) -> None:
+        if not records:
+            return
+        cols = (
+            "ts", "trace_id", "route", "method", "status", "duration_ms",
+            "student_hash", "llm_model", "llm_status", "client_ip", "error",
+        )
+        placeholders = ",".join("?" * len(cols))
+        rows = []
+        for r in records:
+            row = []
+            for c in cols:
+                v = r.get(c, 0 if c in ("status", "duration_ms") else "")
+                if c == "status":
+                    v = int(v)
+                elif c == "duration_ms":
+                    v = float(v)
+                else:
+                    v = str(v)
+                row.append(v)
+            rows.append(tuple(row))
+        with self._lock:
+            self._conn.executemany(
+                f"INSERT INTO audit_events ({','.join(cols)}) VALUES ({placeholders})",
+                rows,
+            )
+            self._conn.commit()
+
+    def load_audit(self, since_ts: str = "", limit: int = 1000) -> list[dict[str, Any]]:
+        cols = (
+            "ts", "trace_id", "route", "method", "status", "duration_ms",
+            "student_hash", "llm_model", "llm_status", "client_ip", "error",
+        )
+        with self._lock:
+            if since_ts:
+                cur = self._conn.execute(
+                    f"SELECT {','.join(cols)} FROM audit_events WHERE ts >= ? "
+                    f"ORDER BY id ASC LIMIT ?",
+                    (since_ts, limit),
+                )
+            else:
+                cur = self._conn.execute(
+                    f"SELECT {','.join(cols)} FROM audit_events "
+                    f"ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                )
+            rows = cur.fetchall()
+        if since_ts:
+            return [dict(zip(cols, r)) for r in rows]
+        # 无 since: DESC 取 recent, 返回时按时间正序
+        return [dict(zip(cols, r)) for r in reversed(rows)]
+
+    def purge_audit(self, before_ts: str) -> int:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM audit_events WHERE ts < ?", (before_ts,)
             )
             self._conn.commit()
             return cur.rowcount

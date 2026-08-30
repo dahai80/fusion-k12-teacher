@@ -164,6 +164,93 @@ def _shared_cache():
 _rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX, _RATE_STATE_FILE)
 
 
+def _on_config_change(key: str, value: str) -> None:
+    """M3-T17: 可热更新配置变更回调 — 刷新引擎持有的可变配置, 不重建引擎。"""
+    try:
+        if key == "FUSION_MLX_MODEL" and mlx_client is not None:
+            mlx_client.model = value
+            logger.info("热更新 MLX 模型 → %s", value)
+        elif key == "FUSION_K12_RATE_LIMIT":
+            _rate_limiter._max = int(value)
+            logger.info("热更新限流上限 → %s/min", value)
+        elif key == "FUSION_K12_SALT":
+            try:
+                # anonymizer 为模块级单例, 在文件后部定义 (line ~1278), 运行期已存在
+                anonymizer.config.salt = value  # noqa: F821
+                anonymizer.salt = anonymizer._salt_provider.get_salt()  # noqa: F821
+                logger.info("热更新脱敏 salt (长度 %d)", len(value))
+            except Exception as e:
+                logger.warning("salt 热更新失败: %s", e)
+        elif key == "FUSION_K12_LOG_LEVEL":
+            logging.getLogger("fusion_k12_teacher").setLevel(value.upper())
+            logger.info("热更新日志级别 → %s", value.upper())
+    except Exception as e:
+        logger.warning("配置变更应用失败 %s=%s: %s", key, value, e)
+
+
+def _start_config_hot_reload() -> None:
+    """M3-T17: 启动配置提供者轮询 + 注册回调。FileProvider 可热更, EnvProvider 静态 no-op。"""
+    try:
+        from .config import get_config
+        cfg = get_config()
+        cfg.on_change(_on_config_change)
+        cfg.start()
+    except Exception as e:
+        logger.warning("配置热更新启动失败 (配置仍可用, 仅无热更): %s", e)
+
+
+def _stop_config_hot_reload() -> None:
+    """M3-T17: 停止配置轮询线程。"""
+    try:
+        from .config import get_config
+        get_config().stop()
+    except Exception as e:
+        logger.warning("配置热更新停止失败: %s", e)
+
+
+def _drain_timeout() -> float:
+    return float(os.environ.get("FUSION_K12_DRAIN_TIMEOUT", "30"))
+
+
+async def _drain_inflight() -> None:
+    """M3-T19: 等待在途请求归零, 或超时强制进入关闭。"""
+    global _draining
+    _draining = True
+    if _inflight <= 0:
+        logger.info("排水完成: 无在途请求")
+        return
+    timeout = _drain_timeout()
+    logger.info("排水开始: %d 在途请求, 等待最多 %ss", _inflight, timeout)
+    if _inflight_zero is None:
+        return
+    try:
+        await asyncio.wait_for(_inflight_zero.wait(), timeout=timeout)
+        logger.info("排水完成: 在途请求已归零")
+    except TimeoutError:
+        logger.warning("排水超时 %ss, 仍有 %d 在途请求, 强制关闭", timeout, _inflight)
+
+
+def _install_sigterm_handler() -> None:
+    """M3-T19: SIGTERM → 触发排水下线 (uvicorn 收 SIGTERM 会调 lifespan shutdown,
+    此处额外提前置 _draining 拒绝新请求, 并记日志便于运维观察)。"""
+    import signal
+    try:
+        loop = asyncio.get_running_loop()
+        loop.add_signal_handler(signal.SIGTERM, _on_sigterm)
+        logger.info("SIGTERM 排水处理器已注册")
+    except (NotImplementedError, RuntimeError) as e:
+        # 非 main loop 或平台不支持 add_signal_handler (Windows) — 降级靠 lifespan shutdown
+        logger.warning("SIGTERM 处理器注册失败, 靠 lifespan shutdown 排水: %s", e)
+
+
+def _on_sigterm() -> None:
+    """SIGTERM 回调 — 标记排水, 拒绝新请求。实际关闭由 lifespan shutdown 完成。"""
+    global _draining, _ready
+    _draining = True
+    _ready = False
+    logger.info("收到 SIGTERM, 开始排水下线 (拒绝新请求, 等在途完成)")
+
+
 async def _client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
@@ -229,6 +316,11 @@ content_filter: ContentFilter | None = None
 sensitive_wordlist: SensitiveWordList | None = None
 # SRV-4: lifespan 完成前引擎为 None, 以 _ready 标志拦截启动期请求
 _ready: bool = False
+# M3-T19: 在途请求计数 — 优雅下线时等其归零。asyncio 由事件循环驱动, 但计数用普通 int
+# (单线程事件循环内自增自减无竞态)。drain 完成事件用于唤醒等待协程。
+_inflight: int = 0
+_inflight_zero: asyncio.Event | None = None  # lifespan 内惰性建 (需绑 loop)
+_draining: bool = False
 # P1-8: 单实例锁 — serve 进程级互斥, 防多 worker/多实例并发跑同一套引擎+调度器。
 # fcntl flock LOCK_EX|LOCK_NB: 持锁方继续启动, 未持锁方启动即拒 (cli/serve/uvicorn --workers N 统一受限)。
 _INSTANCE_LOCKFILE = os.environ.get(
@@ -324,6 +416,18 @@ async def lifespan(app: FastAPI):
         scheduler.start()
         _init_allowed_dirs()
         _ready = True
+        # M3-T13/T14: 审计日志器注入 scheduler 的 repo, 启用持久化。
+        try:
+            from .audit import get_audit_logger
+            get_audit_logger().set_repo(getattr(scheduler, "_repo", None))
+        except Exception as e:
+            logger.warning("审计日志器注入 repo 失败 (仅内存): %s", e)
+        # M3-T17: 配置热更新 — 启动轮询, 注册回调刷新引擎持有的可变配置。
+        _start_config_hot_reload()
+        # M3-T19: 在途计数归零事件 (绑当前 loop) + SIGTERM 排水处理
+        global _inflight_zero
+        _inflight_zero = asyncio.Event()
+        _install_sigterm_handler()
         logger.info("Fusion-K12-Teacher API started, MLXClient initialized")
     except Exception as exc:
         logger.error("lifespan 启动失败, 清理已分配资源: %s", exc, exc_info=True)
@@ -352,6 +456,18 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Fusion-K12-Teacher API shutting down")
     _ready = False
+    # M3-T19: 优雅排水 — 拒绝新请求, 等在途归零或超时
+    global _draining
+    _draining = True
+    await _drain_inflight()
+    # M3-T17: 停止配置轮询线程
+    _stop_config_hot_reload()
+    # M3-T14: 关闭前 flush 剩余审计事件
+    try:
+        from .audit import get_audit_logger
+        await get_audit_logger().aclose()
+    except Exception as e:
+        logger.warning("审计关闭 flush 失败: %s", e)
     try:
         await scheduler.aclose()
     except Exception as e:
@@ -384,6 +500,80 @@ async def rate_limit_middleware(request: Request, call_next):
                 content={"detail": f"rate limit exceeded ({_RATE_MAX}/{_RATE_WINDOW}s)"},
             )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    """M3-T13: 审计埋点 — 每请求生成 trace_id, 记录 route/method/status/duration。
+
+    trace_id 透传至响应头 X-Trace-Id; 学生标识哈希从请求体 student_id 字段提取。
+    排除探针/指标端点 (无需审计)。审计事件异步记入 AuditLogger (T14 持久化)。
+    """
+    path = request.url.path
+    if not path.startswith("/api/") or path in ("/api/health", "/api/ready", "/api/metrics"):
+        return await call_next(request)
+    from .audit import AuditEvent, get_audit_logger, new_trace_id
+    # M3-T19: 排水下线期间拒绝新业务请求 (探针除外, 上面已放行)
+    if _draining:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "service draining, shutting down"},
+            headers={"Connection": "close", "X-Trace-Id": new_trace_id()},
+        )
+    trace_id = new_trace_id()
+    start = time.monotonic()
+    status_code = 0
+    err = ""
+    # M3-T19: 在途计数 +1, 完成后 -1 并通知 drain 等待者
+    global _inflight
+    _inflight += 1
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Trace-Id"] = trace_id
+        return response
+    except Exception as e:
+        err = str(e)[:200]
+        status_code = 500
+        raise
+    finally:
+        _inflight -= 1
+        if _inflight == 0 and _inflight_zero is not None:
+            _inflight_zero.set()
+        duration_ms = (time.monotonic() - start) * 1000
+        # M3-T16: 指标采集 — 请求计数 + 延迟直方图
+        try:
+            from .metrics import get_metrics
+            get_metrics().record_request(path, status_code, duration_ms / 1000.0)
+        except Exception:
+            pass
+        student_hash = ""
+        try:
+            body = await request.body()
+            if body:
+                import json as _json
+                data = _json.loads(body)
+                sid = data.get("student_id") or data.get("sid") or ""
+                if sid:
+                    from .audit.event import hash_pii
+                    student_hash = hash_pii(sid)
+        except Exception:
+            pass
+        event = AuditEvent(
+            trace_id=trace_id,
+            route=path,
+            method=request.method,
+            status=status_code,
+            duration_ms=round(duration_ms, 2),
+            student_hash=student_hash,
+            client_ip=request.client.host if request.client else "",
+            error=err,
+        )
+        try:
+            await get_audit_logger().record(event)
+        except Exception as e:
+            logger.warning("审计记录失败 (不影响请求): %s", e)
 
 
 def _check_engine_error(result: Any, label: str) -> None:
@@ -470,6 +660,59 @@ async def ready():
             detail="service not ready",
         )
     return {"status": "ready", "version": __version__}
+
+
+@app.get("/api/audit/export")
+async def audit_export(
+    format: str = "json",
+    since: str = "",
+    limit: int = 1000,
+    _: str = Depends(require_admin_api_key),
+):
+    # M3-T15: 审计导出 — 管理员 key, JSON/CSV。limit 上限 10000 防过大响应。
+    await _require_ready()
+    limit = max(1, min(limit, 10000))
+    repo = getattr(scheduler, "_repo", None)
+    if repo is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="audit persistence unavailable (no repository)",
+        )
+    try:
+        rows = await asyncio.to_thread(repo.load_audit, since, limit)
+    except Exception as e:
+        logger.warning("审计导出读取失败: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="audit export failed",
+        )
+    fmt = format.lower()
+    if fmt == "csv":
+        import csv as _csv
+        import io
+        buf = io.StringIO()
+        if rows:
+            writer = _csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(
+            buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=audit_events.csv"},
+        )
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content={"events": rows, "count": len(rows)})
+
+
+@app.get("/api/metrics")
+async def metrics_endpoint(_: str = Depends(require_admin_api_key)):
+    # M3-T16: Prometheus 指标端点 — exposition format, 管理员 key。
+    # 探针/审计中间件已排除本端点 (path 白名单)。
+    from fastapi.responses import PlainTextResponse
+
+    from .metrics import render_prometheus
+    return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
 # ── Curriculum ──
