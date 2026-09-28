@@ -9,6 +9,7 @@ from .ai_client import MLXClient
 from .analytics import AnalyticsEngine
 from .assessment import AssessmentEngine
 from .content import ContentGenerator
+from .course.registry import SubjectRegistry
 from .curriculum import CurriculumEngine
 from .differentiation import DifferentiationEngine
 from .personalization import PersonalizationEngine
@@ -17,6 +18,9 @@ from .standards import StandardsLoader, StandardsQuery
 from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
+
+# issue #14: fire-and-forget 任务须持强引用, 否则事件循环仅持弱引用可被 GC。
+_close_tasks: set[asyncio.Task[None]] = set()
 
 
 @dataclass
@@ -35,6 +39,9 @@ class EngineBundle:
     # P1-9: 暴露共享 ContentFilter, 供 serve 复用同实例 (敏感词/年龄规则一份),
     # 不在 serve 内再各自构造造成规则双份不同步。
     content_filter: ContentFilter = None  # type: ignore[assignment]
+    # 学科课程平台 (PRD math-doubao 解耦): SubjectRegistry 持有各学科模块 (math/physics/...),
+    # 平台不耦合具体学科, 加学科零改 engines/serve。
+    subject_registry: SubjectRegistry = None  # type: ignore[assignment]
 
 
 def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle:
@@ -60,6 +67,10 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
         standards_query = StandardsQuery(loader)
         differentiation = DifferentiationEngine(mlx, standards_query, content_filter)
         analytics = AnalyticsEngine(mlx, standards_query, content_filter)
+        # 学科课程平台: SubjectRegistry 自动发现 course/subjects/* 下已注册学科。
+        # 平台只持 registry, 不 import 具体学科 — 加学科 (physics/chemistry/...) 零改 engines/serve。
+        subject_registry = SubjectRegistry()
+        subject_registry.discover_and_init(mlx=mlx, content_filter=content_filter, standards_query=standards_query)
     except Exception:
         if _owns_mlx:
             try:
@@ -67,6 +78,8 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     _close_task = loop.create_task(mlx.close())
+                    _close_tasks.add(_close_task)
+                    _close_task.add_done_callback(_close_tasks.discard)
                     logger.warning("build_engines 失败, 已调度异步清理 mlx 连接池: %s", _close_task)
                 else:
                     loop.run_until_complete(mlx.close())
@@ -90,4 +103,5 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
         standards_query=standards_query,
         analytics=analytics,
         content_filter=content_filter,
+        subject_registry=subject_registry,
     )

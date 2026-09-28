@@ -3,20 +3,33 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import logging
 import logging.config
 import os
 import secrets
 import time
+import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Security,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel, Field, model_validator
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
 from . import __version__
 from .agent import list_available_tasks, register_all_engines, scheduler
@@ -24,15 +37,21 @@ from .ai_client import MLXClient
 from .analytics import AnalyticsEngine, load_from_csv, load_from_json
 from .analytics.models import StudentAssessment, WeakPoint
 from .assessment import AssessmentEngine
+from .auth import AuthError, AuthService
+from .classroom import ClassroomStore, LessonScripter, Packager, SessionManager
 from .content import ContentGenerator
+from .course import SubjectRegistry
 from .curriculum import CurriculumEngine
 from .desensitize import DataAnonymizer, DesensitizeConfig
 from .differentiation import DifferentiationEngine
+from .digital_human import DigitalHumanManager
 from .engines import build_engines
 from .personalization import PersonalizationEngine
+from .repository import get_repository
 from .safety import ContentFilter, SensitiveWordList
 from .standards import StandardsAligner, StandardsLoader, StandardsQuery
 from .subjects import SubjectExpert
+from .textbook import TextbookLoader
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +333,18 @@ standards_aligner: StandardsAligner | None = None
 analytics_engine: AnalyticsEngine | None = None
 content_filter: ContentFilter | None = None
 sensitive_wordlist: SensitiveWordList | None = None
+# 学科课程平台 (PRD math-doubao 解耦): SubjectRegistry 持各学科模块, 路由学科无关。
+subject_registry: SubjectRegistry | None = None
+# 课堂模块 (classroom PRD E1-E6, K1 文字版): 课程包/会话/判分/报告。
+lesson_scripter = None
+packager = None
+session_manager = None
+# 数字人平台层 (K2/K3): DigitalHumanManager 持 4 插件管线, serve 生命周期单例。
+digital_human_manager = None
+# 教师身份 + 教材目录 + 资源库: 用户身份 (X-Auth-Token) 与教材级联选择数据。
+auth_service: AuthService | None = None
+textbook_loader: TextbookLoader | None = None
+_materials_repo = None  # 资源库持久化 repo (复用 get_repository)
 # SRV-4: lifespan 完成前引擎为 None, 以 _ready 标志拦截启动期请求
 _ready: bool = False
 # M3-T19: 在途请求计数 — 优雅下线时等其归零。asyncio 由事件循环驱动, 但计数用普通 int
@@ -383,7 +414,9 @@ async def lifespan(app: FastAPI):
     global mlx_client, curriculum_engine, assessment_engine
     global subject_expert, personalization_engine, content_generator
     global differentiation_engine, standards_query, standards_loader, standards_aligner
-    global analytics_engine, content_filter, sensitive_wordlist
+    global analytics_engine, content_filter, sensitive_wordlist, subject_registry
+    global lesson_scripter, packager, session_manager
+    global digital_human_manager
     global _ready
     # SRV-5: 构建失败时 yield 不执行, 须 try/except 清理已分配资源
     try:
@@ -411,10 +444,37 @@ async def lifespan(app: FastAPI):
         # 再各自构造致规则双份不同步 (engines.build_engines 已注入 7 引擎同实例)。
         content_filter = bundle.content_filter
         sensitive_wordlist = SensitiveWordList()
+        subject_registry = bundle.subject_registry
+        # 课堂模块 (E1-E6 K1 文字版): 共用 mlx_client, 独立 SQLite store。
+        _classroom_store = ClassroomStore()
+        lesson_scripter = LessonScripter(mlx_client)
+        packager = Packager(_classroom_store)
+        session_manager = SessionManager(_classroom_store)
+        # 数字人平台层 (K2/K3): 注入 mlx/registry/session_manager/scripter, prewarm 插件。
+        digital_human_manager = DigitalHumanManager(
+            mlx_client, subject_registry, session_manager, lesson_scripter,
+        )
+        await digital_human_manager.start()
         scheduler.load_default_tasks()
         scheduler.load_history()
         scheduler.start()
         _init_allowed_dirs()
+        # 教师身份 + 教材目录 + 资源库: AuthService 复用 scheduler 同款 repo, 教材加载建索引。
+        global auth_service, textbook_loader, _materials_repo
+        try:
+            _materials_repo = get_repository()
+            auth_service = AuthService(_materials_repo)
+            textbook_loader = TextbookLoader()
+            textbook_loader.load_all()
+            logger.info(
+                "教师身份+教材+资源库就绪: editions=%d",
+                len(textbook_loader.list_editions()),
+            )
+        except Exception as e:
+            logger.warning("教师身份/教材初始化失败 (生成功能仍可用, 仅无身份+资源库): %s", e)
+            auth_service = None
+            textbook_loader = None
+            _materials_repo = None
         _ready = True
         # M3-T13/T14: 审计日志器注入 scheduler 的 repo, 启用持久化。
         try:
@@ -472,6 +532,11 @@ async def lifespan(app: FastAPI):
         await scheduler.aclose()
     except Exception as e:
         logger.warning("scheduler.aclose 失败: %s", e)
+    if digital_human_manager is not None:
+        try:
+            await digital_human_manager.aclose()
+        except Exception as e:
+            logger.warning("digital_human_manager.aclose 失败: %s", e)
     if mlx_client is not None:
         try:
             await mlx_client.close()
@@ -576,6 +641,157 @@ async def audit_middleware(request: Request, call_next):
             logger.warning("审计记录失败 (不影响请求): %s", e)
 
 
+# 生成路由 → 资源类型映射 (content/generate 动态, 由响应 type 字段决定)。
+# issue #14: fire-and-forget 任务须持强引用, 否则事件循环仅持弱引用可被 GC,
+# 且异常只在 GC 时打印 "Task exception was never retrieved" — 统一经 _spawn_bg_task 派生。
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_bg_task(coro) -> asyncio.Task:
+    """派生后台任务并持强引用 — done 后自动移除, 异常落结构化日志。"""
+    task = asyncio.ensure_future(coro)
+    _bg_tasks.add(task)
+
+    def _done(t: asyncio.Task) -> None:
+        _bg_tasks.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            logger.warning("后台任务异常: %s", t.exception())
+
+    task.add_done_callback(_done)
+    return task
+
+
+_GEN_ROUTE_TYPES: dict[str, str | None] = {
+    "/api/curriculum/plan": "lesson_plan",
+    "/api/curriculum/quiz": "quiz",
+    "/api/curriculum/unit-plan": "unit_plan",
+    "/api/curriculum/plan-diff": "diff_lesson",
+    "/api/curriculum/quiz-diff": "diff_quiz",
+    "/api/assessment/grade": "grade_math",
+    "/api/assessment/essay": "grade_essay",
+    "/api/assessment/report": "report",
+    "/api/assessment/rubric": "rubric",
+    "/api/subject/explain": "explain",
+    "/api/subject/exercise": "exercise",
+    "/api/subject/stem-project": "stem",
+    "/api/subject/language-activity": "lang_activity",
+    "/api/personalize/path": "path",
+    "/api/personalize/diagnose": "diagnose",
+    "/api/personalize/recommend": "recommend",
+    "/api/content/generate": None,
+    "/api/content/parent-communication": "parent_comm",
+    "/api/content/worksheet-diff": "diff_worksheet",
+    "/api/standards/align": "align",
+    "/api/standards/coverage": "coverage",
+    "/api/standards/remediate": "remediate",
+    "/api/analytics/class-profile": "class_profile",
+    "/api/analytics/student-profile": "student_profile",
+    "/api/analytics/error-analysis": "error_analysis",
+    "/api/analytics/remedial": "remedial",
+    "/api/analytics/class-report": "class_report",
+    "/api/safety/check": "safety",
+    "/api/desensitize/anonymize": "desensitize",
+}
+
+
+def _save_material_if_teacher(
+    teacher_id: str | None, *, mtype: str, req: dict, result: dict
+) -> None:
+    if not teacher_id or not _materials_repo:
+        return
+    if isinstance(result, dict) and result.get("error"):
+        return
+    title = (
+        result.get("title") if isinstance(result, dict) else None
+    ) or req.get("topic") or req.get("concept") or req.get("essay", "")[:20] or mtype
+    try:
+        _materials_repo.save_material({
+            "id": "mat_" + uuid.uuid4().hex[:12],
+            "teacher_id": teacher_id,
+            "edition": req.get("edition", ""),
+            "subject": req.get("subject", ""),
+            "grade": str(req.get("grade", "")),
+            "lesson_id": str(req.get("lesson_id", "")),
+            "unit_title": req.get("unit_title", ""),
+            "lesson_title": req.get("lesson_title", ""),
+            "type": mtype,
+            "title": str(title)[:200],
+            "payload": json.dumps(result, ensure_ascii=False),
+            "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        logger.info("资源已保存: teacher=%s type=%s title=%s", teacher_id, mtype, title)
+    except Exception as e:
+        logger.warning("资源保存失败 (不影响响应): %s", e)
+
+
+@app.middleware("http")
+async def auto_save_material_middleware(request: Request, call_next):
+    """生成路由成功后, 若带 X-Auth-Token, 自动落盘资源到资源库。
+
+    读请求体 (缓存后下游仍可读) + 响应体, 非 200 或非生成路由则跳过。
+    """
+    path = request.url.path
+    if request.method != "POST" or path not in _GEN_ROUTE_TYPES:
+        return await call_next(request)
+    token = request.headers.get("X-Auth-Token", "")
+    # 预读并缓存请求体, 供下游 handler + 本中间件复用 (Starlette 缓存 _body)。
+    req_data: dict = {}
+    try:
+        body_bytes = await request.body()
+
+        async def _receive():
+            return {"type": "http.request", "body": body_bytes, "more_body": False}
+        request._receive = _receive
+        if body_bytes:
+            req_data = json.loads(body_bytes)
+    except Exception:
+        req_data = {}
+    response = await call_next(request)
+    if response.status_code != 200 or not token or not auth_service or not _materials_repo:
+        return response
+    # BaseHTTPMiddleware 的响应是流式, 须消费 body_iterator 后重建响应才能读体。
+    body_chunks: list[bytes] = []
+    try:
+        async for chunk in response.body_iterator:
+            body_chunks.append(chunk)
+    except Exception:
+        return response
+    resp_bytes = b"".join(body_chunks)
+    # 重建响应 (保持状态码/头), 否则消费后下游拿不到体。
+    from starlette.responses import Response as _Resp
+    new_response = _Resp(
+        content=resp_bytes,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+    )
+    try:
+        teacher_id = await asyncio.to_thread(auth_service.verify_token, token)
+    except Exception:
+        teacher_id = None
+    if not teacher_id:
+        return new_response
+    try:
+        result = json.loads(resp_bytes) if resp_bytes else {}
+    except Exception:
+        return new_response
+    mtype = _GEN_ROUTE_TYPES[path]
+    if mtype is None and path == "/api/content/generate":
+        mtype = result.get("type") if isinstance(result, dict) else None
+        if not mtype:
+            return new_response
+    _spawn_bg_task(
+        asyncio.to_thread(
+            _save_material_if_teacher,
+            teacher_id,
+            mtype=mtype,
+            req=req_data,
+            result=result,
+        )
+    )
+    return new_response
+
+
 def _check_engine_error(result: Any, label: str) -> None:
     # SRV-9: 引擎优雅降级返含 error 的结果时, 显式 502 而非 200+error 误导客户端
     err = getattr(result, "error", None)
@@ -591,8 +807,15 @@ def _check_engine_error(result: Any, label: str) -> None:
 
 # ── Request/Response Models ──
 
+def _coerce_str(v: Any) -> str:
+    if isinstance(v, (int, float)):
+        return str(int(v)) if float(v).is_integer() else str(v)
+    return v
+
+GradeField = Annotated[str, BeforeValidator(_coerce_str), Field(max_length=4)]
+
 class CurriculumPlanRequest(BaseModel):
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     subject: str = Field(..., max_length=20, description="学科")
     topic: str = Field(..., max_length=100, description="主题")
 
@@ -603,7 +826,7 @@ class AssessmentGradeRequest(BaseModel):
 
 class SubjectExplainRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field("", max_length=4, description="年级")
+    grade: GradeField = Field("", description="年级")
     concept: str = Field(..., max_length=500, description="概念/问题")
 
 class PersonalizePathRequest(BaseModel):
@@ -624,8 +847,195 @@ class PersonalizePathRequest(BaseModel):
 
 class ContentGenerateRequest(BaseModel):
     topic: str = Field(..., max_length=100, description="主题")
-    grade: str = Field("", max_length=4, description="年级")
+    grade: GradeField = Field("", description="年级")
     style: str = Field("interactive", max_length=20, description="生成风格")
+
+
+# ── 教师身份 ──
+
+class AuthRegisterRequest(BaseModel):
+    username: str = Field(..., min_length=2, max_length=32)
+    password: str = Field(..., min_length=6, max_length=128)
+    name: str = Field("", max_length=50)
+    school: str = Field("", max_length=100)
+    region: str = Field("", max_length=50)
+    default_edition: str = Field("renjiao", max_length=20)
+
+class AuthLoginRequest(BaseModel):
+    username: str = Field(..., max_length=32)
+    password: str = Field(..., max_length=128)
+
+_AUTH_TOKEN_HEADER = APIKeyHeader(name="X-Auth-Token", auto_error=False)
+
+
+async def get_optional_teacher(
+    x_auth_token: str = Security(_AUTH_TOKEN_HEADER),
+) -> str | None:
+    """软身份 — 有 token 验证返 teacher_id, 无则 None (仅 api_key 模式不保存)。"""
+    if not x_auth_token or not auth_service:
+        return None
+    try:
+        return await asyncio.to_thread(auth_service.verify_token, x_auth_token)
+    except Exception:
+        return None
+
+
+async def require_teacher(
+    x_auth_token: str = Security(_AUTH_TOKEN_HEADER),
+) -> str:
+    """硬身份 — 必须有效 token, 否则 401。供 /me, /logout, 资源库读写用。"""
+    if not auth_service:
+        raise HTTPException(status_code=503, detail="auth service unavailable")
+    tid = await asyncio.to_thread(auth_service.verify_token, x_auth_token) if x_auth_token else None
+    if not tid:
+        raise HTTPException(status_code=401, detail="missing or invalid X-Auth-Token")
+    return tid
+
+
+@app.post("/api/auth/register")
+async def auth_register(req: AuthRegisterRequest):
+    if not auth_service:
+        raise HTTPException(status_code=503, detail="auth service unavailable")
+    try:
+        teacher = await asyncio.to_thread(
+            auth_service.register,
+            req.username, req.password, req.name, req.school, req.region, req.default_edition,
+        )
+    except AuthError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"teacher": teacher.to_dict()}
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: AuthLoginRequest):
+    if not auth_service:
+        raise HTTPException(status_code=503, detail="auth service unavailable")
+    try:
+        token, teacher = await asyncio.to_thread(auth_service.login, req.username, req.password)
+    except AuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return {"token": token, "teacher": teacher.to_dict()}
+
+
+@app.get("/api/auth/me")
+async def auth_me(teacher_id: str = Depends(require_teacher)):
+    if not auth_service:
+        raise HTTPException(status_code=503, detail="auth service unavailable")
+    teacher = await asyncio.to_thread(auth_service.get_teacher, teacher_id)
+    if not teacher:
+        raise HTTPException(status_code=404, detail="teacher not found")
+    return {"teacher": teacher.to_dict()}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request, teacher_id: str = Depends(require_teacher)):
+    if auth_service:
+        token = request.headers.get("X-Auth-Token", "")
+        if token:
+            await asyncio.to_thread(auth_service.logout, token)
+    return {"ok": True}
+
+
+# ── 教材目录 ──
+
+@app.get("/api/textbook/editions")
+async def textbook_editions(_: None = Depends(_require_ready)):
+    if not textbook_loader:
+        raise HTTPException(status_code=503, detail="textbook loader unavailable")
+    return {"editions": textbook_loader.list_editions()}
+
+
+@app.get("/api/textbook/{edition}/{subject}/grades")
+async def textbook_grades(edition: str, subject: str, _: None = Depends(_require_ready)):
+    if not textbook_loader:
+        raise HTTPException(status_code=503, detail="textbook loader unavailable")
+    return {"edition": edition, "subject": subject, "grades": textbook_loader.get_grades(edition, subject)}
+
+
+@app.get("/api/textbook/{edition}/{subject}/{grade}/units")
+async def textbook_units(edition: str, subject: str, grade: str, _: None = Depends(_require_ready)):
+    if not textbook_loader:
+        raise HTTPException(status_code=503, detail="textbook loader unavailable")
+    units = textbook_loader.get_units(edition, subject, grade)
+    return {
+        "edition": edition, "subject": subject, "grade": grade,
+        "units": [u.to_dict() for u in units],
+    }
+
+
+@app.get("/api/textbook/{edition}/{subject}/{grade}/lesson/{lesson_id}")
+async def textbook_lesson(edition: str, subject: str, grade: str, lesson_id: str, _: None = Depends(_require_ready)):
+    if not textbook_loader:
+        raise HTTPException(status_code=503, detail="textbook loader unavailable")
+    found = textbook_loader.get_lesson(edition, subject, grade, lesson_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="lesson not found")
+    unit, lesson = found
+    return {
+        "edition": edition, "subject": subject, "grade": grade,
+        "unit": unit.unit, "unit_title": unit.title,
+        "lesson": lesson.lesson, "lesson_title": lesson.title,
+        "topic": lesson.topic, "knowledge_point_ids": lesson.knowledge_point_ids,
+    }
+
+
+# ── 资源库 ──
+
+@app.get("/api/materials")
+async def materials_list(
+    teacher_id: str = Depends(require_teacher),
+    type: str | None = None,
+    subject: str | None = None,
+    grade: str | None = None,
+    lesson_id: str | None = None,
+    edition: str | None = None,
+    limit: int = 100,
+):
+    if not _materials_repo:
+        raise HTTPException(status_code=503, detail="materials repo unavailable")
+    items = _materials_repo.list_materials(
+        teacher_id, type=type, subject=subject, grade=grade, lesson_id=lesson_id, edition=edition, limit=limit,
+    )
+    return {"items": [_material_summary(m) for m in items], "total": len(items)}
+
+
+@app.get("/api/materials/{material_id}")
+async def materials_get(material_id: str, teacher_id: str = Depends(require_teacher)):
+    if not _materials_repo:
+        raise HTTPException(status_code=503, detail="materials repo unavailable")
+    m = _materials_repo.get_material(material_id)
+    if not m or m.get("teacher_id") != teacher_id:
+        raise HTTPException(status_code=404, detail="material not found")
+    try:
+        payload = json.loads(m.get("payload", "{}"))
+    except Exception:
+        payload = {}
+    return {**_material_summary(m), "payload": payload}
+
+
+@app.delete("/api/materials/{material_id}")
+async def materials_delete(material_id: str, teacher_id: str = Depends(require_teacher)):
+    if not _materials_repo:
+        raise HTTPException(status_code=503, detail="materials repo unavailable")
+    ok = _materials_repo.delete_material(material_id, teacher_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="material not found")
+    return {"ok": True}
+
+
+def _material_summary(m: dict) -> dict:
+    return {
+        "id": m.get("id", ""),
+        "type": m.get("type", ""),
+        "title": m.get("title", ""),
+        "edition": m.get("edition", ""),
+        "subject": m.get("subject", ""),
+        "grade": m.get("grade", ""),
+        "lesson_id": m.get("lesson_id", ""),
+        "unit_title": m.get("unit_title", ""),
+        "lesson_title": m.get("lesson_title", ""),
+        "created_at": m.get("created_at", ""),
+    }
 
 
 # ── Health ──
@@ -635,11 +1045,15 @@ async def health():
     # P1-10: health 探测后端 fusion-mlx 可达性, 非静态返回。
     # /api/health = liveness (进程在) + 后端探测; /api/ready = readiness (引擎就绪)。
     backend = "unknown"
+    model_id = ""
     if mlx_client is not None:
         try:
             # list_models 是 async, 直接 await (自带缓存+锁); to_thread 会漏 await 返未决协程
             models = await mlx_client.list_models()
             backend = "ok" if models is not None else "down"
+            if models:
+                # 取当前选定聊天模型名 (无 model 时标 auto-select 状态)
+                model_id = mlx_client.model or "auto"
         except Exception as e:
             logger.warning("health: fusion-mlx 探测失败: %s", e)
             backend = "down"
@@ -647,7 +1061,11 @@ async def health():
     from fastapi.responses import JSONResponse
     return JSONResponse(
         status_code=status_code,
-        content={"status": "ok" if backend != "down" else "degraded", "backend": backend, "version": __version__},
+        content={
+            "status": "ok" if backend != "down" else "degraded",
+            "backend": backend, "version": __version__,
+            "model": model_id, "ready": bool(_ready),
+        },
     )
 
 
@@ -839,12 +1257,12 @@ class AssessmentEssayRequest(BaseModel):
 class AssessmentReportRequest(BaseModel):
     student: str = Field(..., max_length=50, description="学生姓名/ID")
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=50, description="学习记录")
 
 class AssessmentRubricRequest(BaseModel):
     assignment_type: str = Field(..., max_length=50, description="作业类型")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
 
 
 @app.post("/api/assessment/essay")
@@ -880,17 +1298,17 @@ async def assessment_rubric(req: AssessmentRubricRequest, _: str = Depends(requi
 
 class SubjectExerciseRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     difficulty: str = Field("medium", max_length=20, description="难度 easy/medium/hard")
 
 class SubjectStemRequest(BaseModel):
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     duration: str = Field("2课时", max_length=20, description="时长")
 
 class SubjectLanguageRequest(BaseModel):
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     language: str = Field(..., max_length=20, description="语言")
     skill: str = Field(..., max_length=20, description="技能")
     theme: str = Field(..., max_length=100, description="主题")
@@ -930,14 +1348,14 @@ async def subject_language_activity(req: SubjectLanguageRequest, _: str = Depend
 # ── Curriculum 扩展 (P1-15: 补齐 quiz/unit_plan 路由) ──
 
 class CurriculumQuizRequest(BaseModel):
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     subject: str = Field(..., max_length=20, description="学科")
     topic: str = Field(..., max_length=100, description="主题")
     num_questions: int = Field(10, ge=1, le=50, description="题目数量")
 
 class CurriculumUnitPlanRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     unit_title: str = Field(..., max_length=100, description="单元主题")
     weeks: int = Field(4, ge=1, le=20, description="周数")
 
@@ -967,12 +1385,12 @@ async def curriculum_unit_plan(req: CurriculumUnitPlanRequest, _: str = Depends(
 
 class PersonalizeDiagnoseRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     responses: list[dict[str, Any]] = Field(default_factory=list, max_length=50, description="答题记录")
 
 class PersonalizeRecommendRequest(BaseModel):
     student: str = Field(..., max_length=50, description="学生")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     subject: str = Field(..., max_length=20, description="学科")
     weakness: str = Field(..., max_length=200, description="薄弱点")
 
@@ -1003,7 +1421,7 @@ async def personalize_recommend(req: PersonalizeRecommendRequest, _: str = Depen
 
 class ContentParentCommRequest(BaseModel):
     student: str = Field(..., max_length=50, description="学生姓名/ID")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     subject: str = Field(..., max_length=20, description="学科")
     topic: str = Field(..., max_length=100, description="主题")
 
@@ -1024,19 +1442,19 @@ async def content_parent_communication(req: ContentParentCommRequest, _: str = D
 
 class DifferentiatedPlanRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     duration: int = Field(45, ge=5, le=240, description="课时(分钟)")
 
 class DifferentiatedQuizRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     num_questions: int = Field(5, ge=1, le=50, description="每层题目数量")
 
 class StandardsQueryRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field("", max_length=100, description="主题关键词")
 
 
@@ -1077,14 +1495,21 @@ async def standards_query_endpoint(req: StandardsQueryRequest, _: str = Depends(
 # P3: 暴露课标对齐/覆盖报告 — 之前仅 DifferentiationEngine 内部用, 无 CLI/serve 直达路由。
 class StandardsAlignRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
 
 
 class StandardsCoverageRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     objectives: list[str] = Field(..., min_length=1, max_length=50, description="教学目标")
+
+
+class StandardsRemediateRequest(BaseModel):
+    subject: str = Field(..., max_length=20, description="学科")
+    grade: GradeField = Field(..., description="年级")
+    topic: str = Field("", max_length=100, description="课题")
+    missing_points: list[str] = Field(..., min_length=1, max_length=30, description="缺失知识点ID列表")
 
 
 @app.post("/api/standards/align")
@@ -1125,7 +1550,92 @@ async def standards_coverage(req: StandardsCoverageRequest, _: str = Depends(req
     }
 
 
-# ── Differentiation (v0.3) ──
+@app.post("/api/standards/remediate")
+async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """针对缺失知识点生成补齐教学方案 — 无需学情数据, 基于课标知识点+前置依赖。"""
+    logger.info("standards/remediate: subject=%s grade=%s missing=%d", req.subject, req.grade, len(req.missing_points))
+    if standards_query is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
+    if mlx_client is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="engine not ready")
+    all_kps = standards_query.get_knowledge_points(req.subject, str(req.grade))
+    kp_map = {kp.id: kp for kp in all_kps}
+    missing_details = []
+    for pid in req.missing_points[:30]:
+        kp = kp_map.get(pid)
+        if not kp:
+            continue
+        prereqs = standards_query.get_prerequisites(pid)
+        missing_details.append({
+            "id": kp.id,
+            "topic": kp.topic,
+            "description": kp.description,
+            "prerequisites": [p.topic for p in prereqs[:5]],
+        })
+    if not missing_details:
+        return {"subject": req.subject, "grade": req.grade, "topic": req.topic, "missing_points": [], "strategies": [], "error": "缺失知识点无法解析"}
+    import json as _json
+    details_json = _json.dumps(missing_details, ensure_ascii=False)
+    prompt = f"""针对以下缺失知识点生成补齐教学方案:
+
+学科: {req.subject} | 年级: {req.grade} | 课题: {req.topic}
+缺失知识点:
+{details_json}
+
+返回JSON:
+{{
+    "strategies": ["针对每个缺失知识点的具体教学策略"],
+    "exercises": [{{"topic": "知识点", "type": "题型", "difficulty": "easy/medium", "count": 3}}],
+    "timeline": "建议补齐时间线",
+    "estimated_duration": "预计补齐时长"
+}}"""
+    llm_err = ""
+    try:
+        response = await mlx_client.chat([
+            {"role": "system", "content": "你是一位经验丰富的教研员, 擅长针对课标缺失知识点设计补齐教学方案。"},
+            {"role": "user", "content": prompt},
+        ], temperature=0.3)
+        from ._parse import parse_json
+        data = parse_json(response)
+        if isinstance(data, dict):
+            exercises = []
+            raw_ex = data.get("exercises", [])
+            if isinstance(raw_ex, list):
+                for ex in raw_ex[:50]:
+                    if not isinstance(ex, dict):
+                        continue
+                    exercises.append({
+                        "topic": str(ex.get("topic", ""))[:200],
+                        "type": str(ex.get("type", ""))[:50],
+                        "difficulty": str(ex.get("difficulty", "medium"))[:20],
+                        "count": int(ex.get("count", 1)) if str(ex.get("count", "1")).isdigit() else 1,
+                    })
+            return {
+                "subject": req.subject,
+                "grade": req.grade,
+                "topic": req.topic,
+                "missing_points": missing_details,
+                "strategies": [str(s) for s in (data.get("strategies") or []) if isinstance(s, str)][:20],
+                "exercises": exercises,
+                "timeline": str(data.get("timeline", ""))[:1000],
+                "estimated_duration": str(data.get("estimated_duration", ""))[:200],
+                "error": "",
+            }
+        llm_err = "LLM 返回空或无法解析"
+    except Exception as e:
+        logger.error("standards/remediate LLM 失败: %s", e)
+        llm_err = str(e)
+    return {
+        "subject": req.subject,
+        "grade": req.grade,
+        "topic": req.topic,
+        "missing_points": missing_details,
+        "strategies": [],
+        "exercises": [],
+        "timeline": "",
+        "estimated_duration": "",
+        "error": llm_err,
+    }
 
 @app.post("/api/curriculum/plan-diff")
 async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
@@ -1154,30 +1664,30 @@ async def curriculum_quiz_diff(req: DifferentiatedQuizRequest, _: str = Depends(
 class ClassProfileRequest(BaseModel):
     class_id: str = Field(..., max_length=50, description="班级ID")
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class StudentProfileRequest(BaseModel):
     student_id: str = Field(..., max_length=50, description="学生ID")
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class ErrorAnalysisRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class RemedialPlanRequest(BaseModel):
     student_id: str = Field(..., max_length=50, description="学生ID")
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class ClassReportRequest(BaseModel):
     class_id: str = Field(..., max_length=50, description="班级ID")
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
 class AnalyticsUploadRequest(BaseModel):
@@ -1201,12 +1711,31 @@ class AnalyticsUploadRequest(BaseModel):
 
 class ContentWorksheetDiffRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
-    grade: str = Field(..., max_length=4, description="年级")
+    grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     num_questions: int = Field(8, ge=1, le=50, description="每层题目数量")
 
 
 _ALLOWED_DATA_DIRS: list[Path] = []
+
+# issue #17: 上传落盘滚动保留上限 — 超出后按 mtime 清最旧文件, 防磁盘无限增长
+_UPLOAD_KEEP = int(os.environ.get("FUSION_K12_UPLOAD_KEEP", "500"))
+
+
+def _sweep_upload_files(dest_dir: Path, keep: int = _UPLOAD_KEEP) -> None:
+    """滚动清理 upload_*.json — 只保留最新 keep 份, 失败不影响上传主流程。"""
+    try:
+        files = sorted(
+            dest_dir.glob("upload_*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for old in files[keep:]:
+            old.unlink(missing_ok=True)
+        if len(files) > keep:
+            logger.info("upload sweep: removed %d stale uploads (keep=%d)", len(files) - keep, keep)
+    except Exception as e:
+        logger.warning("upload sweep 失败 (不影响上传): %s", e)
 
 
 def _init_allowed_dirs():
@@ -1332,6 +1861,60 @@ async def analytics_class_report(req: ClassReportRequest, _: str = Depends(requi
     return {"class_id": req.class_id, "report": report}
 
 
+@app.get("/api/analytics/template/json")
+async def analytics_template_json(_: str = Depends(require_api_key)):
+    """学情数据 JSON 模板 — 两名学生各含 scores/responses, 可直接上传验证。"""
+    logger.info("analytics/template/json: 返回 JSON 模板")
+    sample = [
+        {
+            "student_id": "S001",
+            "student_name": "张小明",
+            "assessment_id": "A2026001",
+            "date": "2026-09-20",
+            "subject": "数学",
+            "grade": "3",
+            "total_score": 88,
+            "max_score": 100,
+            "scores": {"分数概念": 9, "分数比较": 8, "分数加减": 7},
+            "responses": [
+                {"question_id": "Q1", "question": "1/2 的含义?", "student_answer": "一半", "correct_answer": "把整体平均分2份取1份", "correct": True},
+                {"question_id": "Q2", "question": "1/3 和 1/4 谁大?", "student_answer": "1/4", "correct_answer": "1/3", "correct": False},
+            ],
+        },
+        {
+            "student_id": "S002",
+            "student_name": "李小红",
+            "assessment_id": "A2026001",
+            "date": "2026-09-20",
+            "subject": "数学",
+            "grade": "3",
+            "total_score": 95,
+            "max_score": 100,
+            "scores": {"分数概念": 10, "分数比较": 9, "分数加减": 8},
+            "responses": [
+                {"question_id": "Q1", "question": "1/2 的含义?", "student_answer": "整体均分2份取1份", "correct_answer": "把整体平均分2份取1份", "correct": True},
+                {"question_id": "Q2", "question": "1/3 和 1/4 谁大?", "student_answer": "1/3", "correct_answer": "1/3", "correct": True},
+            ],
+        },
+    ]
+    return sample
+
+
+@app.get("/api/analytics/template/csv")
+async def analytics_template_csv(_: str = Depends(require_api_key)):
+    """学情数据 CSV 模板 — 每行一条答题记录, 按 student_id+assessment_id 聚合。"""
+    logger.info("analytics/template/csv: 返回 CSV 模板")
+    csv = (
+        "student_id,student_name,assessment_id,date,subject,grade,total_score,max_score,question_id,question,student_answer,correct_answer,correct\n"
+        "S001,张小明,A2026001,2026-09-20,数学,3,88,100,Q1,1/2的含义?,一半,把整体平均分2份取1份,true\n"
+        "S001,张小明,A2026001,2026-09-20,数学,3,88,100,Q2,1/3和1/4谁大?,1/4,1/3,false\n"
+        "S002,李小红,A2026001,2026-09-20,数学,3,95,100,Q1,1/2的含义?,整体均分2份取1份,把整体平均分2份取1份,true\n"
+        "S002,李小红,A2026001,2026-09-20,数学,3,95,100,Q2,1/3和1/4谁大?,1/3,1/3,true\n"
+    )
+    headers = {"Content-Disposition": "attachment; filename=analytics_template.csv"}
+    return PlainTextResponse(content=csv, media_type="text/csv", headers=headers)
+
+
 @app.post("/api/analytics/upload")
 async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
     """上传学情数据 — 持久化到允许目录并返回路径，供后续 analytics 调用使用 (SRV-6)。
@@ -1413,6 +1996,8 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             _json.dump([a.to_dict() for a in assessments], f, ensure_ascii=False, indent=2)
 
     await asyncio.to_thread(_write)
+    # issue #17: 上传文件滚动清理 — 只保留最新 N 份, 防长期运行磁盘无限增长
+    await asyncio.to_thread(_sweep_upload_files, dest_dir)
     # R6: 日志只记计数与文件名, 不记绝对路径 (防路径信息泄露)
     logger.info("analytics/upload: persisted %d records (rejected %d) -> %s", len(assessments), rejected, dest.name)
     return {
@@ -1442,7 +2027,7 @@ async def content_worksheet_diff(req: ContentWorksheetDiffRequest, _: str = Depe
 class AgentRunRequest(BaseModel):
     task_id: str = Field(..., max_length=50, description="任务ID")
     subject: str = Field("数学", max_length=20, description="学科")
-    grade: str = Field("3", max_length=4, description="年级")
+    grade: GradeField = Field("3", description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(每次执行重新加载, 避免过期数据)")
 
 class AgentScheduleRequest(BaseModel):
@@ -1501,7 +2086,7 @@ async def agent_history(limit: int = 20, _: str = Depends(require_api_key)):
 
 class SafetyCheckRequest(BaseModel):
     text: str = Field(..., max_length=10000, description="待检查文本")
-    grade: str = Field("3", pattern=r"^[1-9]$|^1[0-2]$", description="目标年级 1-12")
+    grade: Annotated[str, BeforeValidator(_coerce_str)] = Field("3", pattern=r"^[1-9]$|^1[0-2]$", description="目标年级 1-12")
 
 class SafetyFilterRequest(BaseModel):
     text: str = Field(..., max_length=10000, description="待过滤文本")
@@ -1606,3 +2191,711 @@ async def desensitize_export(
         "desensitized": desensitized,
         "name_count": len(unique_names),
     }
+
+
+# ============================================================================
+# 学科课程平台 (PRD math-doubao, 平台-内容解耦)
+# 路由学科无关: 取 subject 参数 → SubjectRegistry 分发到具体学科模块。
+# 加学科 (physics/chemistry/...) 零改本段 — 只在 course/subjects/ 注册即可。
+# ============================================================================
+
+
+@app.get("/api/course/subjects")
+async def course_subjects(_: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """列出已注册学科及其能力清单。"""
+    if subject_registry is None:
+        raise HTTPException(503, "subject registry not ready")
+    return {"subjects": subject_registry.manifests()}
+
+
+@app.get("/api/course/{subject}/graph/nodes")
+async def course_graph_nodes(
+    subject: str,
+    stage: str | None = None,
+    strand: str | None = None,
+    grade: str | None = None,
+    node_type: str | None = None,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """学科知识图谱节点列表 (按 stage/strand/grade/node_type 过滤)。"""
+    mod = _get_subject_module(subject)
+    kg = mod.knowledge_graph()
+    if kg is None:
+        raise HTTPException(501, f"学科 {subject} 未实现知识图谱")
+    nodes = kg.query(stage=stage, strand=strand, grade=grade, node_type=node_type)
+    return {"subject": subject, "count": len(nodes), "nodes": [n.to_dict() for n in nodes[:200]]}
+
+
+@app.get("/api/course/{subject}/graph/node/{node_id}")
+async def course_graph_node(
+    subject: str,
+    node_id: str,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """学科知识图谱节点详情 (公式/易错点/关联题型/前置链)。"""
+    mod = _get_subject_module(subject)
+    kg = mod.knowledge_graph()
+    if kg is None:
+        raise HTTPException(501, f"学科 {subject} 未实现知识图谱")
+    node = kg.get_node(node_id)
+    if node is None:
+        raise HTTPException(404, f"节点不存在: {node_id}")
+    return {
+        "node": node.to_dict(),
+        "prerequisites_chain": kg.prerequisites_chain(node_id),
+        "reverse_attribution": kg.reverse_attribution(node_id),
+    }
+
+
+class CourseLessonScriptRequest(BaseModel):
+    subject: str
+    topic: str
+    grade: str = "5"
+    knowledge_node_id: str = ""
+    prerequisites: list[str] = []
+    misconceptions: list[str] = []
+    layer: str = "B"
+
+
+@app.post("/api/course/{subject}/lesson-script")
+async def course_lesson_script(
+    subject: str,
+    req: CourseLessonScriptRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """按 5E 生成学科苏格拉底课稿 DSL (UC-M1)。"""
+    mod = _get_subject_module(subject)
+    tutor = mod.socratic_tutor()
+    if tutor is None:
+        raise HTTPException(501, f"学科 {subject} 未实现苏格拉底课稿")
+    dsl = await tutor.generate_lesson_script(
+        topic=req.topic, grade=req.grade, knowledge_node_id=req.knowledge_node_id,
+        prerequisites=req.prerequisites or None, misconceptions=req.misconceptions or None,
+        layer=req.layer,
+    )
+    return dsl.to_dict()
+
+
+class CourseCheckpointRequest(BaseModel):
+    checkpoint: dict
+    student_answer: str
+
+
+@app.post("/api/course/{subject}/checkpoint")
+async def course_checkpoint(
+    subject: str,
+    req: CourseCheckpointRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """checkpoint 判分 — 学科 verifier 数值权威 (UC-M2)。"""
+    from .course.models import Checkpoint
+    mod = _get_subject_module(subject)
+    tutor = mod.socratic_tutor()
+    verifier = mod.verifier()
+    if tutor is None and verifier is None:
+        raise HTTPException(501, f"学科 {subject} 未实现判分")
+    cp = Checkpoint.from_dict(req.checkpoint)
+    if tutor is not None:
+        result = await tutor.judge_checkpoint(cp, req.student_answer)
+    else:
+        result = verifier.judge_checkpoint(cp, req.student_answer)
+    return result.to_dict() if hasattr(result, "to_dict") else {
+        "correct": result.correct, "method": result.method,
+        "detail": result.detail, "fallback": result.fallback, "hint": result.hint,
+    }
+
+
+class CourseSceneCompileRequest(BaseModel):
+    problem_text: str
+    knowledge_node_id: str = ""
+
+
+@app.post("/api/course/{subject}/scene-compile")
+async def course_scene_compile(
+    subject: str,
+    req: CourseSceneCompileRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """题目 → 参数化场景 DSL (SymPy 数值覆写, UC-M2 动画渲染)。"""
+    mod = _get_subject_module(subject)
+    compiler = mod.scene_compiler()
+    if compiler is None:
+        raise HTTPException(501, f"学科 {subject} 未实现场景编译")
+    dsl = await compiler.compile(req.problem_text, req.knowledge_node_id)
+    return dsl.to_dict()
+
+
+class CourseErrorAttributionRequest(BaseModel):
+    node_id: str
+    max_depth: int = 3
+
+
+@app.post("/api/course/{subject}/error-attribution")
+async def course_error_attribution(
+    subject: str,
+    req: CourseErrorAttributionRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """错题 GraphRAG 逆向归因 — 沿前置依赖回溯病灶路径 (UC-M4)。"""
+    mod = _get_subject_module(subject)
+    kg = mod.knowledge_graph()
+    if kg is None:
+        raise HTTPException(501, f"学科 {subject} 未实现知识图谱")
+    chain = kg.reverse_attribution(req.node_id, max_depth=req.max_depth)
+    node = kg.get_node(req.node_id)
+    return {
+        "subject": subject,
+        "source_node": node.to_dict() if node else None,
+        "attribution_path": chain,
+        "path_nodes": [kg.get_node(n).to_dict() if kg.get_node(n) else {"id": n} for n in chain],
+    }
+
+
+@app.get("/api/course/{subject}/mastery/{student_id}")
+async def course_mastery(
+    subject: str,
+    student_id: str,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """学生学科掌握度热力 (置信度启发式, DKT 替代, UC-M3)。"""
+    if subject_registry is None:
+        raise HTTPException(503, "subject registry not ready")
+    return {
+        "subject": subject,
+        "student_id": student_id,
+        "profile": subject_registry.mastery.student_profile(student_id),
+        "weak_nodes": subject_registry.mastery.weak_nodes(student_id),
+    }
+
+
+def _get_subject_module(subject: str):
+    """从 registry 取学科模块, 未注册返 404。"""
+    if subject_registry is None:
+        raise HTTPException(503, "subject registry not ready")
+    try:
+        return subject_registry.get(subject)
+    except Exception:
+        raise HTTPException(404, f"学科未注册: {subject}")
+
+
+@app.get("/api/course/{subject}/problem-bank")
+async def course_problem_bank(
+    subject: str,
+    template_id: str | None = None,
+    difficulty_layer: str | None = None,
+    knowledge_node_id: str | None = None,
+    misconception_tag: str | None = None,
+    kind: str | None = None,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """学科题库列表 (三元组打标: 知识点 + 认知层级 + 错因)。"""
+    mod = _get_subject_module(subject)
+    bank = mod.problem_bank()
+    if bank is None:
+        raise HTTPException(404, f"学科 {subject} 未实现题库")
+    problems = bank.query(
+        template_id=template_id, difficulty_layer=difficulty_layer,
+        knowledge_node_id=knowledge_node_id, misconception_tag=misconception_tag, kind=kind,
+    )
+    return {
+        "subject": subject,
+        "count": len(problems),
+        "problems": [p.to_dict() for p in problems],
+        "manifest": bank.to_manifest(),
+    }
+
+
+@app.get("/api/course/{subject}/problem-bank/{problem_id}")
+async def course_problem_detail(
+    subject: str,
+    problem_id: str,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """单题详情 (含变量/期望答案/认知点)。"""
+    mod = _get_subject_module(subject)
+    bank = mod.problem_bank()
+    if bank is None:
+        raise HTTPException(404, f"学科 {subject} 未实现题库")
+    p = bank.get(problem_id)
+    if p is None:
+        raise HTTPException(404, f"题目不存在: {problem_id}")
+    return {"subject": subject, "problem": p.to_dict()}
+
+
+# ── 课堂模块 (classroom PRD E1-E6, K1 文字版) ──
+
+class ClassroomScriptRequest(BaseModel):
+    subject: str = "数学"
+    grade: str = "5"
+    topic: str
+    lesson_plan: dict = {}
+
+
+class ClassroomPackRequest(BaseModel):
+    subject: str = "数学"
+    grade: str = "5"
+    topic: str
+    lesson_plan: dict = {}
+    slides: list = []
+    quiz: dict = {}
+    script: dict = {}
+    material_flags: dict = {}
+
+
+_StrAny = Annotated[str, BeforeValidator(_coerce_str)]
+
+
+class ClassroomAnswerRequest(BaseModel):
+    session_id: str
+    question_id: str
+    student_answer: _StrAny
+    expected_answer: _StrAny = ""
+    question_type: str = "open"  # open|numeric|multiple_choice|expression
+    grade: str = "5"
+
+
+class ClassroomSessionRequest(BaseModel):
+    code: str
+    student_id: str = "guest"
+
+
+@app.post("/api/classroom/script")
+async def classroom_script(
+    req: ClassroomScriptRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E1 讲课脚本生成 — 逐页讲稿 + 提问点 + emotion_tag。"""
+    if lesson_scripter is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    script = await lesson_scripter.generate(
+        subject=req.subject, grade=req.grade, topic=req.topic,
+        lesson_plan=req.lesson_plan or None,
+    )
+    return script.to_dict()
+
+
+@app.post("/api/classroom/pack")
+async def classroom_pack(
+    req: ClassroomPackRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E2 课程包打包 — 教案+课件+测验+脚本 → class_id + 6 位课堂码。"""
+    if packager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    pkg = packager.pack(
+        subject=req.subject, grade=req.grade, topic=req.topic,
+        lesson_plan=req.lesson_plan, slides=req.slides,
+        quiz=req.quiz, script=req.script, material_flags=req.material_flags,
+    )
+    return pkg.to_dict()
+
+
+@app.get("/api/classroom/pack/{code_or_id}")
+async def classroom_get_pack(
+    code_or_id: str,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E3 学生端拉取课程包 — 按课堂码或 class_id。"""
+    if packager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    pkg = packager.get_by_code(code_or_id) or packager.get_by_id(code_or_id)
+    if pkg is None:
+        raise HTTPException(404, "课堂码无效或课程包已删除")
+    return pkg.to_dict()
+
+
+@app.get("/api/classroom/packs")
+async def classroom_list_packs(
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """教师端课程包列表。"""
+    if packager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    pkgs = packager.list_all()
+    return {"count": len(pkgs), "packs": [p.to_manifest() for p in pkgs]}
+
+
+@app.post("/api/classroom/session")
+async def classroom_create_session(
+    req: ClassroomSessionRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E5 建课堂会话 — K1 文字版仅落库 (无 LiveKit token)。"""
+    if packager is None or session_manager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    pkg = packager.get_by_code(req.code)
+    if pkg is None:
+        raise HTTPException(404, "课堂码无效或课程包已删除")
+    sess = session_manager.create_session(pkg.class_id, req.code, req.student_id)
+    return {"session": sess.to_dict(), "package": pkg.to_dict()}
+
+
+@app.patch("/api/classroom/session/{session_id}/finish")
+async def classroom_finish_session(
+    session_id: str,
+    abandoned: bool = False,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E5 下课 — 提交课堂记录。"""
+    if session_manager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    sess = session_manager.finish_session(session_id, abandoned=abandoned)
+    if sess is None:
+        raise HTTPException(404, "会话不存在")
+    return {"session": sess.to_dict()}
+
+
+@app.post("/api/classroom/answer")
+async def classroom_answer(
+    req: ClassroomAnswerRequest,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E4 随堂作答判分 — 复用 AssessmentEngine / course checkpoint。"""
+    if session_manager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    correct, feedback, detail = await _judge_classroom_answer(req)
+    rec = session_manager.record_answer(
+        req.session_id, req.question_id, req.student_answer,
+        correct=correct, feedback=feedback, detail=detail,
+    )
+    return rec.to_dict()
+
+
+async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, str, str]:
+    """判分分发: numeric/multiple_choice 用本地逻辑, open/expression 委托 AssessmentEngine。"""
+    qtype = req.question_type
+    if qtype == "multiple_choice":
+        correct = req.student_answer.strip().upper() == str(req.expected_answer).strip().upper()
+        return correct, "对!" if correct else f"应为 {req.expected_answer}", "multiple_choice"
+    if qtype == "numeric":
+        try:
+            ok = abs(float(req.student_answer) - float(req.expected_answer)) <= 0.01 * max(1, abs(float(req.expected_answer)))
+            return ok, "数值正确" if ok else f"应为 {req.expected_answer}", "numeric"
+        except (ValueError, TypeError):
+            return False, f"非数值, 应为 {req.expected_answer}", "numeric"
+    # open / expression 委托 LLM 判分
+    if assessment_engine is not None:
+        try:
+            result = await assessment_engine.grade_math(
+                problem=req.question_id, answer=req.student_answer,
+                solution=req.expected_answer,
+            )
+            return bool(getattr(result, "correct", False)), getattr(result, "feedback", ""), "llm"
+        except Exception as exc:
+            logger.warning("classroom LLM 判分失败: %s, 降级字符串", exc)
+    # 兜底: 字符串包含
+    ok = req.expected_answer.strip() in req.student_answer if req.expected_answer else False
+    return ok, "参考答案匹配" if ok else "未匹配参考答案", "string_fallback"
+
+
+@app.get("/api/classroom/session/{session_id}/page/{page_index}")
+async def classroom_page_view(
+    session_id: str,
+    page_index: int,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """记录翻页进度 (E5 pages_viewed)。"""
+    if session_manager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    session_manager.record_page_view(session_id, page_index)
+    return {"session_id": session_id, "page_index": page_index, "recorded": True}
+
+
+@app.get("/api/classroom/report/{session_id}")
+async def classroom_report(
+    session_id: str,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """E6 课堂报告 — attendance/pages/quiz_stat/question_stat/weak_points。"""
+    if session_manager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    report = session_manager.build_report(session_id)
+    return report.to_dict()
+
+
+@app.get("/api/classroom/sessions/{class_id}")
+async def classroom_list_sessions(
+    class_id: str,
+    _: str = Depends(require_api_key),
+    _r: None = Depends(_require_ready),
+):
+    """教师端某课程包的会话列表。"""
+    if session_manager is None:
+        raise HTTPException(503, "课堂模块未就绪")
+    sessions = session_manager.store.list_sessions(class_id)
+    return {"class_id": class_id, "count": len(sessions), "sessions": sessions}
+
+
+# WebSocket: 苏格拉底课稿流式生成 (PRD §12.2, 5 事件协议)
+# GBNF Logits Masker 替代: 两阶段 prompt (<thinking>/<dsl>) + 后置 Pydantic 校验
+@app.websocket("/ws/socratic-dsl")
+async def ws_socratic_dsl(websocket: WebSocket):
+    """流式推送课稿生成: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error。"""
+    await websocket.accept()
+    try:
+        payload = await websocket.receive_json()
+        subject = str(payload.get("subject", "math"))
+        topic = str(payload.get("topic", ""))
+        grade = str(payload.get("grade", "5"))
+        if not topic:
+            await websocket.send_json({"event": "error", "data": {"message": "topic 必填"}})
+            await websocket.close()
+            return
+        await websocket.send_json({"event": "start", "data": {"stage": "thinking"}})
+        if subject_registry is None:
+            await websocket.send_json({"event": "error", "data": {"message": "registry not ready"}})
+            await websocket.close()
+            return
+        try:
+            mod = subject_registry.get(subject)
+        except Exception as exc:
+            await websocket.send_json({"event": "error", "data": {"message": str(exc)}})
+            await websocket.close()
+            return
+        tutor = mod.socratic_tutor()
+        if tutor is None:
+            await websocket.send_json({"event": "error", "data": {"message": f"学科 {subject} 未实现课稿"}})
+            await websocket.close()
+            return
+        # thinking 阶段占位 (真两阶段推理待上游 GBNF; 此处先推思考提示)
+        await websocket.send_json({"event": "stream_chunk", "data": {"stage": "thinking", "text": "正在分析知识点与教学路径..."}})
+        await websocket.send_json({"event": "stage_change", "data": {"new_stage": "dsl"}})
+        dsl = await tutor.generate_lesson_script(
+            topic=topic, grade=grade,
+            knowledge_node_id=str(payload.get("knowledge_node_id", "")) or None,
+            prerequisites=payload.get("prerequisites") or None,
+            misconceptions=payload.get("misconceptions") or None,
+            layer=str(payload.get("layer", "B")) or "B",
+        )
+        await websocket.send_json({"event": "dsl_complete", "data": {"dsl": dsl.to_dict(), "thinking": ""}})
+        await websocket.send_json({"event": "finish", "data": {}})
+    except Exception as exc:
+        logger.warning("ws_socratic_dsl 异常: %s", exc)
+        try:
+            await websocket.send_json({"event": "error", "data": {"message": str(exc)}})
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+# ==================== 数字人平台层 (K2/K3) ====================
+
+
+@app.post("/api/digital-human/session")
+async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """创建数字人会话 — 加载讲稿, prewarm 插件, 返回 session_id + 页面清单。"""
+    if digital_human_manager is None:
+        raise HTTPException(503, "digital_human_manager 未初始化")
+    subject = str(req.get("subject", "math"))
+    topic = str(req.get("topic", ""))
+    grade = str(req.get("grade", "3"))
+    code = str(req.get("code", ""))
+    student_id = str(req.get("student_id", ""))
+    layer = str(req.get("layer", "B"))
+    lesson_plan = req.get("lesson_plan") or None
+    # 复用已有 script — 若 req 带 script (pages), 注入 lesson_plan 避 DH 重生成讲稿
+    script_pages = req.get("script", {}).get("pages") if isinstance(req.get("script"), dict) else None
+    if script_pages and lesson_plan is None:
+        lesson_plan = {}
+    if script_pages:
+        lesson_plan["script_pages"] = script_pages
+    if not topic:
+        raise HTTPException(400, "topic 必填")
+    try:
+        sess = await digital_human_manager.create_session(
+            subject, topic, grade, code=code, student_id=student_id, layer=layer, lesson_plan=lesson_plan,
+        )
+    except Exception as exc:
+        logger.error("dh_create_session 失败: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc))
+    return {
+        "session_id": sess.session_id, "page_count": sess.page_count,
+        "pages": sess.page_manifest(), "subject": sess.subject, "topic": sess.topic,
+        "tts_available": sess.tts.available if sess.tts else False,
+        "avatar_available": sess.avatar.available,
+        "llm_available": sess.llm.available if sess.llm else False,
+    }
+
+
+@app.post("/api/digital-human/token")
+async def dh_token(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """签 LiveKit token + room 名。livekit 不可用时返 WS-only 标志。"""
+    if digital_human_manager is None:
+        raise HTTPException(503, "digital_human_manager 未初始化")
+    session_id = str(req.get("session_id", ""))
+    sess = digital_human_manager.get(session_id)
+    if sess is None:
+        raise HTTPException(404, "会话不存在")
+    room = f"class_{sess.code or sess.session_id}"
+    identity = f"student_{sess.student_id or session_id[-6:]}"
+    token = ""
+    lk_available = False
+    try:
+        token = sess.livekit.sign_token(identity, room)
+        lk_available = True
+    except Exception as exc:
+        logger.info("dh_token: LiveKit 不可用, WS 降级: %s", exc)
+    return {
+        "session_id": session_id, "room": room, "identity": identity,
+        "token": token, "livekit_available": lk_available,
+        "livekit_url": sess.livekit.url,
+    }
+
+
+@app.post("/api/digital-human/narrate")
+async def dh_narrate(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """讲解指定页 — TTS 合成 + Avatar 渲染, 返回音频/帧元数据 (Phase B: WS 传音频)。"""
+    if digital_human_manager is None:
+        raise HTTPException(503, "digital_human_manager 未初始化")
+    session_id = str(req.get("session_id", ""))
+    idx = int(req.get("idx", 0))
+    sess = digital_human_manager.get(session_id)
+    if sess is None:
+        raise HTTPException(404, "会话不存在")
+    try:
+        res = await sess.narrate_page(idx)
+    except Exception as exc:
+        logger.error("dh_narrate 失败: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc))
+    return res
+
+
+@app.post("/api/digital-human/raise-hand")
+async def dh_raise_hand(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """举手提问 — LLM 流式应答 (学生文字输入, Phase D 加语音)。"""
+    if digital_human_manager is None:
+        raise HTTPException(503, "digital_human_manager 未初始化")
+    session_id = str(req.get("session_id", ""))
+    text = str(req.get("text", ""))
+    sess = digital_human_manager.get(session_id)
+    if sess is None:
+        raise HTTPException(404, "会话不存在")
+    if not text:
+        raise HTTPException(400, "text 必填")
+    try:
+        res = await sess.raise_hand(text)
+    except Exception as exc:
+        logger.error("dh_raise_hand 失败: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc))
+    return res
+
+
+@app.post("/api/digital-human/finish")
+async def dh_finish(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
+    """结束数字人会话 — 释放资源, 落库课堂记录。"""
+    if digital_human_manager is None:
+        raise HTTPException(503, "digital_human_manager 未初始化")
+    session_id = str(req.get("session_id", ""))
+    try:
+        res = await digital_human_manager.finish(session_id)
+    except Exception as exc:
+        logger.error("dh_finish 失败: %s", exc, exc_info=True)
+        raise HTTPException(500, str(exc))
+    if res is None:
+        raise HTTPException(404, "会话不存在")
+    return res
+
+
+@app.websocket("/ws/digital-human/{session_id}")
+async def ws_digital_human(websocket: WebSocket, session_id: str):
+    """数字人 WS — 推送状态事件/情绪/音频, 收学生动作 (narrate/raise_hand/finish)。
+
+    Phase B: TTS 音频走 WS 二进制帧。Phase C: 视频走 LiveKit。
+    """
+    await websocket.accept()
+    if digital_human_manager is None:
+        await websocket.send_json({"event": "error", "data": {"message": "manager 未初始化"}})
+        await websocket.close()
+        return
+    sess = digital_human_manager.get(session_id)
+    if sess is None:
+        await websocket.send_json({"event": "error", "data": {"message": "会话不存在"}})
+        await websocket.close()
+        return
+    logger.info("ws_digital_human[%s]: 连接", session_id)
+    try:
+        await websocket.send_json({"event": "ready", "data": {
+            "page_count": sess.page_count, "pages": sess.page_manifest(),
+            "tts_available": sess.tts.available if sess.tts else False,
+            "asr_available": sess.asr.available if sess.asr else False,
+            "avatar_available": sess.avatar.available if sess.avatar else False,
+        }})
+        while True:
+            msg = await websocket.receive()
+            if "text" in msg:
+                import json as _json
+                data = _json.loads(msg["text"])
+                action = str(data.get("action", ""))
+                if action == "narrate_page":
+                    idx = int(data.get("idx", 0))
+                    await websocket.send_json({"event": "narrate_start", "data": {"idx": idx}})
+                    res = await sess.narrate_page(idx)
+                    await websocket.send_json({"event": "narrate_done", "data": res})
+                    if res.get("has_audio") and sess._last_audio:
+                        await websocket.send_bytes(sess._last_audio)
+                elif action == "raise_hand":
+                    text = str(data.get("text", ""))
+                    res = await sess.raise_hand(text)
+                    await websocket.send_json({"event": "qa_done", "data": res})
+                    if res.get("has_audio") and sess._last_audio:
+                        await websocket.send_bytes(sess._last_audio)
+                elif action == "student_speech":
+                    await websocket.send_json({"event": "asr_ack", "data": {}})
+                elif action == "finish":
+                    await digital_human_manager.finish(session_id)
+                    await websocket.send_json({"event": "finished", "data": {"session_id": session_id}})
+                    break
+                else:
+                    await websocket.send_json({"event": "error", "data": {"message": f"未知 action: {action}"}})
+            elif "bytes" in msg:
+                pcm = msg["bytes"]
+                await websocket.send_json({"event": "asr_start", "data": {}})
+                res = await sess.on_student_speech(pcm)
+                await websocket.send_json({"event": "qa_done", "data": res})
+                if res.get("has_audio") and sess._last_audio:
+                    await websocket.send_bytes(sess._last_audio)
+    except WebSocketDisconnect:
+        logger.info("ws_digital_human[%s]: 断开", session_id)
+    except Exception as exc:
+        logger.warning("ws_digital_human[%s] 异常: %s", session_id, exc)
+        try:
+            await websocket.send_json({"event": "error", "data": {"message": str(exc)}})
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
+# 教师 Web GUI 静态挂载 (PRD GUI §2: dist/ 由 serve.py StaticFiles 挂 /, API 走 /api/*)
+_WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+if _WEB_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(_WEB_DIST), html=True), name="web-gui")
+    logger.info("web_gui: 挂载 dist/ %s", _WEB_DIST)
+else:
+    logger.debug("web_gui: dist/ 不存在, 跳过静态挂载 (开发模式用 vite dev)")
+

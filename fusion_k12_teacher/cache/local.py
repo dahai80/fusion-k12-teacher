@@ -11,6 +11,9 @@ from collections import OrderedDict
 
 from .base import CacheBackend
 
+# 惰性清扫最小间隔 (秒) — 防每次 incr 都全量扫描
+_SWEEP_INTERVAL = 60.0
+
 
 class LocalCache(CacheBackend):
     """进程内 OrderedDict LRU + TTL。"""
@@ -21,6 +24,7 @@ class LocalCache(CacheBackend):
         self._lock = asyncio.Lock()
         self._counters: dict[str, int] = {}
         self._counter_ttl: dict[str, float] = {}
+        self._last_sweep = 0.0
 
     def _expired(self, key: str, now: float) -> bool:
         val = self._data.get(key)
@@ -59,6 +63,10 @@ class LocalCache(CacheBackend):
     async def incr(self, key: str, ttl: int = 60) -> int:
         now = time.monotonic()
         async with self._lock:
+            # issue #15: 计数器 dict 无上限, 过期项仅在同 key 再 incr 时才清 —
+            # 海量不同 key (如伪造 IP 限流) 可无限增长。惰性批量清扫兜底。
+            if len(self._counters) > self._max and now - self._last_sweep >= _SWEEP_INTERVAL:
+                self._sweep_expired(now)
             exp = self._counter_ttl.get(key, 0.0)
             if exp > 0 and now >= exp:
                 self._counters.pop(key, None)
@@ -69,6 +77,14 @@ class LocalCache(CacheBackend):
             else:
                 self._counters[key] += 1
             return self._counters[key]
+
+    def _sweep_expired(self, now: float) -> None:
+        """批量清除过期计数器 — 须持 _lock 调用 (issue #15)。"""
+        expired = [k for k, exp in self._counter_ttl.items() if exp > 0 and now >= exp]
+        for k in expired:
+            self._counters.pop(k, None)
+            self._counter_ttl.pop(k, None)
+        self._last_sweep = now
 
     async def expire(self, key: str, ttl: int) -> None:
         now = time.monotonic()
