@@ -45,6 +45,7 @@ _TRANSIENT_ERRORS = (
     httpx.ConnectError, httpx.ConnectTimeout,
     httpx.ReadTimeout, httpx.RemoteProtocolError,
 )
+_RETRYABLE_ERRORS = (*_TRANSIENT_ERRORS, asyncio.TimeoutError)
 
 
 class _ModelNotFound(Exception):
@@ -104,8 +105,8 @@ class MLXClient:
         # 多协程首调同时触发 double-build, 短暂泄漏一个连接池实例。__init__ 构造免竞态。
         self._httpx_client = self._build_httpx_client()
         logger.info(
-            "MLXClient init base_url=%s model=%s fusion_core=%s",
-            self.base_url, self.model or "(auto)", _HAS_FUSION_CORE,
+            "MLXClient init base_url=%s model=%s fusion_core=%s max_concurrency=%d",
+            self.base_url, self.model or "(auto)", _HAS_FUSION_CORE, _LLM_MAX_CONCURRENCY,
         )
 
     def _ensure_locks(self) -> None:
@@ -165,12 +166,20 @@ class MLXClient:
             used_model = self.model or _env_model()
             try:
                 # P1-19: 全局并发信号量限流 — 超并发请求排队等待, 不雪崩本地推理
-                async with _llm_sem():
-                    return await self._dispatch_chat(messages, used_model, temperature, max_tokens)
-            except _TRANSIENT_ERRORS as e:
+                # 硬超时兜底 — fusion_core 连接卡死时 ReadTimeout 可能不触发, 防 sem 永久持有
+                sem = _llm_sem()
+                await asyncio.wait_for(sem.acquire(), timeout=self._read_timeout + 30)
+                try:
+                    return await asyncio.wait_for(
+                        self._dispatch_chat(messages, used_model, temperature, max_tokens),
+                        timeout=self._read_timeout + 30,
+                    )
+                finally:
+                    sem.release()
+            except _RETRYABLE_ERRORS as e:
                 last_exc = e
                 if attempt < self._max_retries:
-                    logger.warning("chat 瞬态错误重试 %d/%d: %s", attempt + 1, self._max_retries, e)
+                    logger.warning("chat 瞬态错误/超时重试 %d/%d: %s", attempt + 1, self._max_retries, e)
                     await asyncio.sleep(0.5 * (attempt + 1))
                     continue
                 raise
@@ -196,6 +205,7 @@ class MLXClient:
         import time as _time
         _t0 = _time.monotonic()
         _ok = False
+        think_kwargs = self._think_kwargs()
         try:
             if _HAS_FUSION_CORE and self._inner is not None:
                 try:
@@ -204,15 +214,15 @@ class MLXClient:
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
+                        chat_template_kwargs=think_kwargs,
                     )
                     _ok = True
                     return r
                 except NonDegradableError:
-                    # P2: 认证/服务端硬错不可降级 — 直接上抛, 不吞成 httpx 重试 (与 _chat_httpx A12 一致)
                     raise
                 except Exception as e:
                     logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
-            r = await self._chat_httpx(messages, model, temperature, max_tokens)
+            r = await self._chat_httpx(messages, model, temperature, max_tokens, think_kwargs)
             _ok = True
             return r
         finally:
@@ -229,6 +239,7 @@ class MLXClient:
         model: str,
         temperature: float,
         max_tokens: int,
+        think_kwargs: dict | None = None,
     ) -> str:
         payload = {
             "model": model or _env_model(),
@@ -236,6 +247,8 @@ class MLXClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if think_kwargs:
+            payload["chat_template_kwargs"] = think_kwargs
         resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
             raise _ModelNotFound(f"模型未加载: {model}")
@@ -279,6 +292,89 @@ class MLXClient:
         resp.raise_for_status()
         return resp.json().get("data", [])
 
+    async def speech(
+        self, text: str, *,
+        voice: str = "",
+        response_format: str = "wav",
+        speed: float = 1.0,
+    ) -> bytes:
+        """fusion-mlx /v1/audio/speech — Kokoro TTS。返回音频 bytes (wav/mp3/pcm)。"""
+        import time as _time
+        _t0 = _time.monotonic()
+        payload: dict[str, Any] = {
+            "model": "kokoro-82m",
+            "input": text,
+            "response_format": response_format,
+            "speed": speed,
+        }
+        if voice:
+            payload["voice"] = voice
+        try:
+            resp = await self.httpx_client.post("/audio/speech", json=payload, headers=self._auth_headers())
+            if resp.status_code >= 400:
+                logger.error("TTS HTTP %d: %s", resp.status_code, resp.text[:200])
+                raise RuntimeError(f"TTS HTTP {resp.status_code}")
+            logger.info("TTS ok text=%d字节 format=%s 耗时=%.1fs", len(text), response_format, _time.monotonic() - _t0)
+            return resp.content
+        except httpx.HTTPError as e:
+            logger.error("TTS 请求失败: %s", e)
+            raise
+
+    async def transcribe(
+        self, audio: bytes, *,
+        model: str = "whisper-large-v3-turbo",
+        language: str = "zh",
+    ) -> str:
+        """fusion-mlx /v1/audio/transcriptions — Whisper ASR。返回识别文本。"""
+        import time as _time
+        _t0 = _time.monotonic()
+        files = {"file": ("audio.wav", audio, "audio/wav")}
+        data: dict[str, Any] = {"model": model, "language": language, "word_timestamps": "false"}
+        try:
+            resp = await self.httpx_client.post(
+                "/audio/transcriptions", files=files, data=data, headers=self._auth_headers(),
+            )
+            if resp.status_code >= 400:
+                logger.error("ASR HTTP %d: %s", resp.status_code, resp.text[:200])
+                raise RuntimeError(f"ASR HTTP {resp.status_code}")
+            body = resp.json()
+            text = body.get("text", "")
+            logger.info("ASR ok 文本=%d字 耗时=%.1fs", len(text), _time.monotonic() - _t0)
+            return text
+        except httpx.HTTPError as e:
+            logger.error("ASR 请求失败: %s", e)
+            raise
+
+    def _think_kwargs(self) -> dict[str, Any]:
+        # Qwen3 系列默认开 thinking (reasoning) 模式, 复杂 prompt 生成数分钟 reasoning_content。
+        # 教学场景需快速响应, env FUSION_MLX_ENABLE_THINKING=true 可开 (默认关)。
+        if os.environ.get("FUSION_MLX_ENABLE_THINKING", "").lower() in ("1", "true", "yes"):
+            return {}
+        return {"enable_thinking": False}
+
+    async def chat_stream(
+        self, messages: list[dict[str, str]], *, temperature: float = 0.7, max_tokens: int = 4096,
+    ) -> Any:
+        """fusion-mlx /v1/chat/completions stream — SSE token 流。返回 httpx.Response (流式)。
+
+        P1-19: 流式不纳入 chat 信号量 — _answer 流式答疑中 TTS 须与 LLM 流并发 (同 sem 死锁)。
+        流式推理单 DH 会话内串行 (fsm 保证), 跨会话并发由 chat() 信号量间接限流。
+        """
+        self._ensure_locks()
+        if not self.model:
+            self.model = await self._auto_select_model()
+        payload = {
+            "model": self.model or _env_model(),
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "chat_template_kwargs": self._think_kwargs(),
+        }
+        return self.httpx_client.stream(
+            "POST", "/chat/completions", json=payload, headers=self._auth_headers(),
+        )
+
     async def _auto_select_model(self, force: bool = False) -> str:
         """自动选择可用聊天模型 — 优先匹配已知聊天模型，跳过非聊天模型。"""
         async with self._auto_select_lock:
@@ -292,6 +388,11 @@ class MLXClient:
             if not models:
                 return _env_model()
             ids = {m.get("id", m.get("model", "")) for m in models}
+            env_model = _env_model()
+            if env_model and env_model in ids:
+                logger.info("自动选择聊天模型 (env 指定): %s", env_model)
+                self.model = env_model
+                return env_model
             for pref in _PREFERRED_CHAT_MODELS:
                 if pref in ids:
                     logger.info("自动选择聊天模型: %s", pref)
