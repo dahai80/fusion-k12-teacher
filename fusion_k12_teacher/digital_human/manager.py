@@ -132,7 +132,7 @@ class DigitalHumanManager:
         # 超时则快失败, 调用方收 503 而非挂死
         try:
             await asyncio.wait_for(self._gate.acquire(), timeout=_GATE_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("manager: DH 并发闸门超时 (活跃会话≥%d), 拒绝新建", MAX_SESSIONS)
             raise RuntimeError(f"DH 并发已满 (max={MAX_SESSIONS}), 请先 finish 旧会话")
         session_id = new_id("dh-")
