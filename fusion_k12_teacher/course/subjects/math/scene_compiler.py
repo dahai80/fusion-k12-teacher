@@ -263,6 +263,10 @@ class MathSceneCompiler(SceneCompilerBase):
             timeline={
                 "total_distance": total_distance or 0.0,
                 "total_time": total_time or 0.0,
+                # 答案字段与 generic 路径对齐 — 模板题的主解 (total_distance/total_time
+                # 语义随场景变化, answer 统一取主解) 供前端/测试统一读取
+                "answer": total_distance or total_time,
+                "answer_unit": "",
                 "milestones": [m.to_dict() for m in milestones],
             },
             pedagogy={
