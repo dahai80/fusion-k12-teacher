@@ -290,6 +290,69 @@ class MathSceneCompiler(SceneCompilerBase):
         logger.info("scene_compiler: scenario=%s verified=%s fallback=%s", scenario, dsl.verified, dsl.fallback)
         return dsl
 
+    def _build_judgment_dsl(self, problem: str, knowledge_node_id: str,
+                            parsed: dict[str, Any], jres: dict[str, Any]) -> SceneDSL:
+        """判断型题 DSL — criterion 判据值 + 结论揭示 (verdict) 供前端渲染。"""
+        is_true = jres["verdict"]
+        val = jres["criterion_value"]
+        knowns = parsed["knowns"]
+        entities = [
+            SceneEntity(id=name, type="reference_line", label=name, value=float(v),
+                        unit="")
+            for name, v in knowns.items()
+        ]
+        milestones = [
+            Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
+                      highlight_entities=[e.id for e in entities[:3]],
+                      formula_state=parsed["criterion_expr"]),
+            Milestone(progress_percentage=50.0, time_mark=0.5, event_name="计算判据",
+                      highlight_entities=[], formula_state=f"{parsed['criterion_expr']} = {val:g}"),
+            Milestone(progress_percentage=100.0, time_mark=1.0, event_name="结论",
+                      highlight_entities=[],
+                      formula_state=("✓ " if is_true else "✗ ") + jres["verdict_text"]),
+        ]
+        return SceneDSL(
+            subject="math",
+            template_type="generic_judgment",
+            meta={
+                "title": problem[:60], "original_text": problem,
+                "knowledge_node_id": knowledge_node_id,
+                "pipeline": "generic",
+                "question_kind": "judgment",
+            },
+            entities=[e.to_dict() for e in entities],
+            canvas_config={
+                "dimension": "2D",
+                "visual": parsed["visual"],
+                "criterion": {
+                    "expr": parsed["criterion_expr"],
+                    "value": val,
+                    "verdict": is_true,
+                    "verdict_text": jres["verdict_text"],
+                },
+                "parameters": [{"key": k, "label": k, "value": v, "unit": ""}
+                               for k, v in knowns.items()],
+                "scale_mapping": {"unit_to_pixel_ratio": self._calc_scale(max(abs(val), abs(max(knowns.values(), default=1.0))) or 1.0), "auto_fit": True},
+            },
+            timeline={
+                "total_distance": max(abs(val), 1.0),
+                "total_time": 1.0,
+                "answer": val,
+                "answer_unit": "",
+                "milestones": [m.to_dict() for m in milestones],
+            },
+            pedagogy={
+                "misconception_breakdown": parsed["misconception_hint"],
+                "key_takeaway": jres["verdict_text"],
+                "prerequisite_node_ids": [],
+                "steps": parsed["steps"],
+                "question_focus": parsed["question_focus"],
+            },
+            verified=True,
+            error="",
+            fallback=False,
+        )
+
     async def _compile_generic(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
         """通用路径 — 任意新题型: 开放提取 → SymPy 求解 → 可视化原语 DSL。
 
@@ -301,6 +364,13 @@ class MathSceneCompiler(SceneCompilerBase):
         except Exception as exc:
             logger.warning("scene_compiler: 通用路径提取失败 %s", exc)
             return None
+        # 判断型题 (能不能/对不对) 支路 — criterion 判据数值化, 无方程求解
+        judgment = generic_pipeline.parse_judgment(raw)
+        if judgment is not None:
+            jres = generic_pipeline.solve_judgment(judgment)
+            if jres is not None:
+                return self._build_judgment_dsl(problem, knowledge_node_id, judgment, jres)
+            logger.info("scene_compiler: 判断题判据求值失败, 继续按求解型解析")
         parsed = generic_pipeline.parse_generic_extraction(raw)
         if parsed is None:
             logger.info("scene_compiler: 通用路径提取结构不合规, 维持降级")
