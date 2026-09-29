@@ -79,6 +79,12 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 {"knowns": {"rect_length": {"value": 10, "unit": "cm"}, "rect_width": {"value": 5, "unit": "cm"}}, "unknowns": ["target"], "equations": ["target - 4*rect_length"], "answer_expr": "target", "answer_unit": "厘米", "steps": ["验证: 沿长边拼接 → 新边 = 宽*2 = 10 = 原 长, 是正方形", "周长 = 4*10 = 40"], "pipeline": [{"step":1,"title":"验证并定新边长","formula":"2*宽=10=长 → 新边长=长=10","eval":"params.rect_length","result_unit":"厘米"},{"step":2,"title":"周长","formula":"4*10=40","eval":"results[1]*4","result_unit":"厘米"}]}
 关键: 用数值验证哪个拼接方向能形成目标形状 (宽*2 == 长 成立 → 新边长=长), 再算。
 
+范例3 (判断型题 — 能不能/对不对/够不够, 无需求未知数):
+题: 用长 3cm、4cm 和 8cm 的三根小棒, 能拼成一个三角形吗?
+{"question_kind": "judgment", "knowns": {"side1": {"value": 3, "unit": "cm"}, "side2": {"value": 4, "unit": "cm"}, "side3": {"value": 8, "unit": "cm"}}, "criterion": {"expr": "side1 + side2 - side3", "true_meaning": "两边之和大于第三边, 能拼成三角形", "false_meaning": "两边之和小于等于第三边, 三线段重合, 不能拼成三角形"}, "steps": ["三角形需任意两边之和大于第三边", "最短两边之和 3+4=7 < 8", "结论: 不能"], "visual": {"kind": "bar_model"}, "misconception_hint": "只验证一对边之和大于第三边不够, 须最短两边之和大于最长边"}
+关键: 判断题不设 unknowns/equations/pipeline, criterion.expr 用已知量算出数值 —
+结果 >0 取 true_meaning, =0 或 <0 取 false_meaning。
+
 只输出 JSON, 不要解释。"""
 
 
@@ -116,8 +122,9 @@ _ALLOWED_NODES = (
 )
 
 
-def _eval_safe(expr: str) -> bool:
-    """静态校验 eval 串 — 只允许算术 + params.x / results[n] 访问, 拒绝调用/属性链。"""
+def _eval_safe(expr: str, extra_names: set[str] | None = None) -> bool:
+    """静态校验 eval 串 — 算术 + params.x/results[n] + extra_names (判断题判据裸名)。"""
+    allowed = {"params", "results"} | (extra_names or set())
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError:
@@ -131,7 +138,7 @@ def _eval_safe(expr: str) -> bool:
                 return False
             if node.attr.startswith("_"):
                 return False
-        if isinstance(node, ast.Name) and node.id not in ("params", "results"):
+        if isinstance(node, ast.Name) and node.id not in allowed:
             return False
     return True
 
@@ -189,6 +196,9 @@ def _ast_eval(node: ast.AST, params: dict[str, float], results: dict[int, float]
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
         if node.value.id == "params" and node.attr in params:
             return float(params[node.attr])
+    # 判断题判据裸变量名 (side1 等) — 安全校验 (_eval_safe extra_names) 已限定范围
+    if isinstance(node, ast.Name) and node.id in params:
+        return float(params[node.id])
     if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "results":
         idx = node.slice
         if isinstance(idx, ast.Constant) and isinstance(idx.value, int):
@@ -318,6 +328,61 @@ def _sanitize_visual(raw: Any) -> dict[str, Any]:
 def build_generic_prompt(problem: str) -> str:
     # replace 而非 format — prompt 内含大量 JSON 大括号, format 转义易错
     return _GENERIC_PROMPT.replace("__PROBLEM__", problem)
+
+
+def parse_judgment(raw: str) -> dict[str, Any] | None:
+    """解析判断型题 (question_kind=judgment) 输出 — criterion 必须合法。"""
+    from ...._parse import parse_json
+    data = parse_json(raw)
+    if not isinstance(data, dict) or str(data.get("question_kind", "")) != "judgment":
+        return None
+    knowns_raw = data.get("knowns")
+    if not isinstance(knowns_raw, dict) or not knowns_raw:
+        return None
+    knowns: dict[str, float] = {}
+    for name, item in list(knowns_raw.items())[:12]:
+        if not isinstance(name, str) or not name.isidentifier():
+            continue
+        val = item.get("value") if isinstance(item, dict) else item
+        try:
+            knowns[name] = float(val)
+        except (TypeError, ValueError):
+            continue
+    if not knowns:
+        return None
+    crit_raw = data.get("criterion")
+    if not isinstance(crit_raw, dict):
+        return None
+    expr = str(crit_raw.get("expr", ""))
+    if not expr or not _eval_safe(expr, extra_names=set(knowns)):
+        return None
+    return {
+        "knowns": knowns,
+        "criterion_expr": expr[:200],
+        "true_meaning": str(crit_raw.get("true_meaning", "成立"))[:120],
+        "false_meaning": str(crit_raw.get("false_meaning", "不成立"))[:120],
+        "steps": [str(s)[:120] for s in data.get("steps", [])[:5] if isinstance(s, str)],
+        "visual": _sanitize_visual(data.get("visual")),
+        "misconception_hint": str(data.get("misconception_hint", ""))[:120],
+        "question_focus": str(data.get("question_focus", ""))[:60],
+    }
+
+
+def solve_judgment(parsed: dict[str, Any]) -> dict[str, Any] | None:
+    """执行判据表达式 (受限 AST), 返回 {criterion_value, verdict, verdict_text}。"""
+    try:
+        tree = ast.parse(parsed["criterion_expr"], mode="eval")
+        val = float(_ast_eval(tree.body, parsed["knowns"], {}))
+    except Exception:
+        return None
+    if val != val or val in (float("inf"), float("-inf")):
+        return None
+    is_true = val > 0
+    return {
+        "criterion_value": val,
+        "verdict": is_true,
+        "verdict_text": parsed["true_meaning"] if is_true else parsed["false_meaning"],
+    }
 
 
 def parse_generic_extraction(raw: str) -> dict[str, Any] | None:

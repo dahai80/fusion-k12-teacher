@@ -49,6 +49,18 @@ const isSpecial = computed(() => isCutting.value || isQueue.value || isFence.val
 
 // 通用路径 (S1解析→S2 DSL→S3渲染): 后端 generic 管线产出的可视化原语 DSL
 const isGeneric = computed(() => props.scene?.meta?.pipeline === 'generic' || tpl.value === 'generic_solve')
+// 判断型题 (generic_judgment): criterion 判据 + 结论揭示
+const isJudgment = computed(() => tpl.value === 'generic_judgment')
+const judgmentInfo = computed(() => {
+  const c = props.scene?.canvas_config?.criterion || {}
+  return {
+    expr: String(c.expr || ''),
+    value: Number(c.value || 0),
+    verdict: !!c.verdict,
+    verdictText: String(c.verdict_text || ''),
+    knowns: (props.scene?.canvas_config?.parameters || []) as any[],
+  }
+})
 // 分步推导链 (Gemini 方案融合): 按进度定位当前步骤, HUD 显示标题/公式/结果
 const genericPipeline = computed<any[]>(() => props.scene?.canvas_config?.pipeline || [])
 const currentStep = computed(() => {
@@ -226,6 +238,8 @@ function draw() {
 
   if (isGeneric.value) {
     drawGenericScene(ctx, W, H)
+  } else if (isJudgment.value) {
+    drawJudgmentScene(ctx, W, H)
   } else if (isCutting.value) {
     drawCutting(ctx, W, H)
   } else if (isQueue.value) {
@@ -1492,6 +1506,55 @@ function drawGenericTimeline(ctx: CanvasRenderingContext2D, W: number, H: number
   drawText(ctx, genericVisual.value.startLabel || '现在', marginX, lineY - 34, '#16a34a', 'center', 'bold 11px sans-serif')
   drawText(ctx, genericVisual.value.endLabel || `+${fmtNum(answer)}${unit}`, marginX + lineW, lineY - 34, '#dc2626', 'center', 'bold 11px sans-serif')
   if (frac > 0.9) drawText(ctx, `答案: ${fmtNum(answer)} ${unit}`, W / 2, lineY + 50, '#c026d3', 'center', 'bold 15px sans-serif')
+}
+
+// ── 判断型题渲染: 天平/比较图 + 结论揭示 ──
+function drawJudgmentScene(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  const info = judgmentInfo.value
+  const frac = progress.value / 100
+  // HUD: 判据表达式
+  drawText(ctx, `判据: ${info.expr}`, 20, 26, '#0f172a', 'left', 'bold 13px sans-serif')
+  // 已知量量块 (天平两侧)
+  const knowns = info.knowns.filter((p: any) => Number(p.value) > 0)
+  const barY = H / 2
+  const barW = W - 160
+  // 判据值随进度展开: 正值 → 右倾 (成立), ≤0 → 持平/左倾 (不成立)
+  const shownVal = info.value * frac
+  const tilt = Math.max(-1, Math.min(1, shownVal / Math.max(...knowns.map((p: any) => Number(p.value)), 1)))
+  ctx.save()
+  ctx.translate(W / 2, barY)
+  ctx.rotate(tilt * 0.12)
+  // 天平横梁
+  ctx.strokeStyle = '#334155'
+  ctx.lineWidth = 5
+  ctx.beginPath(); ctx.moveTo(-barW / 2, 0); ctx.lineTo(barW / 2, 0); ctx.stroke()
+  // 支点
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 46); ctx.stroke()
+  ctx.fillStyle = '#64748b'
+  ctx.beginPath(); ctx.moveTo(-18, 46); ctx.lineTo(18, 46); ctx.lineTo(0, 70); ctx.fill()
+  // 两侧量块
+  const half = knowns.length >= 2 ? Math.ceil(knowns.length / 2) : knowns.length
+  knowns.forEach((p: any, i: number) => {
+    const side = i < half ? -1 : 1
+    const idx = i < half ? i : i - half
+    const bw = 64, bh = 34
+    const bx = side * (barW / 4 + idx * 76) - bw / 2
+    ctx.fillStyle = side < 0 ? '#93c5fd' : '#fdba74'
+    ctx.fillRect(bx, 10, bw, bh)
+    ctx.fillStyle = '#334155'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(`${p.key}=${fmtNum(Number(p.value))}`, bx + bw / 2, 31)
+  })
+  ctx.restore()
+  // 判据值进度标注
+  drawText(ctx, `${info.expr} = ${fmtNum(info.value * frac)}${frac < 1 ? ' …' : ''}`, W / 2, H - 58, '#0284c7', 'center', 'bold 12px sans-serif')
+  // 结论揭示 (进度 >90%)
+  if (frac > 0.9) {
+    const ok = info.verdict
+    drawText(ctx, ok ? '✓ 成立' : '✗ 不成立', W / 2, H - 30, ok ? '#16a34a' : '#dc2626', 'center', 'bold 17px sans-serif')
+    drawText(ctx, info.verdictText, W / 2, H - 12, '#475569', 'center', '11px sans-serif')
+  }
 }
 
 function fmtNum(n: number): string {
