@@ -69,6 +69,16 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 
 题目: __PROBLEM__
 
+参考范例 (同构题型 — 注意方程的解必须直接就是所问的量):
+
+范例1 (削去/剩余类 — 问的是"削去"不是"保留"):
+{"knowns": {"base_area": {"value": 10, "unit": "cm²"}, "height": {"value": 6, "unit": "cm"}}, "unknowns": ["target"], "equations": ["target - base_area*height*(1 - 1/3)"], "answer_expr": "target", "answer_unit": "立方厘米", "steps": ["柱体积=10*6=60", "削去=柱×2/3=40"], "pipeline": [{"step":1,"title":"柱体积","formula":"V=10*6=60","eval":"params.base_area*params.height","result_unit":"立方厘米"},{"step":2,"title":"削去体积","formula":"V*2/3=40","eval":"results[1]*2/3","result_unit":"立方厘米"}]}
+关键: "削去" = 整体 × (1 - 1/3) = 整体 × 2/3, 不是保留部分本身。
+
+范例2 (拼接类 — 先验证形状约束再定新边长):
+{"knowns": {"rect_length": {"value": 10, "unit": "cm"}, "rect_width": {"value": 5, "unit": "cm"}}, "unknowns": ["target"], "equations": ["target - 4*rect_length"], "answer_expr": "target", "answer_unit": "厘米", "steps": ["验证: 沿长边拼接 → 新边 = 宽*2 = 10 = 原 长, 是正方形", "周长 = 4*10 = 40"], "pipeline": [{"step":1,"title":"验证并定新边长","formula":"2*宽=10=长 → 新边长=长=10","eval":"params.rect_length","result_unit":"厘米"},{"step":2,"title":"周长","formula":"4*10=40","eval":"results[1]*4","result_unit":"厘米"}]}
+关键: 用数值验证哪个拼接方向能形成目标形状 (宽*2 == 长 成立 → 新边长=长), 再算。
+
 只输出 JSON, 不要解释。"""
 
 
