@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
-  <img src="https://img.shields.io/badge/tests-284%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-548%20passed-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -324,6 +324,140 @@ REST API for programmatic access (default port 11448).
 | `/api/audit/export` | GET | Export audit events (admin key, JSON/CSV) |
 | `/api/metrics` | GET | Prometheus metrics (admin key) |
 | `/api/ready` | GET | Readiness probe |
+| `/api/course/subjects` | GET | List registered subjects (platform-content decoupled) |
+| `/api/course/{subject}/graph/nodes` | GET | Knowledge graph nodes (filter by grade) |
+| `/api/course/{subject}/graph/node/{id}` | GET | Node detail + prerequisite chain |
+| `/api/course/{subject}/lesson-script` | POST | Generate Socratic 5E lesson script (FusionSocratic DSL) |
+| `/api/course/{subject}/checkpoint` | POST | Judge checkpoint (numeric/expression/multiple_choice) |
+| `/api/course/{subject}/scene-compile` | POST | Compile problem into Scene DSL (LLM extract + SymPy verify) |
+| `/api/course/{subject}/error-attribution` | POST | Reverse error attribution along prerequisite chain |
+| `/api/course/{subject}/mastery/{student_id}` | GET | Student mastery heat map (confidence heuristic) |
+| `/api/course/{subject}/problem-bank` | GET | Problem bank list (triple-tagged: node + cognitive + misconception) |
+| `/api/course/{subject}/problem-bank/{id}` | GET | Single problem detail |
+| `/ws/socratic-dsl` | WS | Streaming lesson-script generation (5-event protocol) |
+
+---
+
+### 13. Course Platform (`course/`) — v2.1, platform-content decoupled
+
+A subject-agnostic course platform. The platform depends only on the `SubjectModule` protocol — math content lives in `course/subjects/math/`, future physics/chemistry/English/Chinese subjects plug in with **zero platform changes**.
+
+```
+course/
+├── base.py          # SubjectModule protocol + KG/Verifier/SceneCompiler/Tutor ABCs
+├── models.py        # FusionSocratic DSL 2.1, Scene DSL 2.0, Checkpoint, GraphNode
+├── registry.py      # SubjectRegistry: discover + init + fail-fast isolation
+├── mastery.py       # Confidence heuristic tracker (DKT replacement, N≥5 cold-start)
+└── subjects/
+    └── math/        # First subject: train-bridge problem family
+        ├── sympy_verifier.py    # SymPy SSoT, 6 scenario handlers, 1.5s timeout
+        ├── knowledge_graph.py   # networkx DAG, 52 nodes, Tarjan SCC validation
+        ├── scene_compiler.py    # 3-stage: LLM extract → SymPy overwrite → render
+        ├── socratic_tutor.py    # 5E lesson script generation
+        ├── problem_bank.py      # Triple-tagged problem loader
+        └── data/
+            ├── train_bridge_bank.json   # 9 problems (5 examples + 3 exercises), A/B/C layers
+            └── math_enhanced.json       # Formula/spatial/misconception enrichment (CROSS/EXEMPLIFIES edges)
+```
+
+**Key design decisions** (PRD-aligned, upstream-deferred):
+- **SymPy symbolic engine** as numerical Single Source of Truth — overrides LLM-extracted values (PRD §6 rigor).
+- **networkx DAG** replaces Neo4j (offline pure Python; Neo4j upstream issue).
+- **Confidence heuristic** replaces DKT Transformer (Wilson lower bound, N≥5 cold-start; real DKT upstream).
+- **Structured-output prompting + Pydantic + SymPy** replaces GBNF Logits Masker (GBNF upstream issue).
+- **Train-bridge 5 problem types** with formula handlers: 完全过桥 / 完全在桥上 / 相对运动 / 错车超车 / 回声.
+
+Install math extras: `pip install -e ".[math]"` (adds `sympy`, `networkx`).
+
+### 14. Teacher Web GUI (`web/`) — v1.0
+
+A Vue 3 + TypeScript + Vite SPA, served by `serve.py` via FastAPI `StaticFiles` (single-process delivery, no Node runtime dependency in production).
+
+- **Stack**: Vue 3, Naive UI, Pinia, Vue Router (hash history)
+- **10 nav sections**, ~30 use cases covering the full teacher workflow: dashboard, lesson planning, assessment, grading, analytics, personalization, content tools, math course (graph/scene/lesson/bank), automation, safety, desensitization, settings
+- **Health polling** (15s interval, topbar status badge), **graceful-degradation UX** (skeleton loading + engine error display + retry), **session-persisted analytics dataset** (Pinia + localStorage)
+- **WebSocket** streaming for Socratic lesson-script generation (5-event protocol: start → stream_chunk → stage_change → dsl_complete → finish)
+
+```bash
+cd web && pnpm install && pnpm build      # outputs web/dist/, auto-mounted by serve.py
+cd web && pnpm dev                          # dev server on :5174 with API proxy to :11448
+```
+
+Production: `fusion-k12 serve` serves both API (`/api/*`) and GUI (`/`) from one process on port 11448.
+
+### 14a. Teacher Identity + Textbook Catalog + Resource Library — v2.3
+
+Three coupled features closing the "anonymous temporary session" gap — teachers now have persistent accounts, pick lessons from a real curriculum catalog, and every generation is saved to a personal library.
+
+- **Teacher accounts** (`auth/`): register/login with PBKDF2-SHA256 password hashing (stdlib `hashlib`, 100k iterations), HMAC-signed bearer tokens (7-day TTL, `X-Auth-Token` header). Dual-auth with the existing machine API key — `require_api_key` gates the endpoint, `get_optional_teacher`/`require_teacher` carry user identity. Routes: `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`.
+- **Textbook catalog** (`textbook/`): self-built 人教版小学数学 1-6 grade catalog (`data/renjiao-math-g1-6.json`, deterministic public curriculum data — not LLM-generated). `TextbookLoader` mirrors `StandardsLoader` (thread-locked lazy load, `(edition, subject, grade)` index). Composite lesson_id `{unit}-{lesson}` since lesson numbers repeat across units. Grade 3 fully mapped to `standards/data/math_g1-6.json` knowledge-point IDs. Routes: `GET /api/textbook/editions`, `…/grades`, `…/units`, `…/lesson/{lesson_id}`.
+- **Resource library** (`repository/`): 3 new SQLite tables (`teachers`, `sessions`, `materials`) on the existing WAL+thread-lock repository. **Auto-save middleware** consumes the response `body_iterator`, verifies the teacher token, and persists every one of the 28 generation endpoints' results — tagged with edition/subject/grade/lesson_id/unit_title/lesson_title so resources are找回 by textbook position. Routes: `GET /api/materials` (filter by type/subject/grade), `GET /api/materials/{id}`, `DELETE /api/materials/{id}`.
+- **Frontend** (`web/`): `TextbookSelect.vue` cascade selector (edition → grade → unit → lesson, auto-fills 课题) wired into all 28 generation pages; `Login.vue` (register/login tabs); `MyMaterials.vue` (grid + detail modal via `ResultViewer`); Pinia auth store + `X-Auth-Token` header injection; router guard redirecting unauthenticated users to `/login`. Generation-success toast confirms auto-save.
+
+Env: `FUSION_K12_AUTH_SECRET` (optional, HMAC token signing secret; defaults derived from API key). DB: `~/.fusion-k12/k12.db`.
+
+### 15. Classroom Module (`classroom/`) — v2.1, K1 text version
+
+Text-based classroom delivery (LiveKit/digital-human/TTS upstream deferred). Implements classroom PRD E1-E6 with platform-content decoupling — judging delegates to `AssessmentEngine`/course verifiers, no subject coupling.
+
+```
+classroom/
+├── models.py      # ScriptPage, LessonScript, CoursePackage, ClassSession, AnswerRecord, ClassReport
+├── store.py       # ClassroomStore: SQLite (packages + sessions, thread-safe)
+├── scripter.py    # LessonScripter: LLM → JSON pages (narration/question_point/emotion_tag), fallback on degrade
+├── packager.py    # Packager: 6-digit class code, unique-code retry, pack CRUD
+└── session.py     # SessionManager: create/answer/page-view/finish + report (abandoned = no snapshot)
+```
+
+**E1-E6 endpoints** (served under `/api/classroom/*`):
+- `POST /script` (E1) — generate page-by-page lesson script
+- `POST /pack` (E2) — pack course (lesson plan + slides + quiz + script) → 6-digit code
+- `GET /pack/{code}` (E3) — student fetches package by class code
+- `POST /answer` (E4) — judge answer (multiple_choice/numeric local; expression/open via AssessmentEngine)
+- `POST /session` + `PATCH /session/{id}/finish` (E5) — create/finish session, abandoned flag skips snapshot
+- `GET /report/{sid}` (E6) — attendance, pages_viewed, quiz_stat, weak_points
+
+**Web GUI pages**: Teacher (备课 — script+pack+list), Student Entry (6-digit code), Player (page-by-page teaching + answer cards + finish), Report (E6 statistics). See `🏫 课堂` menu section.
+
+### 16. Digital-Human Platform Layer (`digital_human/`) — v2.2, K2/K3
+
+Subject-agnostic digital-human teacher platform (PRD K2 real-time voice + K3 digital human). Self-implements the 6 TLive-Omni design patterns — no third-party repo dependency. Content injected via `SubjectModule` (course path) or `LessonScripter` (classroom path); zero subject hardcoding.
+
+**6 core patterns (self-implemented):**
+1. **5-state FSM** (`fsm.py`): IDLE/USER_SPEAKING/AI_THINKING/AI_SPEAKING/ERROR + unified hooks; ERROR auto-cancels all plugin tasks via BargeInBus
+2. **Barge-in event bus** (`barge_in.py`): single `fire()` broadcasts cancel+clear to all registered plugins + tracked tasks — no scattered interrupt code
+3. **4-layer plugin abstraction** (`plugins/base.py`): ASRPlugin / LLMPlugin / TTSPlugin / AvatarPlugin ABCs decouple scheduling from inference
+4. **emotion_tag module** (`emotion.py`): regex strip `[tag]` → TTS speed + Avatar expression; log filter strips tags before logging
+5. **Rolling-window memory** (`memory.py`): MAX_TOKENS budget, auto-truncates oldest non-system messages, layered system-prompt concatenation
+6. **Session lifecycle** (`session.py`): idle-timeout auto-releases MLX (`mx.clear_cache()`), `finish()` drains all tasks + writes classroom record
+
+**Plugins (pluggable, graceful degradation):**
+- `KokoroTTS` — fusion-mlx `/v1/audio/speech` (Kokoro-82M), emotion→speed map
+- `MlxLLM` — fusion-mlx `/v1/chat/completions` stream (SSE token stream)
+- `MlxWhisperASR` — fusion-mlx `/v1/audio/transcriptions` (word_timestamps=False)
+- `MuseTalkAvatar` — `fusion_mlx.video.musetalk_mlx` in-process (lip-sync from mel, no word timestamps); ImportError → `StaticAvatar` fallback (idle frames only, always available)
+
+**Transport**: LiveKit SFU adapter (`livekit_adapter.py`) — token sign (timedelta TTL), room connect, audio/video track publish, DataChannel state. If `livekit` package absent or keys unset → WS-only degradation (TTS audio binary frames + state over WS, static avatar). Auto-falls back to linguakids-mvp `configs/.env` LiveKit keys when `FUSION_K12_LIVEKIT_*` env unset. MuseTalk source path auto-resolved from `FUSION_MLX_SOURCE` env or `~/fusion/fusion-mlx` / `~/claude-home/fusion-mlx`.
+
+**Audio/video pipeline (fully wired)**:
+- TTS audio (Kokoro WAV) streamed as WS binary frames after each `narrate_done`/`qa_done` event; browser `AudioContext.decodeAudioData` plays synchronously.
+- Hold-to-speak: browser `MediaRecorder` captures mic → WS binary → `session.on_student_speech(pcm)` → Whisper ASR → barge-in cancels narration → LLM Q&A → TTS answer.
+- LiveKit video track: `livekit-client` `Room.connect(token)` subscribes `RemoteVideoTrack` → attaches to `<video>`; `RemoteAudioTrack` auto-played. Degrades to WS-only (emoji avatar + TTS audio) when LiveKit SFU unavailable.
+- Checkpoint/question_point answer cards rendered per page (success/warning alerts).
+- Session persistence: classroom-path sessions (with class code) write `ClassroomStore` records — page views, questions asked, finish snapshot — for learning analytics continuity. Self-study sessions are ephemeral.
+
+**Endpoints** (`/api/digital-human/*`): `POST /session` (create + load lesson), `POST /token` (LiveKit token + room), `POST /narrate` (TTS+avatar per page, metadata only — audio via WS), `POST /raise-hand` (LLM Q&A), `POST /finish` (release + persist). `WS /ws/digital-human/{session_id}` streams state events + TTS audio binary; student sends JSON `{action: "narrate_page"|"raise_hand"|"finish"}` or binary mic PCM.
+
+**Web GUI**: Self-Study entry (UC-C7 — pick subject/grade/topic, instant session, no class code) → DigitalHumanPlayer (LiveKit `<video>` avatar + narration subtitle + steps nav + checkpoint/question cards + raise-hand drawer + hold-to-speak mic). Classroom Player has a `🤖 数字人模式` launch button. See `🤖 数字人老师` menu.
+
+```bash
+# Optional env (see .env.example):
+export FUSION_K12_LIVEKIT_URL=ws://127.0.0.1:7880
+export FUSION_K12_LIVEKIT_API_KEY=...
+export FUSION_K12_LIVEKIT_API_SECRET=...
+export FUSION_MLX_SOURCE=/Users/dahai/fusion/fusion-mlx   # MuseTalk in-process import
+pip install -e ".[digital-human]"                         # mlx + livekit + opencv + librosa
+```
 
 ---
 

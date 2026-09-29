@@ -80,11 +80,9 @@ class TestFactory:
 
     def test_get_repository_cluster_dsn_no_asyncpg(self, tmp_path, monkeypatch):
         # M1-T2: cluster 模式配了 DSN 但 asyncpg 缺失 → 回退 SQLite
-        try:
-            import asyncpg  # noqa: F401
-            pytest.skip("asyncpg 已安装, 缺失回退场景无法复现")
-        except ImportError:
-            pass
+        import sys
+        # 模拟 asyncpg 缺失: sys.modules 置 None 使 import asyncpg 抛 ImportError
+        monkeypatch.setitem(sys.modules, "asyncpg", None)
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.setenv("FUSION_K12_PG_DSN", "postgresql://u:p@localhost/db")
         monkeypatch.setenv("FUSION_K12_REPO_DB", str(tmp_path / "c2.db"))
@@ -93,15 +91,13 @@ class TestFactory:
         assert isinstance(r, SQLiteRepository)
         r.close()
 
-    def test_postgres_repo_missing_asyncpg(self):
+    def test_postgres_repo_missing_asyncpg(self, monkeypatch):
         # M1-T2: asyncpg 缺失时 PostgresRepository 构造抛 ImportError (清晰错误)
-        try:
-            import asyncpg  # noqa: F401
-            pytest.skip("asyncpg 已安装, 跳过缺失场景")
-        except ImportError:
-            from fusion_k12_teacher.repository import PostgresRepository
-            with pytest.raises(ImportError, match="asyncpg"):
-                PostgresRepository("postgresql://u:p@localhost/db")
+        import sys
+        monkeypatch.setitem(sys.modules, "asyncpg", None)
+        from fusion_k12_teacher.repository import PostgresRepository
+        with pytest.raises(ImportError, match="asyncpg"):
+            PostgresRepository("postgresql://u:p@localhost/db")
 
 
 class TestSchedulerRepoIntegration:

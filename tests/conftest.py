@@ -21,3 +21,26 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     for item in items:
         if "live" in item.keywords and not _LIVE_ENABLED:
             item.add_marker(skip_live)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """每个用例前清空限流计数, 避免跨用例累积触发 429。"""
+    try:
+        from fusion_k12_teacher.serve import _rate_limiter
+        _rate_limiter._hits.clear()
+    except Exception:
+        pass
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _isolate_scheduler_pidfile(monkeypatch):
+    """TaskScheduler 测试不依赖全局 pidfile 锁 — 同机 serve 持锁会致 is_running=False。
+
+    直接 mock _acquire_pidfile 返 True, 绕过 fcntl 跨进程锁 (测试单进程无需去重)。
+    注: agent/__init__.py 把 scheduler 名重绑为实例, 须从子模块直接导 TaskScheduler 类。
+    """
+    from fusion_k12_teacher.agent.scheduler import TaskScheduler
+    monkeypatch.setattr(TaskScheduler, "_acquire_pidfile", lambda self: True)
+    yield

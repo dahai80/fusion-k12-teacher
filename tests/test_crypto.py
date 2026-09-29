@@ -23,8 +23,15 @@ def test_missing_cryptography_clear_error(monkeypatch):
 
     import fusion_k12_teacher.safety.crypto as crypto_mod
 
-    if "cryptography" in sys.modules:
-        pytest.skip("cryptography 已安装, 缺失场景无法复现")
+    # 模拟 cryptography 缺失: sys.modules 置 None 使 from import 抛 ImportError
+    for mod in (
+        "cryptography",
+        "cryptography.hazmat",
+        "cryptography.hazmat.primitives",
+        "cryptography.hazmat.primitives.ciphers",
+        "cryptography.hazmat.primitives.ciphers.aead",
+    ):
+        monkeypatch.setitem(sys.modules, mod, None)
     with pytest.raises(ImportError, match="cryptography"):
         crypto_mod.DataCipher()
 

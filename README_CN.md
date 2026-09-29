@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
-  <img src="https://img.shields.io/badge/tests-284%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-548%20passed-brightgreen" alt="Tests">
 </p>
 
 ---
@@ -239,6 +239,109 @@ REST API 编程访问（默认端口 11448）。
 Full endpoint list: see [README.md](README.md#12-http-api-servepy)
 
 完整端点列表：见 [README.md](README.md#12-http-api-servepy)
+
+---
+
+### 13. Course Platform / 学科课程平台 (`course/`) — v2.1, 平台-内容解耦
+
+学科无关的课程平台。平台只依赖 `SubjectModule` 协议 — 数学内容在 `course/subjects/math/`, 后续物理/化学/英语/语文接入零平台改动。
+
+- **SymPy 符号引擎**作数值 SSoT, 覆盖 LLM 提取值 (PRD §6 严谨性)
+- **networkx DAG** 替代 Neo4j (离线纯 Python, 52 节点, Tarjan SCC 校验)
+- **置信度启发式**替代 DKT Transformer (Wilson 下界, N≥5 冷启动)
+- **结构化 prompt + Pydantic + SymPy** 替代 GBNF Logits Masker
+- **火车过桥 5 题型**: 完全过桥 / 完全在桥上 / 相对运动 / 错车超车 / 回声
+- **首发题库**: 9 题 (5 例 + 3 练习), 按「知识点 + 认知层级 + 错因」三元组打标, A/B/C 分层
+
+安装数学扩展: `pip install -e ".[math]"` (增加 `sympy`, `networkx`)
+
+详见 [README.md](README.md#13-course-platform-course-v21-platform-content-decoupled)
+
+---
+
+### 14. Teacher Web GUI / 教师 Web 图形界面 (`web/`) — v1.0
+
+Vue 3 + TypeScript + Vite 单页应用, 由 `serve.py` 通过 FastAPI `StaticFiles` 静态挂载分发 (单进程交付, 生产无 Node 运行时依赖)。
+
+- **技术栈**: Vue 3, Naive UI, Pinia, Vue Router (hash history)
+- **10 导航分区**, ~30 用例覆盖完整教学工作流
+- **健康轮询** (15s, 顶栏状态徽章), **优雅降级 UX** (骨架屏 + 引擎错误 + 重试), **会话级数据集绑定** (Pinia + localStorage)
+- **WebSocket** 流式苏格拉底课稿生成 (5 事件协议)
+
+```bash
+cd web && pnpm install && pnpm build      # 产物 web/dist/, serve.py 自动挂载
+cd web && pnpm dev                          # 开发服务器 :5174, 代理 API 到 :11448
+```
+
+详见 [README.md](README.md#14-teacher-web-gui-web-v10)
+
+### 14a. 教师身份 + 教材目录 + 资源库 / Teacher Identity + Textbook + Resource Library — v2.3
+
+三个耦合特性, 闭合"匿名临时会话"断层 — 教师现拥有持久账号、从真实教材目录选题、每次生成自动存入个人资源库。
+
+- **教师账号** (`auth/`): 注册/登录, PBKDF2-SHA256 密码哈希 (stdlib `hashlib`, 10 万次迭代), HMAC 签名 bearer token (7 天 TTL, `X-Auth-Token` 头)。与现有机器 API key 双重鉴权 — `require_api_key` 守门, `get_optional_teacher`/`require_teacher` 承载用户身份。路由: `POST /api/auth/{register,login,logout}`, `GET /api/auth/me`。
+- **教材目录** (`textbook/`): 自建人教版小学数学 1-6 年级目录 (`data/renjiao-math-g1-6.json`, 确定性公开课标数据 — 非 LLM 生成)。`TextbookLoader` 仿 `StandardsLoader` (线程锁懒加载, `(edition, subject, grade)` 索引)。复合 lesson_id `{unit}-{lesson}` (课号跨单元重复)。三年级完整映射 `standards/data/math_g1-6.json` 知识点 ID。路由: `GET /api/textbook/editions`, `…/grades`, `…/units`, `…/lesson/{lesson_id}`。
+- **资源库** (`repository/`): 现有 WAL+线程锁仓库上新增 3 表 (`teachers`/`sessions`/`materials`)。**自动保存中间件** 消费响应 `body_iterator`, 校验教师 token, 将 28 个生成端点结果全部落盘 — 标注 edition/subject/grade/lesson_id/unit_title/lesson_title, 按教材位置找回资源。路由: `GET /api/materials` (按 type/subject/grade 筛选), `GET /api/materials/{id}`, `DELETE /api/materials/{id}`。
+- **前端** (`web/`): `TextbookSelect.vue` 级联选择器 (版本→年级→单元→课, 自动带出课题) 接入全部 28 个生成页; `Login.vue` (注册/登录 tab); `MyMaterials.vue` (卡片网格 + 详情弹窗用 `ResultViewer` 渲染); Pinia auth store + `X-Auth-Token` 头注入; 路由守卫拦截未登录跳 `/login`。生成成功 toast 确认已保存。
+
+环境变量: `FUSION_K12_AUTH_SECRET` (可选, HMAC token 签名密钥; 默认从 API key 派生)。数据库: `~/.fusion-k12/k12.db`。
+
+### 15. Classroom Module / 课堂模块 (`classroom/`) — v2.1, K1 文字版
+
+文字版课堂交付 (LiveKit/数字人/TTS 上游 deferred)。落地课堂 PRD E1-E6, 平台-内容解耦 — 判分委托 `AssessmentEngine`/课程 verifier, 不耦合学科。
+
+```
+classroom/
+├── models.py      # ScriptPage/LessonScript/CoursePackage/ClassSession/AnswerRecord/ClassReport
+├── store.py       # ClassroomStore: SQLite (课程包 + 会话, 线程安全)
+├── scripter.py    # LessonScripter: LLM → JSON 分页 (旁白/提问/情绪标签), 降级回退
+├── packager.py    # Packager: 6 位课堂码, 唯一码重试, 课程包 CRUD
+└── session.py     # SessionManager: 创建/作答/翻页/结束 + 报告 (放弃=不写快照)
+```
+
+**E1-E6 端点** (`/api/classroom/*`): `POST /script` (E1 生成讲稿), `POST /pack` (E2 打包→6位码), `GET /pack/{code}` (E3 学生取包), `POST /answer` (E4 判分: 选择/数值本地, 表达/开放委托 AssessmentEngine), `POST /session` + `PATCH /session/{id}/finish` (E5 创建/结束, abandoned 跳过快照), `GET /report/{sid}` (E6 出勤/浏览/测验统计/薄弱点)。
+
+**Web GUI 页面**: 教师备课 (讲稿+打包+列表), 学生入口 (6位码), 播放器 (逐页讲课+答题卡+结束), 报告 (E6 统计)。见 `🏫 课堂` 菜单。
+
+### 16. Digital-Human Platform Layer / 数字人平台层 (`digital_human/`) — v2.2, K2/K3
+
+学科无关数字人老师平台 (PRD K2 实时语音 + K3 数字人)。自主实现 TLive-Omni 六大核心设计, 不引入第三方仓库。内容经 `SubjectModule` (课程路) 或 `LessonScripter` (课堂路) 注入, 零学科硬编码。
+
+**6 大核心 (自主实现):**
+1. **五态 FSM** (`fsm.py`): IDLE/USER_SPEAKING/AI_THINKING/AI_SPEAKING/ERROR + 统一钩子; ERROR 自动经 BargeInBus 取消所有插件任务
+2. **Barge-in 事件总线** (`barge_in.py`): 单次 `fire()` 广播 cancel+clear 至所有注册插件 + 追踪任务, 不散落中断代码
+3. **四层插件抽象** (`plugins/base.py`): ASRPlugin/LLMPlugin/TTSPlugin/AvatarPlugin ABC 解耦调度与推理
+4. **emotion_tag 模块** (`emotion.py`): 正则剥离 `[tag]` → TTS 语速 + Avatar 表情; 日志过滤器剥离 tag
+5. **滚动窗口记忆** (`memory.py`): MAX_TOKENS 预算, 自动截断最旧非 system 消息, 分层 system prompt 拼接
+6. **会话生命周期** (`session.py`): 空闲超时自动释放 MLX (`mx.clear_cache()`), `finish()` 排空任务 + 落库
+
+**插件 (可插拔, 优雅降级):**
+- `KokoroTTS` — fusion-mlx `/v1/audio/speech` (Kokoro-82M), emotion→语速映射
+- `MlxLLM` — fusion-mlx `/v1/chat/completions` stream (SSE token 流)
+- `MlxWhisperASR` — fusion-mlx `/v1/audio/transcriptions` (word_timestamps=False)
+- `MuseTalkAvatar` — `fusion_mlx.video.musetalk_mlx` 进程内库 (从 mel 推口型, 无需 word timestamps); ImportError → `StaticAvatar` 兜底 (仅 idle 帧, 始终可用)
+
+**传输**: LiveKit SFU 适配层 (`livekit_adapter.py`) — token 签名 (timedelta TTL)/room 连接/音视频轨道发布/DataChannel 状态。livekit 包缺失或 key 未配 → WS 降级 (TTS 音频二进制帧 + 状态走 WS, 静态头像)。`FUSION_K12_LIVEKIT_*` 环境变量未设时自动回退 linguakids-mvp `configs/.env` 的 LiveKit key。MuseTalk 源码路径自动从 `FUSION_MLX_SOURCE` 环境变量或 `~/fusion/fusion-mlx` / `~/claude-home/fusion-mlx` 解析。
+
+**音视频管线 (全接线):**
+- TTS 音频 (Kokoro WAV) 在每个 `narrate_done`/`qa_done` 事件后以 WS 二进制帧流式推送; 浏览器 `AudioContext.decodeAudioData` 同步播放。
+- 按住说话: 浏览器 `MediaRecorder` 采集麦克风 → WS 二进制 → `session.on_student_speech(pcm)` → Whisper ASR → barge-in 中断讲解 → LLM 答疑 → TTS 回答。
+- LiveKit 视频轨: `livekit-client` `Room.connect(token)` 订阅 `RemoteVideoTrack` → 挂载到 `<video>`; `RemoteAudioTrack` 自动播放。LiveKit SFU 不可用时降级 WS-only (emoji 头像 + TTS 音频)。
+- 检查点/随堂提问卡片逐页渲染 (success/warning 提示)。
+- 会话落库: 课堂路会话 (有课堂码) 写 `ClassroomStore` 记录 — 翻页/提问/结束快照, 供学情分析延续。自主学习会话为临时 (不落库)。
+
+**端点** (`/api/digital-human/*`): `POST /session` (创建+加载讲稿), `POST /token` (LiveKit token+room), `POST /narrate` (逐页 TTS+头像, 仅元数据 — 音频走 WS), `POST /raise-hand` (LLM 答疑), `POST /finish` (释放+落库)。`WS /ws/digital-human/{session_id}` 推状态事件 + TTS 音频二进制; 学生发 JSON `{action: "narrate_page"|"raise_hand"|"finish"}` 或二进制麦克风 PCM。
+
+**Web GUI**: 自主学习入口 (UC-C7 — 选学科/年级/主题, 即时会话, 无需课堂码) → 数字人播放器 (LiveKit `<video>` 头像 + 讲稿字幕 + 步骤导航 + 检查点/提问卡片 + 举手抽屉 + 按住说话麦克风)。课堂播放器有 `🤖 数字人模式` 启动按钮。见 `🤖 数字人老师` 菜单。
+
+```bash
+# 可选环境变量 (见 .env.example):
+export FUSION_K12_LIVEKIT_URL=ws://127.0.0.1:7880
+export FUSION_K12_LIVEKIT_API_KEY=...
+export FUSION_K12_LIVEKIT_API_SECRET=...
+export FUSION_MLX_SOURCE=/Users/dahai/fusion/fusion-mlx   # MuseTalk 进程内导入
+pip install -e ".[digital-human]"                         # mlx + livekit + opencv + librosa
+```
 
 ---
 
