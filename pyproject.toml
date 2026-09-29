@@ -19,6 +19,10 @@ test = [
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
     "apscheduler>=3.10.0",
+    # CI test 矩阵依赖: sympy/networkx (math 模块判分/图谱), cryptography (加密判分用例)
+    "sympy>=1.12,<2.0",
+    "networkx>=3.2,<4.0",
+    "cryptography>=42.0.0,<46.0.0",
 ]
 web = ["fastapi>=0.104.0", "uvicorn>=0.24.0", "apscheduler>=3.10.0", "sqlalchemy>=2.0.0"]
 # M1-T2/T5/T12: cluster 模式 Postgres 后端 + AES-256-GCM 加密 + Redis 缓存/限流 — 可选, 缺失则回退 SQLite/明文/进程内。
