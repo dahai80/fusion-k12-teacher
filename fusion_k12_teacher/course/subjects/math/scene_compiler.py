@@ -168,9 +168,11 @@ class MathSceneCompiler(SceneCompilerBase):
             if re.search(r"两旁|两侧|两边", problem) and "sides" not in var_map:
                 var_map["sides"] = 2.0
             m = re.search(r"(?:共埋了|共栽了|共种了|一共(?:埋|栽|种)了)\s*(\d+)\s*[根棵]", problem)
+            is_tree_reverse = False
             if m and re.search(r"多长|多少米|路长|这段路", problem):
                 var_map["trees"] = float(m.group(1))
                 var_map.pop("length", None)
+                is_tree_reverse = True
                 # 逆向型同时需要间距 — LLM 常漏提, 从题面正则兜底 ("每隔40米/每40米")
                 if "spacing" not in var_map:
                     ms = re.search(r"每\s*(?:隔)?\s*(\d+(?:\.\d+)?)\s*米", problem)
@@ -229,7 +231,11 @@ class MathSceneCompiler(SceneCompilerBase):
             total_distance = self._var_value(verify, "area")
             total_time = self._var_value(verify, "length") or 0.0
         elif scenario == "tree_planting":
-            total_distance = self._var_value(verify, "trees")
+            if is_tree_reverse:
+                # 逆向型 (已知棵数求路长): 答案是路长, 不是棵数
+                total_distance = self._var_value(verify, "length")
+            else:
+                total_distance = self._var_value(verify, "trees")
             total_time = self._var_value(verify, "segments") or 0.0
         elif scenario == "displacement_volume":
             total_distance = self._var_value(verify, "volume")
