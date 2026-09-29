@@ -49,7 +49,7 @@ _EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本�
 - relative_motion: 人车相对运动 (entities 含 train.length+speed, pedestrian.speed)
 - echo_problem: 回声测距 (entities 含 train.speed, v_sound=340, t_echo)
 - cutting_segments: 锯木头/剪绳子/爬楼梯等离散计数题 (entities 含 object.n_segments=段数, object.time_per_cut=每次耗时) 注意: 对折后从中间剪开不是此场景, 用 fold_cut
-- queue_counting: 排队计数 (从前数第a, 从后数第b, 求总人数) (entities 含 person.rank_front=从前位次, person.rank_behind=从后位次)
+- queue_counting: 排队计数两种变体 — 位次型 "从前数第a, 从后数第b" (entities 含 person.rank_front, person.rank_behind); 人数型 "前面有a人, 后面有b人, 求总数" (entities 含 person.front_count=a, person.behind_count=b, 不填 rank_*) 注意: 人数型自己也要算进总数
 - fence_against_wall: 靠墙围篱笆 (长边靠墙, 三边围栏总长求面积) (entities 含 fence.length=靠墙长, fence.perimeter=三边总长)
 - unitary_method: 归一问题 (a件b元, 求c件几元) (entities 含 group.n_items=件数, group.total_value=总价, group.n_target=目标件数)
 - chicken_rabbit: 鸡兔同笼 (头数腿数求各几只, 鸡2腿兔4腿, 腿数远大于头数) (entities 含 cage.heads=头数, cage.legs=腿数) 注意: 鸟飞走/飞来不是鸡兔同笼
