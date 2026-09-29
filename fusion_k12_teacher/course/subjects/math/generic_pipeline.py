@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import ast
 import logging
 from typing import Any
 
@@ -30,6 +31,13 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
    timeline(时间推算/日程)。
 5. steps: 用中文写 3 步内解题思路, 每步一句。
 6. answer_unit: 答案单位 (如 "米", "秒", "元", "个")。
+7. 单位协调: 已知量单位不一致时先统一成同一单位再填 value (如 cm→m)。
+8. pipeline: 分步推导链 (2-5 步), 每步:
+   - "eval" 是确定性算式, 只允许 数字、+ - * / ( )、params.<已知量名>、results[<步骤号>]
+     引用前步结果; 乘法必须写 *; 最终步的值必须等于答案。
+   - "formula" 用简洁中文/符号写法 (如 "C = π×d = 3.14×0.6 = 1.884")。
+   - "result_unit" 该步结果单位。
+   - "title" 一句中文步骤目标。
 
 输出 JSON 格式:
 {
@@ -40,6 +48,10 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
   "answer_unit": "秒",
   "visual": {"kind": "number_line", "start_label": "车头上桥", "end_label": "车尾离桥", "segments": [{"label": "车长200m"}, {"label": "桥长800m"}]},
   "steps": ["总路程=车长+桥长=1000米", "时间=路程÷速度", "1000÷20=50秒"],
+  "pipeline": [
+    {"step": 1, "title": "求总路程", "formula": "S = 200+800 = 1000", "eval": "params.train_length + params.bridge_length", "result_unit": "米"},
+    {"step": 2, "title": "求过桥时间", "formula": "t = 1000÷20 = 50", "eval": "results[1] / params.speed", "result_unit": "秒"}
+  ],
   "question_focus": "过桥时间",
   "misconception_hint": "易漏加车长"
 }
@@ -47,6 +59,122 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 题目: __PROBLEM__
 
 只输出 JSON, 不要解释。"""
+
+
+def _sanitize_pipeline(raw: Any) -> list[dict[str, Any]]:
+    """pipeline 白名单过滤 — 只保留受控字段与安全 eval 串 (Gemini 方案融合)。"""
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw[:5]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            step_no = int(item.get("step", 0))
+        except (TypeError, ValueError):
+            continue
+        if step_no < 1:
+            continue
+        eval_str = item.get("eval")
+        if not isinstance(eval_str, str) or not _eval_safe(eval_str):
+            continue
+        out.append({
+            "step": step_no,
+            "title": str(item.get("title", ""))[:60],
+            "formula": str(item.get("formula", ""))[:120],
+            "eval": eval_str[:200],
+            "result_unit": str(item.get("result_unit", ""))[:12],
+        })
+    return out
+
+
+_ALLOWED_NODES = (
+    ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant, ast.Load,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.USub, ast.UAdd, ast.Mod, ast.Pow,
+    ast.Name, ast.Attribute, ast.Subscript, ast.Index, ast.Tuple, ast.Slice,
+)
+
+
+def _eval_safe(expr: str) -> bool:
+    """静态校验 eval 串 — 只允许算术 + params.x / results[n] 访问, 拒绝调用/属性链。"""
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError:
+        return False
+    for node in ast.walk(tree):
+        if not isinstance(node, _ALLOWED_NODES):
+            return False
+        if isinstance(node, ast.Attribute):
+            # 只允许 params.<name> / results 形态的一层属性; 禁 dunder 防逃逸
+            if not isinstance(node.value, ast.Name) or node.value.id not in ("params", "results"):
+                return False
+            if node.attr.startswith("_"):
+                return False
+        if isinstance(node, ast.Name) and node.id not in ("params", "results"):
+            return False
+    return True
+
+
+def eval_pipeline(parsed: dict[str, Any]) -> dict[str, Any] | None:
+    """执行分步 pipeline (受限 AST 求值, 非 new Function)。
+
+    返回 {"steps": [...带 value 的步骤...], "final": 终值}; 任一步失败返回 None。
+    """
+    pipeline = parsed.get("pipeline") or []
+    if not pipeline:
+        return None
+    params = parsed["knowns"]
+    results: dict[int, float] = {}
+    steps_out: list[dict[str, Any]] = []
+    for item in pipeline:
+        try:
+            tree = ast.parse(item["eval"], mode="eval")
+            val = float(_ast_eval(tree.body, params, results))
+        except Exception:
+            return None
+        if val != val or val in (float("inf"), float("-inf")):
+            return None
+        results[item["step"]] = val
+        steps_out.append({**item, "value": val})
+    if not steps_out:
+        return None
+    return {"steps": steps_out, "final": results[steps_out[-1]["step"]]}
+
+
+def _ast_eval(node: ast.AST, params: dict[str, float], results: dict[int, float]) -> float:
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return float(node.value)
+    if isinstance(node, ast.BinOp):
+        lh, rh = _ast_eval(node.left, params, results), _ast_eval(node.right, params, results)
+        if isinstance(node.op, ast.Add):
+            return lh + rh
+        if isinstance(node.op, ast.Sub):
+            return lh - rh
+        if isinstance(node.op, ast.Mult):
+            return lh * rh
+        if isinstance(node.op, ast.Div):
+            if rh == 0:
+                raise ZeroDivisionError
+            return lh / rh
+        if isinstance(node.op, ast.Mod):
+            if rh == 0:
+                raise ZeroDivisionError
+            return lh % rh
+        if isinstance(node.op, ast.Pow):
+            return lh ** rh
+    if isinstance(node, ast.UnaryOp):
+        v = _ast_eval(node.operand, params, results)
+        return -v if isinstance(node.op, ast.USub) else v
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        if node.value.id == "params" and node.attr in params:
+            return float(params[node.attr])
+    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "results":
+        idx = node.slice
+        if isinstance(idx, ast.Constant) and isinstance(idx.value, int):
+            if idx.value in results:
+                return results[idx.value]
+        raise KeyError("results index")
+    raise ValueError(f"不支持的表达式节点: {type(node).__name__}")
 
 
 def _clean_equation(eq: str) -> str:
@@ -210,6 +338,7 @@ def parse_generic_extraction(raw: str) -> dict[str, Any] | None:
         "answer_unit": str(data.get("answer_unit", ""))[:12],
         "visual": _sanitize_visual(data.get("visual")),
         "steps": [str(s)[:120] for s in data.get("steps", [])[:5] if isinstance(s, str)],
+        "pipeline": _sanitize_pipeline(data.get("pipeline")),
         "question_focus": str(data.get("question_focus", ""))[:60],
         "misconception_hint": str(data.get("misconception_hint", ""))[:120],
     }

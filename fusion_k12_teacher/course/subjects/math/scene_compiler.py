@@ -303,6 +303,15 @@ class MathSceneCompiler(SceneCompilerBase):
             logger.info("scene_compiler: 通用路径方程不可解, 维持降级")
             return None
         answer = solution.get("__answer__", 0.0)
+        # 分步推导 pipeline (Gemini 方案融合): 受限 AST 求值, 终值与 SymPy 答案交叉验证 —
+        # 一致才采用分步渲染 (双引擎互证), 不一致/执行失败退回 SymPy 直答。
+        pipeline_eval = generic_pipeline.eval_pipeline(parsed)
+        pipeline_ok = (
+            pipeline_eval is not None
+            and abs(pipeline_eval["final"] - answer) <= max(1e-6, abs(answer) * 1e-6)
+        )
+        if pipeline_eval is not None and not pipeline_ok:
+            logger.info("scene_compiler: pipeline 终值 %s 与 SymPy %s 不一致, 弃用分步", pipeline_eval["final"], answer)
         visual = parsed["visual"]
         entities: list[SceneEntity] = []
         for name, val in parsed["knowns"].items():
@@ -312,16 +321,30 @@ class MathSceneCompiler(SceneCompilerBase):
             if name == "__answer__":
                 continue
             entities.append(SceneEntity(id=name, type="moving_object", label=name, value=float(val)))
-        # 里程碑: 提取→求解→验算三阶段
-        milestones = [
-            Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
-                      highlight_entities=[e.id for e in entities[:3]],
-                      formula_state=", ".join(parsed["equations"])[:120]),
-            Milestone(progress_percentage=50.0, time_mark=0.5, event_name="解方程",
-                      highlight_entities=[], formula_state=parsed["answer_expr"]),
-            Milestone(progress_percentage=100.0, time_mark=1.0, event_name="求解完成",
-                      highlight_entities=[], formula_state=f"{parsed['answer_expr']} = {answer:g}"),
-        ]
+        # 里程碑: 有分步 pipeline 时按步骤均分进度段; 否则退回三阶段占位
+        if pipeline_ok:
+            milestones = []
+            n = len(pipeline_eval["steps"])
+            for i, s in enumerate(pipeline_eval["steps"]):
+                milestones.append(Milestone(
+                    progress_percentage=round(i / n * 100, 1), time_mark=i / n,
+                    event_name=s["title"], highlight_entities=[],
+                    formula_state=f"{s['formula']} → {s['value']:g}{s['result_unit']}",
+                ))
+            milestones.append(Milestone(
+                progress_percentage=100.0, time_mark=1.0, event_name="验算通过",
+                highlight_entities=[], formula_state=f"{parsed['answer_expr']} = {answer:g}{answer_unit}" if (answer_unit := parsed["answer_unit"]) else f"{parsed['answer_expr']} = {answer:g}",
+            ))
+        else:
+            milestones = [
+                Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
+                          highlight_entities=[e.id for e in entities[:3]],
+                          formula_state=", ".join(parsed["equations"])[:120]),
+                Milestone(progress_percentage=50.0, time_mark=0.5, event_name="解方程",
+                          highlight_entities=[], formula_state=parsed["answer_expr"]),
+                Milestone(progress_percentage=100.0, time_mark=1.0, event_name="求解完成",
+                          highlight_entities=[], formula_state=f"{parsed['answer_expr']} = {answer:g}"),
+            ]
         answer_unit = parsed["answer_unit"]
         dsl = SceneDSL(
             subject="math",
@@ -335,6 +358,10 @@ class MathSceneCompiler(SceneCompilerBase):
             canvas_config={
                 "dimension": "2D",
                 "visual": visual,
+                # 分步推导 (Gemini 方案融合): pipeline_ok 时前端按步骤分段高亮
+                "pipeline": pipeline_eval["steps"] if pipeline_ok else [],
+                "parameters": [{"key": k, "label": k, "value": v, "unit": parsed["units"].get(k, "")}
+                               for k, v in parsed["knowns"].items()],
                 "scale_mapping": {"unit_to_pixel_ratio": self._calc_scale(abs(answer) or 1.0), "auto_fit": True},
             },
             timeline={
