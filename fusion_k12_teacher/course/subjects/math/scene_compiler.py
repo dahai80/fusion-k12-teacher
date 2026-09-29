@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from ...._parse import parse_json
@@ -159,6 +160,17 @@ class MathSceneCompiler(SceneCompilerBase):
             entities_raw = {}
 
         var_map = self._flatten_entities(scenario, entities_raw)
+        # 确定性变体兜底 (prompt 引导不可靠 — 实测 LLM 常漏 sides/逆向字段):
+        # ① 植树"两旁/两侧" → sides=2 (棵数翻倍); ② 植树逆向 "共N根+求路长" → trees=N
+        # 逆向型 LLM 常幻觉出一个错误的 length — 命中 "(共|一共)埋/栽N根" 句式时覆盖,
+        # 并删除 length 让 handler 走逆向分支 (数量关系以题面正则为准, 不信 LLM)。
+        if scenario == "tree_planting":
+            if re.search(r"两旁|两侧|两边", problem) and "sides" not in var_map:
+                var_map["sides"] = 2.0
+            m = re.search(r"(?:共埋了|共栽了|共种了|一共(?:埋|栽|种)了)\s*(\d+)\s*[根棵]", problem)
+            if m and re.search(r"多长|多少米|路长|这段路", problem):
+                var_map["trees"] = float(m.group(1))
+                var_map.pop("length", None)
         verify = self.verifier.verify_scene(scenario, var_map) if scenario in _KNOWN_SCENARIOS else None
 
         if verify and verify.error and "未知场景" not in verify.error:
