@@ -1,0 +1,82 @@
+{
+  "version": "1.0",
+  "subject": "math",
+  "description": "知识图谱增强层: 叠加 formula/spatial/visual_engine/misconceptions/cognitive_level + CROSS/EXEMPLIFIES 边。节点 id 复用 standards, 不新增节点。",
+  "nodes": [
+    {
+      "id": "math-g3-na-03",
+      "title": "多位数乘一位数",
+      "node_type": "Concept",
+      "stage": "小学",
+      "strand": "数与代数",
+      "grade": "3",
+      "cognitive_level": "apply",
+      "formula": "S = v * t (整数版, 行程问题基础)",
+      "spatial": {"axis": "x", "unit": "m"},
+      "visual_engine": "pixi_timeline",
+      "misconceptions": ["forget_train_length"],
+      "description": "行程问题路程公式的整数运算基础, 火车过桥前置技能。",
+      "edges": {"exemplifies": ["tb-ex-01", "tb-pr-01"], "cross": ["math-g5-na-01"]}
+    },
+    {
+      "id": "math-g5-na-01",
+      "title": "小数乘法",
+      "node_type": "Concept",
+      "stage": "小学",
+      "strand": "数与代数",
+      "grade": "5",
+      "cognitive_level": "apply",
+      "formula": "S_total = L_bridge + L_train; t = S_total / v_train",
+      "spatial": {"axis": "x", "unit": "m", "entities": ["bridge", "train"]},
+      "visual_engine": "pixi_train_bridge",
+      "misconceptions": ["forget_train_length", "confuse_pass_vs_on"],
+      "description": "火车完全过桥核心公式: 路程=桥长+车长, 时间=路程/速度。",
+      "edges": {"exemplifies": ["tb-ex-01", "tb-pr-01", "tb-pr-02"], "cross": ["math-g5-na-02", "math-g6-na-03"]}
+    },
+    {
+      "id": "math-g5-na-02",
+      "title": "小数除法",
+      "node_type": "Concept",
+      "stage": "小学",
+      "strand": "数与代数",
+      "grade": "5",
+      "cognitive_level": "apply",
+      "formula": "S_on = L_bridge - L_train; t = S_on / v_train (隐蔽条件: 减车长)",
+      "spatial": {"axis": "x", "unit": "m", "entities": ["bridge", "train"]},
+      "visual_engine": "pixi_train_on_bridge",
+      "misconceptions": ["confuse_pass_vs_on"],
+      "description": "完全在桥上: 路程=桥长-车长, 隐蔽条件识别训练。",
+      "edges": {"exemplifies": ["tb-ex-02"], "cross": ["math-g5-na-01"]}
+    },
+    {
+      "id": "math-g5-na-03",
+      "title": "简易方程",
+      "node_type": "Concept",
+      "stage": "小学",
+      "strand": "数与代数",
+      "grade": "5",
+      "cognitive_level": "analyze",
+      "formula": "2*x = v_sound*t_echo + v_train*t_echo (回声双过程方程)",
+      "spatial": {"axis": "x", "unit": "m", "entities": ["train", "sound_wave", "wall"]},
+      "visual_engine": "pixi_echo",
+      "misconceptions": ["ignore_train_motion_in_echo"],
+      "description": "回声问题列方程: 声波往返 + 火车前行联立, 2x=S声+S车。",
+      "edges": {"exemplifies": ["tb-ex-05", "tb-pr-02"], "cross": ["math-g5-na-01"]}
+    },
+    {
+      "id": "math-g6-na-03",
+      "title": "比和比例",
+      "node_type": "Concept",
+      "stage": "小学",
+      "strand": "数与代数",
+      "grade": "6",
+      "cognitive_level": "analyze",
+      "formula": "v_relative = v1 +/- v2; t = (L1 + L2) / v_relative",
+      "spatial": {"axis": "x", "unit": "m", "entities": ["train_a", "train_b"]},
+      "visual_engine": "pixi_two_trains",
+      "misconceptions": ["single_train_length_for_meet"],
+      "description": "相对运动: 相向错车 v和, 同向超车 v差; 路程恒为两车长之和。",
+      "edges": {"exemplifies": ["tb-ex-03", "tb-ex-04a", "tb-ex-04b", "tb-pr-03"], "cross": ["math-g5-na-01"]}
+    }
+  ]
+}
