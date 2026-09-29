@@ -24,6 +24,20 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 @pytest.fixture(autouse=True)
+def _offline_llm(monkeypatch):
+    """非 live 用例一律指向不可达 LLM 地址, 与 CI (无 fusion-mlx) 行为对齐。
+
+    本机开发时 fusion-mlx 常驻且要求 API key, 未 mock 的引擎用例会收到
+    401 NonDegradableError 而非预期的优雅降级 — 强制改 base_url 消除环境差异。
+    live 用例 (FUSION_K12_LIVE_TESTS=1) 不受影响, 须真实可达。
+    """
+    if not _LIVE_ENABLED:
+        monkeypatch.setenv("FUSION_MLX_URL", "http://127.0.0.1:9/v1")
+        monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """每个用例前清空限流计数, 避免跨用例累积触发 429。"""
     try:

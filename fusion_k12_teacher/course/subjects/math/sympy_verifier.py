@@ -81,9 +81,15 @@ def _h_cutting_segments(v: dict[str, float]) -> dict[str, float]:
 
 
 def _h_queue_counting(v: dict[str, float]) -> dict[str, float]:
-    rank_front = v["rank_front"]
-    rank_behind = v["rank_behind"]
-    total = rank_front + rank_behind - 1.0
+    # 两种子题型 (G1 易错题): LLM 提取时以 extra 字段区分 —
+    #   位次型 (rank): "从前第a, 从后第b" → total = a + b - 1
+    #   人数型 (counts): "前面有a人, 后面有b人" → total = a + b + 1 (自己易漏算)
+    if "front_count" in v or "behind_count" in v:
+        front = v.get("front_count", 0.0)
+        behind = v.get("behind_count", 0.0)
+        total = front + behind + 1.0
+    else:
+        total = v["rank_front"] + v["rank_behind"] - 1.0
     return {**v, "total_people": total}
 
 
@@ -346,7 +352,7 @@ _SCENARIO_REQUIRED: dict[str, list[str]] = {
     "two_trains_overtake": ["L1", "L2", "v1", "v2"],
     "echo_problem": ["v_train", "v_sound", "t_echo"],
     "cutting_segments": ["n_segments", "time_per_cut"],
-    "queue_counting": ["rank_front", "rank_behind"],
+    "queue_counting": ["rank_front", "rank_behind"],  # 人数型变体提取 front_count/behind_count, handler 内分支兼容
     "fence_against_wall": ["length", "perimeter"],
     "unitary_method": ["n_items", "total_value", "n_target"],
     "chicken_rabbit": ["heads", "legs"],
@@ -428,8 +434,9 @@ class MathSympyVerifier(VerifierBase):
             return VerifyResult(error=f"未知场景: {scenario}", fallback=True)
         required = self._required.get(scenario, [])
         vars_f = _to_float_dict(entities)
+        # 变体兼容: required 满足其一即可 (如 queue_counting 位次型 rank_* 或人数型 front/behind_count)
         missing = [k for k in required if k not in vars_f]
-        if missing:
+        if missing and not any(k in vars_f for k in ("front_count", "behind_count")):
             return VerifyResult(error=f"缺失变量: {missing}", fallback=True)
         result, err = _run_with_timeout(lambda: handler(vars_f))
         if result is None:
