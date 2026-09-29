@@ -49,6 +49,17 @@ const isSpecial = computed(() => isCutting.value || isQueue.value || isFence.val
 
 // 通用路径 (S1解析→S2 DSL→S3渲染): 后端 generic 管线产出的可视化原语 DSL
 const isGeneric = computed(() => props.scene?.meta?.pipeline === 'generic' || tpl.value === 'generic_solve')
+// 分步推导链 (Gemini 方案融合): 按进度定位当前步骤, HUD 显示标题/公式/结果
+const genericPipeline = computed<any[]>(() => props.scene?.canvas_config?.pipeline || [])
+const currentStep = computed(() => {
+  const steps = genericPipeline.value
+  if (!steps.length) return null
+  const p = progress.value
+  const n = steps.length
+  // 步骤 i 占 [i/n, (i+1)/n), 最后一步到 100%
+  const idx = Math.min(n - 1, Math.floor((p / 100) * n))
+  return steps[idx] || null
+})
 const genericVisual = computed(() => {
   const v = props.scene?.canvas_config?.visual || {}
   return {
@@ -1319,6 +1330,19 @@ const genericAnswer = computed(() => {
 
 function drawGenericScene(ctx: CanvasRenderingContext2D, W: number, H: number) {
   const kind = genericVisual.value.kind
+  // 分步 HUD (Gemini 方案融合): 当前步骤标题/公式/结果, 步骤进度条
+  const step = currentStep.value
+  if (step) {
+    drawText(ctx, `步骤 ${step.step}: ${step.title}`, 20, 26, '#0f172a', 'left', 'bold 14px sans-serif')
+    drawText(ctx, `${step.formula} → ${fmtNum(Number(step.value))}${step.result_unit || ''}`, 20, 46, '#0284c7', 'left', 'bold 12px sans-serif')
+    const n = genericPipeline.value.length || 1
+    const segW = (W - 40) / n
+    for (let i = 0; i < n; i++) {
+      const done = i < step.step
+      ctx.fillStyle = done ? '#0ea5e9' : '#e2e8f0'
+      ctx.fillRect(20 + i * segW, 56, segW - 4, 4)
+    }
+  }
   if (kind === 'bar_model') drawGenericBars(ctx, W, H)
   else if (kind === 'grid') drawGenericGrid(ctx, W, H)
   else if (kind === 'flow') drawGenericFlow(ctx, W, H)
