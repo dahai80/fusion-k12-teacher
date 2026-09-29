@@ -181,6 +181,17 @@ def _h_sprinkler_area(v: dict[str, float]) -> dict[str, float]:
 
 
 def _h_tree_planting(v: dict[str, float]) -> dict[str, float]:
+    # 三种变体 (LLM 提取时以字段区分):
+    #   标准型: length+spacing+mode_code → trees
+    #   两侧栽: extra sides=2 → trees = (单侧棵数) × 2
+    #   逆向型: trees+spacing (无 length) → length = (trees - 1) * spacing [两端栽逆向]
+    if "length" not in v and "trees" in v and "spacing" in v:
+        spacing = v["spacing"]
+        trees = v["trees"]
+        sides = v.get("sides", 1.0)
+        per_side = trees / sides if sides else trees
+        length = (per_side - 1.0) * spacing
+        return {**v, "length": length, "segments": length / spacing if spacing else 0.0, "trees": trees}
     length = v["length"]
     spacing = v["spacing"]
     mode = str(int(v.get("mode_code", 0.0)))
@@ -193,6 +204,8 @@ def _h_tree_planting(v: dict[str, float]) -> dict[str, float]:
         trees = segments - 1.0
     else:
         trees = segments
+    if v.get("sides", 1.0) == 2.0:
+        trees = trees * 2.0  # 两侧栽: 公路两旁, 易漏 ×2
     return {**v, "segments": segments, "trees": trees}
 
 
@@ -363,7 +376,7 @@ _SCENARIO_REQUIRED: dict[str, list[str]] = {
     "round_trip": ["distance", "trips"],
     "sum_multiple": ["sum", "multiple"],
     "sprinkler_area": ["speed", "width", "time"],
-    "tree_planting": ["length", "spacing"],
+    "tree_planting": ["length", "spacing"],  # 变体: 两侧栽加 sides=2; 逆向型仅 trees+spacing (handler 分支兼容)
     "displacement_volume": ["length", "width", "rise"],
     "profit_loss": ["surplus", "deficit", "diff"],
     "simple_interest": ["principal", "rate", "years"],
@@ -434,9 +447,14 @@ class MathSympyVerifier(VerifierBase):
             return VerifyResult(error=f"未知场景: {scenario}", fallback=True)
         required = self._required.get(scenario, [])
         vars_f = _to_float_dict(entities)
-        # 变体兼容: required 满足其一即可 (如 queue_counting 位次型 rank_* 或人数型 front/behind_count)
+        # 变体兼容: 次要字段缺失时放行, 交由 handler 内分支处理 —
+        # queue_counting 人数型 (front/behind_count)、tree_planting 逆向型 (trees+spacing 无 length)
         missing = [k for k in required if k not in vars_f]
-        if missing and not any(k in vars_f for k in ("front_count", "behind_count")):
+        variant_ok = (
+            any(k in vars_f for k in ("front_count", "behind_count"))
+            or (scenario == "tree_planting" and "trees" in vars_f and "spacing" in vars_f)
+        )
+        if missing and not variant_ok:
             return VerifyResult(error=f"缺失变量: {missing}", fallback=True)
         result, err = _run_with_timeout(lambda: handler(vars_f))
         if result is None:

@@ -60,11 +60,11 @@ _EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本�
 - round_trip: 往返路程 (去+回, 漏乘2) (entities 含 trip.distance=单程, trip.trips=往返次数)
 - sum_multiple: 和倍问题 (甲乙和, 甲是乙几倍) (entities 含 pair.sum=和, pair.multiple=倍数)
 - sprinkler_area: 洒水车面积 (长方形随时间扩大) (entities 含 sprinkler.speed=速度, sprinkler.width=宽, sprinkler.time=时间)
-- tree_planting: 植树问题四类型 (两端栽/一端/两端不栽/封闭) (entities 含 road.length=路长, road.spacing=间距, road.mode_code=1两端栽/2一端/3两端不栽/0封闭)
+- tree_planting: 植树问题变体 (entities 含 road.length=路长, road.spacing=间距, road.mode_code=1两端栽/2一端/3两端不栽/0封闭) — ①标准型: 求棵数; ②两侧栽: "两旁/两侧"时加 road.sides=2 (棵数翻倍, 易漏); ③逆向型: 已知棵数求路长 (entities 含 road.trees=棵数, road.spacing=间距, 不填 length)
 - displacement_volume: 排水法求体积 (不规则物放入水箱水位上升) (entities 含 tank.length=水箱长, tank.width=水箱宽, tank.rise=上升高)
 - profit_loss: 盈亏问题 (每人分a多b, 分c少d求人数) (entities 含 allocation.surplus=盈, allocation.deficit=亏, allocation.diff=每人分配数之差如c-a)
 - simple_interest: 单利利息 (本金×年利率×年数) (entities 含 deposit.principal=本金, deposit.rate=年利率(小数如0.02), deposit.years=年数)
-- tiered_pricing: 分段计费 (出租车起步价+超出单价) (entities 含 trip.base_distance=起步距离, trip.base_price=起步价, trip.unit_price=超出单价, trip.total_distance=总距离)
+- tiered_pricing: 分段计费 (entities 含 trip.base_distance=起步量, trip.base_price=起步量的总价, trip.unit_price=超出单价, trip.total_distance=总用量) 注意: base_price 是起步量范围内的"总价" — 题目说"12吨以内每吨2.5元"时 base_price=12*2.5=30 而非 2.5; 出租车"起步价8元含3公里"则 base_price=8
 - weekday_calc: 星期推算 (今天周a, 再过b天是星期几) (entities 含 cal.start_day=今天星期数1-7, cal.add_days=过几天)
 - semicircle_perimeter: 半圆周长 (弧长+直径) (entities 含 shape.radius=半径) 注意: 题目必须明确问"半圆/半圆形", 整圆周长/圆面积不是此场景
 - cuboid_combine_surface: 长方体拼接表面积 (两相同长方体拼大长方体求最大/最小表面积) (entities 含 box.length, box.width, box.height) 注意: 仅限"拼/接后求表面积", 求周长/切割正方体求增加表面积均不是此场景 (切割正方体表面积增加无对应场景时填 unknown)
