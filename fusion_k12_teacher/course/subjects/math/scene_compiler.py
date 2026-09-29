@@ -82,7 +82,7 @@ _EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本�
     "bridge": {{"length": 数值, "label": "大桥"}},
     "train": {{"length": 数值, "speed": 数值, "label": "火车"}},
     "object": {{"n_segments": 数值, "time_per_cut": 数值, "label": "木头"}},
-    "person": {{"rank_front": 数值, "rank_behind": 数值, "label": "小明"}},
+    "person": {{"rank_front": 数值, "rank_behind": 数值, "front_count": 数值, "behind_count": 数值, "label": "小明"}},
     "fence": {{"length": 数值, "perimeter": 数值, "label": "篱笆"}},
     "group": {{"n_items": 数值, "total_value": 数值, "n_target": 数值, "label": "商品"}},
     "cage": {{"heads": 数值, "legs": 数值, "label": "笼"}},
