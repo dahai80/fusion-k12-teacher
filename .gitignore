@@ -20,8 +20,9 @@ build/
 .coverage
 htmlcov/
 
-# Runtime data (serve upload artifacts, agent history)
-data/
+# Runtime data (serve upload artifacts, agent history) — 仅根目录 data/,
+# 包内 data/ (题库/课标等随包分发的数据文件) 必须入库, CI 测试依赖
+/data/
 
 # Local-only docs (not for repo)
 CLAUDE.md

@@ -1,0 +1,3635 @@
+{
+  "version": "1.0",
+  "subject": "math",
+  "topic": "火车过桥",
+  "description": "K12 1-6年级数学易错题题库 v3: 全套覆盖 (场景22 + 概念辨析80+), 含错点/错题/正解/错因, 三元组打标, A/B/C分层",
+  "formula_cheatsheet": [
+    {
+      "scenario": "完全通过桥/隧道/涵洞",
+      "S": "L_bridge + L_train",
+      "v": "v_train",
+      "t": "(L_bridge + L_train) / v_train",
+      "critical_state": "车头上桥 → 车尾离开桥尾"
+    },
+    {
+      "scenario": "完全在桥上/隧道内",
+      "S": "L_bridge - L_train",
+      "v": "v_train",
+      "t": "(L_bridge - L_train) / v_train",
+      "critical_state": "车尾刚上桥 → 车头刚离桥"
+    },
+    {
+      "scenario": "通过点状参照物(行人/电线杆)",
+      "S": "L_train",
+      "v": "v_relative",
+      "t": "L_train / v_relative",
+      "critical_state": "车头遇参照物 → 车尾离开参照物"
+    },
+    {
+      "scenario": "两车相向错车",
+      "S": "L1 + L2",
+      "v": "v1 + v2",
+      "t": "(L1 + L2) / (v1 + v2)",
+      "critical_state": "车头相遇 → 车尾分离"
+    },
+    {
+      "scenario": "两车同向超车",
+      "S": "L1 + L2",
+      "v": "v_fast - v_slow",
+      "t": "(L1 + L2) / (v_fast - v_slow)",
+      "critical_state": "快车头赶上慢车尾 → 快车尾离开慢车头"
+    },
+    {
+      "scenario": "锯木头/剪绳子离散计数",
+      "S": "n段→n-1次",
+      "v": "每次耗时",
+      "t": "(n-1)×每次耗时",
+      "critical_state": "每锯一次分离一段"
+    },
+    {
+      "scenario": "排队计数 (从前第a从后第b)",
+      "S": "a + b - 1",
+      "v": "",
+      "t": "",
+      "critical_state": "自己被前后各算一次"
+    },
+    {
+      "scenario": "靠墙围栏 (长边靠墙)",
+      "S": "2×宽 + 长 = 周长",
+      "v": "宽=(周长-长)/2",
+      "t": "面积=长×宽",
+      "critical_state": "靠墙边不算周长"
+    },
+    {
+      "scenario": "归一问题",
+      "S": "单位量=总量÷件数",
+      "v": "目标=单位量×目标件数",
+      "t": "",
+      "critical_state": "先求单位量再求总量"
+    },
+    {
+      "scenario": "鸡兔同笼",
+      "S": "头数a腿数b",
+      "v": "兔=(b-2a)/2",
+      "t": "鸡=a-兔",
+      "critical_state": "假设全鸡算腿差"
+    },
+    {
+      "scenario": "基本行程",
+      "S": "路程",
+      "v": "速度",
+      "t": "路程=速度×时间",
+      "critical_state": "知二求一"
+    },
+    {
+      "scenario": "工程合作",
+      "S": "总量1",
+      "v": "效率=1/天数",
+      "t": "合作天数=1/(效率1+效率2)",
+      "critical_state": "效率相加非天数相加"
+    },
+    {
+      "scenario": "平均数",
+      "S": "总和",
+      "v": "个数",
+      "t": "平均=总和÷个数",
+      "critical_state": "除以个数"
+    },
+    {
+      "scenario": "重叠拼接",
+      "S": "总长 = 板1 + 板2 - 重叠",
+      "v": "",
+      "t": "",
+      "critical_state": "重叠部分只算一次"
+    },
+    {
+      "scenario": "植树问题四类型",
+      "S": "段数 = 总长÷间距",
+      "v": "两端栽: 棵=段+1; 一端: 棵=段; 两端不栽: 棵=段-1; 封闭: 棵=段",
+      "t": "",
+      "critical_state": "按场景定棵数公式"
+    },
+    {
+      "scenario": "洒水车面积",
+      "S": "长 = 速度×时间",
+      "v": "面积 = 长×宽",
+      "t": "面积 = 速度×宽×时间",
+      "critical_state": "长方形随时间扩大"
+    },
+    {
+      "scenario": "排水法求体积",
+      "S": "底面积 = 长×宽",
+      "v": "体积 = 底面积×上升高度",
+      "t": "不规则物体积 = 排开水的体积",
+      "critical_state": "只算上升部分水量"
+    },
+    {
+      "scenario": "往返路程",
+      "S": "单程距离",
+      "v": "往返1次=2趟",
+      "t": "总程 = 距离×2×往返次数",
+      "critical_state": "往返=去+回"
+    },
+    {
+      "scenario": "和倍问题",
+      "S": "和",
+      "v": "小数 = 和÷(倍数+1)",
+      "t": "大数 = 小数×倍数",
+      "critical_state": "自身1倍须计入分母"
+    },
+    {
+      "scenario": "盈亏问题",
+      "S": "盈+亏",
+      "v": "分配差",
+      "t": "人数 = (盈+亏)÷分配差",
+      "critical_state": "盈亏相加除以单次差"
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "forget_train_length",
+      "label": "路程只算桥长, 忘记加车长",
+      "related_templates": [
+        "train_crossing_bridge",
+        "train_on_bridge"
+      ]
+    },
+    {
+      "id": "confuse_pass_vs_on",
+      "label": "完全在桥上 = 完全通过 (混淆 S=L桥+L车 与 S=L桥-L车)",
+      "related_templates": [
+        "train_crossing_bridge",
+        "train_on_bridge"
+      ]
+    },
+    {
+      "id": "single_train_length_for_meet",
+      "label": "两车错车路程只算一车长 (应两车长之和)",
+      "related_templates": [
+        "two_trains_meet",
+        "two_trains_overtake"
+      ]
+    },
+    {
+      "id": "ignore_train_motion_in_echo",
+      "label": "鸣笛回声忽略火车也在前进 (2x = S声 + S车)",
+      "related_templates": [
+        "echo_problem"
+      ]
+    },
+    {
+      "id": "forget_self_in_queue",
+      "label": "排队计数重复算自己 (从前第a+从后第b须-1)",
+      "related_templates": [
+        "queue_counting"
+      ]
+    },
+    {
+      "id": "wall_side_double_count",
+      "label": "靠墙围栏把靠墙边也算进周长 (三边=2宽+长)",
+      "related_templates": [
+        "fence_against_wall"
+      ]
+    },
+    {
+      "id": "unitary_unit_confusion",
+      "label": "归一问题未先求单位量, 直接总量相乘",
+      "related_templates": [
+        "unitary_method"
+      ]
+    },
+    {
+      "id": "chicken_rabbit_assume_all_same",
+      "label": "鸡兔同笼假设全鸡/兔后忘记替换",
+      "related_templates": [
+        "chicken_rabbit"
+      ]
+    },
+    {
+      "id": "cut_count_equals_segments",
+      "label": "锯成n段误认为锯n次 (应n-1次)",
+      "related_templates": [
+        "cutting_segments"
+      ]
+    },
+    {
+      "id": "average_div_by_wrong_n",
+      "label": "平均数除以非个数或漏数",
+      "related_templates": [
+        "average_problem"
+      ]
+    },
+    {
+      "id": "work_add_time_directly",
+      "label": "工程合作直接天数相加或求平均 (应按效率相加)",
+      "related_templates": [
+        "work_problem"
+      ]
+    },
+    {
+      "id": "motion_formula_mix",
+      "label": "行程三量公式 s=vt 混淆求错量",
+      "related_templates": [
+        "basic_motion"
+      ]
+    },
+    {
+      "id": "carry_forget_ten",
+      "label": "进位加法忘记凑十进位",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "borrow_big_minus_small",
+      "label": "退位减法用大数减小数个位",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "mult_meaning_as_addition",
+      "label": "乘法意义误当加法 (3×4≠3+4)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "div_type_confusion",
+      "label": "平均分与包含除混淆",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "tree_planting_both_ends",
+      "label": "植树两端都栽误用段数 (应段数+1)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "big_number_zero_placeholder",
+      "label": "大数读法中间0的占位读漏",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "operation_order_ignore",
+      "label": "运算顺序先加减后乘除",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "bracket_change_result",
+      "label": "括号改变运算顺序致结果不同",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "quotient_invariant_misuse",
+      "label": "商不变性质被除数除数未同扩同缩",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "fraction_meaning_ignore",
+      "label": "分数意义误当运算式而非部分",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "fraction_compare_cross",
+      "label": "分数比较分母大则值大 (应通分或交叉)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "decimal_point_shift_dir",
+      "label": "小数点乘除移错方向",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "proportion_judge_error",
+      "label": "正反比例判断误判商/积定",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "scale_unit_confuse",
+      "label": "比例尺图实距离单位换算错",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "percent_vs_fraction",
+      "label": "百分数与分数等价混淆",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "pi_meaning_confuse",
+      "label": "圆周率误当3.14固定值非比率",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "negative_bigger_smaller",
+      "label": "负数大小误判 (-5比-3大)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "probability_equal_misjudge",
+      "label": "可能性大小误判等可能",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "age_diff_change",
+      "label": "年龄差误认为随年增长变化",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "equation_arithmetic_reverse",
+      "label": "方程思想退回算术逆向",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "approximation_round_dir",
+      "label": "近似数四舍五入方向错",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "remainder_ge_divisor",
+      "label": "余数大于等于除数",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "left_right_reference_confuse",
+      "label": "左右参照物混淆, 漏算人物自身",
+      "related_templates": [
+        "queue_counting",
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "between_excludes_ends",
+      "label": "'之间'不含两端, 须大数减小数再减1",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "enough_compare_incomplete",
+      "label": "够不够题只算不对比, 答题不完整",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "max_min_digit_confuse",
+      "label": "最大最小一位/两位数混淆",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "half_use_subtraction",
+      "label": "一半问题习惯用减法 (应加法还原)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "overlap_double_count",
+      "label": "重叠部分重复计算, 未减重叠长",
+      "related_templates": [
+        "overlap_splice"
+      ]
+    },
+    {
+      "id": "ceil_vs_floor_mix",
+      "label": "至少进一/最多去尾不分, 全四舍五入",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "clock_cross_hour_borrow",
+      "label": "时钟跨小时不会借1小时当60分",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "multiple_word_trap",
+      "label": "倍数文字陷阱: 求几倍用除, 求谁的几倍用乘",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "weight_one_side_fixed",
+      "label": "砝码称重思维固化只放一侧",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "fold_count_wrong",
+      "label": "对折次数与份数关系错 (对折n次=2^n份)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "reverse_solve_add",
+      "label": "错中求解加法不会逆向修正",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "unit_convert_area",
+      "label": "面积单位换算漏 (米/分米不统一)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "round_trip_miss_double",
+      "label": "往返=去+回, 漏乘2",
+      "related_templates": [
+        "round_trip"
+      ]
+    },
+    {
+      "id": "sum_multiple_ignore_self",
+      "label": "和倍问题忽略自身1倍, 只除以倍数",
+      "related_templates": [
+        "sum_multiple"
+      ]
+    },
+    {
+      "id": "fraction_with_without_unit",
+      "label": "分数带单位(具体量)vs不带单位(分率)混淆",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "inclusion_exclusion_forget_total",
+      "label": "容斥原理忘减总人数",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "leap_year_century_rule",
+      "label": "整百年须÷400, 误用÷4",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "sprinkler_miss_time",
+      "label": "洒水车面积漏乘时间",
+      "related_templates": [
+        "sprinkler_area"
+      ]
+    },
+    {
+      "id": "subtraction_bracket_sign",
+      "label": "连减性质括号内符号变号记混 (a-b-c=a-(b+c))",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "division_bracket_sign",
+      "label": "连除性质括号内符号变号记混 (a÷b÷c=a÷(b×c))",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "decimal_shift_direction",
+      "label": "小数点扩大缩小左右移方向搞反",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "approx_max_min",
+      "label": "近似数最大最小值取错边界",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "triangle_inequality_equal",
+      "label": "三角形两边之和等于第三边误认为可围 (须大于)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "tree_planting_type_mix",
+      "label": "植树四类型统一用间隔+1",
+      "related_templates": [
+        "tree_planting"
+      ]
+    },
+    {
+      "id": "speed_unit_incomplete",
+      "label": "速度单位漏复合单位 (千米/时)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "reverse_solve_mul",
+      "label": "错中求解乘除不会逆向差值",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "prime_composite_confuse",
+      "label": "质数合数奇偶混淆 (1非质非合, 2唯一偶质数)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "gcd_lcm_scene_mix",
+      "label": "最大公因数(铺砖)与最小公倍数(发车)场景用反",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "cut_surface_min_max",
+      "label": "切割表面积默认切最大面, 不审题最少/最多",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "displacement_use_total_water",
+      "label": "排水法用整体水量而非上升部分",
+      "related_templates": [
+        "displacement_volume"
+      ]
+    },
+    {
+      "id": "fraction_compare_dir",
+      "label": "分数比较: 同分子分母大反而小",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "mixed_fraction_integer_part",
+      "label": "带分数加减整数部分单独算错借位",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "profit_loss_formula",
+      "label": "盈亏问题公式 (盈+亏)÷分配差, 直接加减",
+      "related_templates": [
+        "profit_loss"
+      ]
+    },
+    {
+      "id": "unit1_baseline_change",
+      "label": "两个单位1基准变化, 百分比不能直接相等",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "salt_rate_denominator",
+      "label": "含盐率分母为盐水非水",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "scale_unit_convert",
+      "label": "比例尺图实距离单位换算漏",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "cylinder_cut_shape",
+      "label": "圆柱切分: 沿直径增矩形 vs 平行底面增圆, 分不清",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "cone_volume_forget_third",
+      "label": "圆锥铺路忘记÷3",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "ratio_alloc_total_parts",
+      "label": "按比例分配不会先求总份数",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "proportion_judge_formula",
+      "label": "正反比例: 见乘法就正比除法就反比 (错)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "interest_tax_forget",
+      "label": "利息税忘记扣, 本息=本金+利息-税",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "chicken_rabbit_score_diff",
+      "label": "鸡兔变形: 答对答错分差只算对分非差值",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "keyword_ignore",
+      "label": "审题关键词忽略 (至少/往返/对折/之间/无盖等)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "unit_unify_universal",
+      "label": "单位统一万能坑, 80%计算错误源于单位混乱",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "answer_incomplete",
+      "label": "答题漏单位漏答句",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "hidden_condition_miss",
+      "label": "图形题漏看隐藏条件 (直角/等边/无盖等)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "reverse_logic_weak",
+      "label": "逆向题不会倒推, 习惯顺向",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "geometry_concept_trap",
+      "label": "几何概念陷阱 (周长等面积不一定等)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "zero_property_confuse",
+      "label": "0相关易错 (不能做除数/没倒数/最小自然数)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_average_missing",
+      "label": "概念判断: 分蛋糕缺'平均'非每份1/4",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_perimeter_area_unit",
+      "label": "概念判断: 周长面积单位不同不可比",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_cone_cylinder",
+      "label": "概念判断: 圆锥÷3须等底等高",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_even_composite",
+      "label": "概念判断: 2是偶质数, 非所有偶数合数",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_odd_prime",
+      "label": "概念判断: 9/15奇数合数, 非所有奇数质数",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_circle_area_radius",
+      "label": "概念判断: 圆面积与半径平方正比非半径",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_decimal_trailing_zero",
+      "label": "概念判断: 小数点后只能去末尾0",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_dividend_zero",
+      "label": "概念判断: 被除数末尾0商末尾不一定0",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_weight_equal",
+      "label": "概念判断: 棉花铁同重直觉错",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_judge_parallel_coplanar",
+      "label": "概念判断: 平行须同一平面",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "redundant_condition_trap",
+      "label": "多余条件陷阱: 见数字就算, 不筛选无关条件",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "mirror_left_right_reverse",
+      "label": "镜像左右相反, 分不清实际方向",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "picture_multistep_count",
+      "label": "看图列式数错组数, 漏残缺组",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "time_backward_add",
+      "label": "时间往前算误用加法, 应倒推减",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "combination_use_addition",
+      "label": "搭配组合用加法, 混淆求和与组合",
+      "related_templates": [
+        "combination_count"
+      ]
+    },
+    {
+      "id": "tiered_ignore_base_price",
+      "label": "分段计费忽略起步价, 全程统一单价",
+      "related_templates": [
+        "tiered_pricing"
+      ]
+    },
+    {
+      "id": "cut_max_square_residual",
+      "label": "剪最大正方形剩余周长思路错, 巧合答对",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "fraction_consecutive_unit1",
+      "label": "分数连续拿走单位1不同, 统一用总数",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "weekday_exclude_today",
+      "label": "星期推算'过几天'不含当天, 忘记",
+      "related_templates": [
+        "weekday_calc"
+      ]
+    },
+    {
+      "id": "bracket_remove_sign_mix",
+      "label": "去括号符号: 括号前减号内变号, 加变减",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "approx_trailing_zero_keep",
+      "label": "四舍五入末尾0不省略, 代表精确数位",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "parallelogram_area_shrink",
+      "label": "长方形拉平行四边形: 周长不变面积变小",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "unitary_combined_order",
+      "label": "归一归总混合顺序乱, 乘除颠倒",
+      "related_templates": [
+        "unitary_combined"
+      ]
+    },
+    {
+      "id": "ray_line_unmeasurable",
+      "label": "射线一端无限延伸不可测量长度",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "coprime_composite_pair",
+      "label": "合数可互质 (8和9), 非合数必不互质",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "container_ceil_product_floor",
+      "label": "容器装物进一(桶), 成品个数去尾",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "cuboid_combine_min_face",
+      "label": "拼接最大表面积=拼最小面, 减面积最少",
+      "related_templates": [
+        "cuboid_combine_surface"
+      ]
+    },
+    {
+      "id": "divide_wording_ab_ba",
+      "label": "A除B=B÷A, A除以B=A÷B, 极易写反",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "overflow_volume_full_water",
+      "label": "满水溢出体积=溢出水体积, 须满水条件",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "consecutive_percent_compound",
+      "label": "连续增减百分率不能直接相减, 须连乘",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "semicircle_perimeter_add_diameter",
+      "label": "半圆周长=弧+直径, 漏直径高频丢分",
+      "related_templates": [
+        "semicircle_perimeter"
+      ]
+    },
+    {
+      "id": "proportion_product_rule",
+      "label": "比例内项积=外项积, 求另一项用除非乘",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "dilution_sugar_unchanged",
+      "label": "稀释: 糖质量不变, 求新总质量再减原",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "cylinder_lateral_application",
+      "label": "通风管只侧面积, 无盖桶侧+一底",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_decimal_smaller_than_int",
+      "label": "判断: 小数不一定比整数小 (3.5>2)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_lcm_not_always_bigger",
+      "label": "判断: 公倍数不一定大于两数 (4和2 LCM=4)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_cube_edge_volume_cube",
+      "label": "判断: 棱长扩2倍体积扩8倍 (立方关系)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_percent_no_unit",
+      "label": "判断: 百分数不能带单位 (50%米错)",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "concept_triangle_half_parallelogram",
+      "label": "判断: 三角形面积是平行四边形一半须等底等高",
+      "related_templates": [
+        "concept_discrimination"
+      ]
+    },
+    {
+      "id": "stars_bars_use_permutation",
+      "label": "相同物品分堆误用排列",
+      "description": "相同物品放不同容器应用隔板法C(n-1,k-1), 误用排列A或简单乘法"
+    },
+    {
+      "id": "stars_bars_ignore_minimum",
+      "label": "隔板法忽略每容器最少",
+      "description": "每容器最少m块须先预留m*k块再隔板C(n-m*k+k-1,k-1), 误按每篮≥1的C(n-1,k-1)"
+    }
+  ],
+  "problems": [
+    {
+      "id": "tb-ex-01",
+      "kind": "example",
+      "template_id": "train_crossing_bridge",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [
+        "math-g3-na-03",
+        "math-g4-na-02"
+      ],
+      "misconception_tags": [
+        "forget_train_length"
+      ],
+      "problem_text": "一列长200米的火车以20米每秒的速度通过800米大桥, 求通过时间。",
+      "variables": {
+        "L_bridge": 800,
+        "L_train": 200,
+        "v_train": 20
+      },
+      "expected": {
+        "S_total": 1000.0,
+        "t": 50.0
+      },
+      "key_cognition": "S = 桥长+车长 = 1000m, t = 50s"
+    },
+    {
+      "id": "tb-ex-02",
+      "kind": "example",
+      "template_id": "train_on_bridge",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [
+        "math-g5-na-01"
+      ],
+      "misconception_tags": [
+        "confuse_pass_vs_on"
+      ],
+      "problem_text": "一列长200米的火车以20米每秒的速度通过800米高架桥, 求完全在桥上的时间。",
+      "variables": {
+        "L_bridge": 800,
+        "L_train": 200,
+        "v_train": 20
+      },
+      "expected": {
+        "S_total": 600.0,
+        "t": 30.0
+      },
+      "key_cognition": "S = 桥长-车长 = 600m (隐蔽条件), t = 30s"
+    },
+    {
+      "id": "tb-ex-03",
+      "kind": "example",
+      "template_id": "relative_motion",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [
+        "math-g5-na-01"
+      ],
+      "misconception_tags": [],
+      "problem_text": "一列长180米的火车以16米每秒的速度前行, 遇到以2米每秒同向行走的行人, 求火车通过行人的时间。",
+      "variables": {
+        "L_train": 180,
+        "v_train": 16,
+        "v_pedestrian": 2
+      },
+      "expected": {
+        "v_relative": 18.0,
+        "t": 10.0
+      },
+      "key_cognition": "v相对 = 18m/s, S = L车 = 180m, t = 10s"
+    },
+    {
+      "id": "tb-ex-04a",
+      "kind": "example",
+      "template_id": "two_trains_meet",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [
+        "math-g5-na-01",
+        "math-g5-na-02"
+      ],
+      "misconception_tags": [
+        "single_train_length_for_meet"
+      ],
+      "problem_text": "甲列车长150米以25米每秒行驶, 乙列车长250米以15米每秒行驶, 两车相向而行, 求错车时间。",
+      "variables": {
+        "L1": 150,
+        "L2": 250,
+        "v1": 25,
+        "v2": 15
+      },
+      "expected": {
+        "S_total": 400.0,
+        "v_relative": 40.0,
+        "t": 10.0
+      },
+      "key_cognition": "错车: v和=40, S=L1+L2=400, t=10s"
+    },
+    {
+      "id": "tb-ex-04b",
+      "kind": "example",
+      "template_id": "two_trains_overtake",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [
+        "math-g5-na-01",
+        "math-g5-na-02"
+      ],
+      "misconception_tags": [
+        "single_train_length_for_meet"
+      ],
+      "problem_text": "甲列车长150米以25米每秒行驶, 乙列车长250米以15米每秒行驶, 两车同向而行 (甲在后追乙), 求超车时间。",
+      "variables": {
+        "L1": 150,
+        "L2": 250,
+        "v1": 25,
+        "v2": 15
+      },
+      "expected": {
+        "v_relative": 10.0,
+        "t": 40.0
+      },
+      "key_cognition": "超车: v差=10, S=L1+L2=400, t=40s"
+    },
+    {
+      "id": "tb-ex-05",
+      "kind": "example",
+      "template_id": "echo_problem",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [
+        "math-g5-na-01"
+      ],
+      "misconception_tags": [
+        "ignore_train_motion_in_echo"
+      ],
+      "problem_text": "一列火车以20米每秒行驶时鸣笛, 2秒后听到回声, 声速340米每秒, 求鸣笛时火车距反射壁的距离。",
+      "variables": {
+        "v_train": 20,
+        "v_sound": 340,
+        "t_echo": 2
+      },
+      "expected": {
+        "x_distance": 360.0
+      },
+      "key_cognition": "2x = S声 + S车 = 680+40 = 720, x = 360m"
+    },
+    {
+      "id": "tb-pr-01",
+      "kind": "exercise",
+      "template_id": "train_crossing_bridge",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [
+        "math-g3-na-03"
+      ],
+      "misconception_tags": [
+        "forget_train_length"
+      ],
+      "problem_text": "一列长150米的火车以15米每秒的速度通过1050米涵洞, 求通过时间。",
+      "variables": {
+        "L_bridge": 1050,
+        "L_train": 150,
+        "v_train": 15
+      },
+      "expected": {
+        "S_total": 1200.0,
+        "t": 80.0
+      },
+      "key_cognition": "S=1200m, t=80s (同模板换参数)"
+    },
+    {
+      "id": "tb-pr-02",
+      "kind": "exercise",
+      "template_id": "train_crossing_bridge",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [
+        "math-g5-na-01",
+        "math-g5-na-02"
+      ],
+      "misconception_tags": [
+        "confuse_pass_vs_on",
+        "forget_train_length"
+      ],
+      "problem_text": "一列火车通过400米桥需30秒, 以同一速度通过700米隧道需45秒, 求车速与车长。",
+      "variables": {
+        "L_bridge": 400,
+        "t1": 30,
+        "L_tunnel": 700,
+        "t2": 45
+      },
+      "expected": {
+        "v_train": 20.0,
+        "L_train": 200.0
+      },
+      "key_cognition": "ΔS=300m, Δt=15s, v=20m/s, L车=200m (双过程对比)"
+    },
+    {
+      "id": "tb-pr-03",
+      "kind": "exercise",
+      "template_id": "two_trains_meet",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [
+        "math-g5-na-01"
+      ],
+      "misconception_tags": [
+        "single_train_length_for_meet"
+      ],
+      "problem_text": "甲列车长200米以25米每秒, 乙列车长160米以15米每秒, 相向而行; 乙车乘客看甲车经过历时多久?",
+      "variables": {
+        "L1": 200,
+        "L2": 160,
+        "v1": 25,
+        "v2": 15
+      },
+      "expected": {
+        "v_relative": 40.0,
+        "S": 200.0,
+        "t": 5.0
+      },
+      "key_cognition": "v相对=40m/s, S=甲车长=200m (乘客视角), t=5s"
+    },
+    {
+      "id": "g3-cut-ex-01",
+      "kind": "example",
+      "template_id": "cutting_segments",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cut_count_equals_segments"
+      ],
+      "problem_text": "一根木头锯成3段, 每锯一次2分钟, 一共需要多少分钟? 错解: 3×2=6 正解: (3-1)×2=4 错因: 锯成3段只需锯2次, 非段数×次数",
+      "variables": {
+        "n_segments": 3,
+        "time_per_cut": 2
+      },
+      "expected": {
+        "n_cuts": 2.0,
+        "total_time": 4.0
+      },
+      "key_cognition": "n段→n-1次锯, 总时=(n-1)×每次"
+    },
+    {
+      "id": "g1-queue-ex-01",
+      "kind": "example",
+      "template_id": "queue_counting",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "forget_self_in_queue"
+      ],
+      "problem_text": "小明排队做操, 从前数第5, 从后数第4, 这排共几人? 错解: 5+4=9 正解: 5+4-1=8 错因: 小明被前后各算一次, 须减1",
+      "variables": {
+        "rank_front": 5,
+        "rank_behind": 4
+      },
+      "expected": {
+        "total_people": 8.0
+      },
+      "key_cognition": "从前第a+从后第b-1=总人数"
+    },
+    {
+      "id": "g2-fence-ex-01",
+      "kind": "example",
+      "template_id": "fence_against_wall",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g2-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "wall_side_double_count"
+      ],
+      "problem_text": "靠墙围长方形菜园, 长边10米靠墙, 三边篱笆共24米, 求菜园面积。错解: 24×10=240 正解: 宽=(24-10)/2=7, 面积=10×7=70 错因: 靠墙边不算周长",
+      "variables": {
+        "length": 10,
+        "perimeter": 24
+      },
+      "expected": {
+        "width": 7.0,
+        "area": 70.0
+      },
+      "key_cognition": "三边=2宽+长, 宽=(周长-长)/2"
+    },
+    {
+      "id": "g3-unitary-ex-01",
+      "kind": "example",
+      "template_id": "unitary_method",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "unitary_unit_confusion"
+      ],
+      "problem_text": "3本笔记本6元, 买5本需要多少元? 错解: 6×5=30 正解: 6÷3×5=10 错因: 未先求单位量(每本2元)",
+      "variables": {
+        "n_items": 3,
+        "total_value": 6,
+        "n_target": 5
+      },
+      "expected": {
+        "unit_value": 2.0,
+        "target_value": 10.0
+      },
+      "key_cognition": "先归一(总价÷件数)再求总量"
+    },
+    {
+      "id": "g3-chicken-ex-01",
+      "kind": "example",
+      "template_id": "chicken_rabbit",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "chicken_rabbit_assume_all_same"
+      ],
+      "problem_text": "鸡兔同笼, 共10个头28条腿, 鸡兔各几只? 错解: 全鸡20腿差8, 忘记换算 正解: 兔=(28-2×10)/2=4, 鸡=6 错因: 假设全鸡后腿差须除以腿数差(4-2)",
+      "variables": {
+        "heads": 10,
+        "legs": 28
+      },
+      "expected": {
+        "rabbit": 4.0,
+        "chicken": 6.0
+      },
+      "key_cognition": "假设全鸡, 兔=(腿-2×头)/2"
+    },
+    {
+      "id": "g4-average-ex-01",
+      "kind": "example",
+      "template_id": "average_problem",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "average_div_by_wrong_n"
+      ],
+      "problem_text": "四次数学成绩分别是85,90,92,93, 平均分多少? 错解: 除以3或加错 正解: (85+90+92+93)÷4=90 错因: 除以个数4, 非其他数",
+      "variables": {
+        "total_sum": 360,
+        "count": 4
+      },
+      "expected": {
+        "average": 90.0
+      },
+      "key_cognition": "平均=总和÷个数"
+    },
+    {
+      "id": "g5-work-ex-01",
+      "kind": "example",
+      "template_id": "work_problem",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [
+        "math-g4-na-02"
+      ],
+      "misconception_tags": [
+        "work_add_time_directly"
+      ],
+      "problem_text": "一项工程甲单独6天完成, 乙单独12天完成, 两人合作几天完成? 错解: (6+12)/2=9 正解: 1/(1/6+1/12)=4 错因: 合作按效率相加, 非天数平均",
+      "variables": {
+        "worker1_days": 6,
+        "worker2_days": 12
+      },
+      "expected": {
+        "rate1": 0.1667,
+        "rate2": 0.0833,
+        "total_days": 4.0
+      },
+      "key_cognition": "效率=1/天数, 合作天数=1/(效率和)"
+    },
+    {
+      "id": "g6-motion-ex-01",
+      "kind": "example",
+      "template_id": "basic_motion",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [
+        "math-g5-na-01"
+      ],
+      "misconception_tags": [
+        "motion_formula_mix"
+      ],
+      "problem_text": "一辆汽车以20米每秒的速度行驶5秒, 行驶多少米? 错解: 20÷5=4 或 5×20混淆 正解: 20×5=100 错因: s=vt 三量须对应, 求路程=速度×时间",
+      "variables": {
+        "distance": 0,
+        "speed": 20,
+        "time": 5
+      },
+      "expected": {
+        "distance": 100.0,
+        "speed": 20.0,
+        "time": 5.0
+      },
+      "key_cognition": "路程=速度×时间, 知二求一"
+    },
+    {
+      "id": "g1-carry-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "carry_forget_ten"
+      ],
+      "problem_text": "9+6=? 错解: 9+6=14 (忘记进位凑十) 正解: 9+6=15 错因: 9凑1成10, 剩5, 进1得15",
+      "variables": {},
+      "expected": {
+        "answer": 15
+      },
+      "key_cognition": "凑十法: 9和1凑10, 进位加剩"
+    },
+    {
+      "id": "g1-borrow-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "borrow_big_minus_small"
+      ],
+      "problem_text": "12-5=? 错解: 12-5=7 (个位2减不动, 用5-2=3) 正解: 12-5=7 (退位: 12=10+2, 10-5=5, 5+2=7) 错因: 个位不够减须退位, 非大数减小数",
+      "variables": {},
+      "expected": {
+        "answer": 7
+      },
+      "key_cognition": "退位减法: 借十再减"
+    },
+    {
+      "id": "g2-mult-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g2-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "mult_meaning_as_addition"
+      ],
+      "problem_text": "3×4表示什么? 结果几? 错解: 3+4=7 (把乘法当加法) 正解: 3×4=12 (4个3相加或3个4相加) 错因: 乘法是同数连加, 非两数相加",
+      "variables": {},
+      "expected": {
+        "answer": 12
+      },
+      "key_cognition": "乘法意义: 几个相同加数的和"
+    },
+    {
+      "id": "g2-div-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g2-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "div_type_confusion"
+      ],
+      "problem_text": "12个苹果平均分给3人, 每人几个? 这是平均分还是包含除? 错解: 混淆两种除法 正解: 12÷3=4, 平均分(按份数分) 错因: 平均分=总数÷份数, 包含除=总数÷每份数",
+      "variables": {},
+      "expected": {
+        "answer": 4
+      },
+      "key_cognition": "平均分: 总数÷份数=每份"
+    },
+    {
+      "id": "g3-tree-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "tree_planting_both_ends"
+      ],
+      "problem_text": "一条20米小路, 每隔5米栽一棵树, 两端都栽, 共栽几棵? 错解: 20÷5=4 正解: 20÷5+1=5 错因: 两端都栽, 棵数=段数+1",
+      "variables": {},
+      "expected": {
+        "answer": 5
+      },
+      "key_cognition": "两端都栽: 棵数=段数+1"
+    },
+    {
+      "id": "g3-bignum-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g3-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "big_number_zero_placeholder"
+      ],
+      "problem_text": "3005000 读作? 错解: 三百万五千 (漏零) 正解: 三百万五千 (中间两个0读一个零或不读, 须按规则) 错因: 数中间0的占位读法错",
+      "variables": {},
+      "expected": {
+        "answer": "三百万五千"
+      },
+      "key_cognition": "大数读法: 0的占位规则"
+    },
+    {
+      "id": "g4-oporder-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "operation_order_ignore"
+      ],
+      "problem_text": "3+5×4=? 错解: (3+5)×4=32 (先加后乘) 正解: 3+20=23 (先乘除后加减) 错因: 运算顺序先乘除后加减",
+      "variables": {},
+      "expected": {
+        "answer": 23
+      },
+      "key_cognition": "运算顺序: 先乘除后加减"
+    },
+    {
+      "id": "g4-bracket-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "bracket_change_result"
+      ],
+      "problem_text": "比较 (3+5)×4 和 3+5×4, 结果相同吗? 错解: 相同 正解: (3+5)×4=32, 3+5×4=23, 不同 错因: 括号改变运算顺序",
+      "variables": {},
+      "expected": {
+        "answer": "不同"
+      },
+      "key_cognition": "括号改变运算顺序"
+    },
+    {
+      "id": "g4-quotient-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "quotient_invariant_misuse"
+      ],
+      "problem_text": "48÷6=8, 那么480÷60=? 错解: 变了 正解: 8 (商不变: 被除数除数同扩10倍) 错因: 商不变性质, 同扩同缩商不变",
+      "variables": {},
+      "expected": {
+        "answer": 8
+      },
+      "key_cognition": "商不变: 被除数除数同扩同缩"
+    },
+    {
+      "id": "g5-fracmean-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fraction_meaning_ignore"
+      ],
+      "problem_text": "3/4表示什么? 错解: 3除以4的运算 正解: 把整体平均分4份取3份 错因: 分数是部分与整体关系, 非运算式",
+      "variables": {},
+      "expected": {
+        "answer": "4分之3"
+      },
+      "key_cognition": "分数意义: 整体平均分的部分"
+    },
+    {
+      "id": "g5-fraccomp-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fraction_compare_cross"
+      ],
+      "problem_text": "比较 1/3 和 1/4 大小。错解: 1/4大 (分母大值大) 正解: 1/3>1/4 错因: 同分子分数, 分母小反而大",
+      "variables": {},
+      "expected": {
+        "answer": "1/3>1/4"
+      },
+      "key_cognition": "同分子: 分母小值大"
+    },
+    {
+      "id": "g5-decshift-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "decimal_point_shift_dir"
+      ],
+      "problem_text": "3.25×10=? 错解: 0.325 (小数点左移) 正解: 32.5 (小数点右移1位) 错因: 乘10小数点右移, 除10左移",
+      "variables": {},
+      "expected": {
+        "answer": 32.5
+      },
+      "key_cognition": "乘10小数点右移1位"
+    },
+    {
+      "id": "g6-prop-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "proportion_judge_error"
+      ],
+      "problem_text": "路程一定, 速度和时间成什么比例? 错解: 正比例 正解: 反比例 (v×t=s定, 积定反比例) 错因: 积定为反比例, 商定为正比例",
+      "variables": {},
+      "expected": {
+        "answer": "反比例"
+      },
+      "key_cognition": "商定正比, 积定反比"
+    },
+    {
+      "id": "g6-scale-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "scale_unit_confuse"
+      ],
+      "problem_text": "比例尺1:1000, 图上5cm, 实际距离多少? 错解: 5cm (忘换算) 正解: 5×1000=5000cm=50m 错因: 图上×比例尺=实际, 须换算单位",
+      "variables": {},
+      "expected": {
+        "answer": "50m"
+      },
+      "key_cognition": "实际=图上×比例尺, 换算单位"
+    },
+    {
+      "id": "g6-percent-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "percent_vs_fraction"
+      ],
+      "problem_text": "25%和1/4相等吗? 错解: 不等 正解: 相等 (25%=25/100=1/4) 错因: 百分数是分母100的分数, 可互化",
+      "variables": {},
+      "expected": {
+        "answer": "相等"
+      },
+      "key_cognition": "百分数=分母100的分数"
+    },
+    {
+      "id": "g6-pi-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "pi_meaning_confuse"
+      ],
+      "problem_text": "圆周率π是什么? 错解: π=3.14是固定值 正解: π是周长与直径的比, 约等于3.14 错因: π是比率常数, 3.14是近似值",
+      "variables": {},
+      "expected": {
+        "answer": "周长÷直径的比"
+      },
+      "key_cognition": "π=周长/直径, 无限不循环"
+    },
+    {
+      "id": "g6-neg-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "negative_bigger_smaller"
+      ],
+      "problem_text": "-5和-3哪个大? 错解: -5大 (绝对值大) 正解: -3>-5 错因: 负数绝对值大反而小, 数轴左小右大",
+      "variables": {},
+      "expected": {
+        "answer": "-3>-5"
+      },
+      "key_cognition": "负数: 绝对值大反而小"
+    },
+    {
+      "id": "g6-prob-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "probability_equal_misjudge"
+      ],
+      "problem_text": "掷骰子, 1点和6点的可能性哪个大? 错解: 6点大 正解: 相等 (各1/6) 错因: 公平骰子各面等可能",
+      "variables": {},
+      "expected": {
+        "answer": "相等"
+      },
+      "key_cognition": "等可能事件概率相同"
+    },
+    {
+      "id": "g6-age-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "age_diff_change"
+      ],
+      "problem_text": "父亲40岁儿子10岁, 5年后两人年龄差? 错解: 40-10+5=35 正解: 40-10=30 错因: 年龄差不变, 不随年增长变化",
+      "variables": {},
+      "expected": {
+        "answer": 30
+      },
+      "key_cognition": "年龄差不变"
+    },
+    {
+      "id": "g6-eq-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "equation_arithmetic_reverse"
+      ],
+      "problem_text": "一个数加上3等于10, 求这个数。错解: 10-3=7 (算术逆向) 正解: 设x, x+3=10, x=7 (方程思想) 错因: 方程顺向思维更清晰",
+      "variables": {},
+      "expected": {
+        "answer": 7
+      },
+      "key_cognition": "方程: 设未知数顺向列式"
+    },
+    {
+      "id": "g6-approx-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "approximation_round_dir"
+      ],
+      "problem_text": "3.14159精确到0.01约多少? 错解: 3.15 (进位错) 正解: 3.14 (千分位1<5舍) 错因: 四舍五入看下一位, 5以下舍",
+      "variables": {},
+      "expected": {
+        "answer": 3.14
+      },
+      "key_cognition": "四舍五入: 看下一位≥5进, <5舍"
+    },
+    {
+      "id": "g3-rem-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "remainder_ge_divisor"
+      ],
+      "problem_text": "23÷5的余数是几? 错解: 余8 (23-15=8, 8>5) 正解: 23÷5=4...3, 余数3 错因: 余数必须小于除数",
+      "variables": {},
+      "expected": {
+        "answer": 3
+      },
+      "key_cognition": "余数<除数, 须继续除"
+    },
+    {
+      "id": "g1-lr-ex-01",
+      "kind": "example",
+      "template_id": "queue_counting",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "left_right_reference_confuse"
+      ],
+      "problem_text": "小明左边有3人, 小红在小明右边第2个, 小红左边有几人? 错解: 3+2=5 正解: 3+1=4 错因: 以小明为标准, 小明自身算1人, 右边第2即小明后1人, 小红左边=小明及左边共3+1=4人",
+      "variables": {
+        "rank_front": 4,
+        "rank_behind": 2
+      },
+      "expected": {
+        "total_people": 5
+      },
+      "key_cognition": "以谁为标准, 人物本身易漏"
+    },
+    {
+      "id": "g1-between-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "between_excludes_ends"
+      ],
+      "problem_text": "从第3人到第9人之间有几人? 错解: 9-3=6 正解: 9-3-1=5 错因: '之间'不含3和9两端, 须再减1",
+      "variables": {},
+      "expected": {
+        "answer": 5
+      },
+      "key_cognition": "之间不含两端: 大-小-1"
+    },
+    {
+      "id": "g1-enough-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "enough_compare_incomplete"
+      ],
+      "problem_text": "有8个苹果分给9个小朋友每人1个够吗? 错解: 只写8或够 正解: 8<9, 答: 不够 错因: 只计算不对比, 答题不完整",
+      "variables": {},
+      "expected": {
+        "answer": "不够"
+      },
+      "key_cognition": "够不够: 须比较并写答句"
+    },
+    {
+      "id": "g1-digit-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "max_min_digit_confuse"
+      ],
+      "problem_text": "最大一位数、最小两位数、最大两位数各是多少? 错解: 最小两位100/最大一位10 正解: 最大一位9, 最小两位10, 最大两位99 错因: 混淆位数边界",
+      "variables": {},
+      "expected": {
+        "answer": "9,10,99"
+      },
+      "key_cognition": "位数边界: 最大一位9, 最小两位10"
+    },
+    {
+      "id": "g1-half-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "half_use_subtraction"
+      ],
+      "problem_text": "一堆糖吃掉一半剩6颗, 原来多少颗? 错解: 6-3=3 正解: 6+6=12 错因: 见'一半'习惯减法, 应加法还原 (剩的=一半)",
+      "variables": {},
+      "expected": {
+        "answer": 12
+      },
+      "key_cognition": "一半还原: 剩×2=原"
+    },
+    {
+      "id": "g1-overlap-ex-01",
+      "kind": "example",
+      "template_id": "overlap_splice",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g1-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "overlap_double_count"
+      ],
+      "problem_text": "两块木板各长5cm, 重叠1cm拼接, 总长多少? 错解: 5+5=10 正解: 5+5-1=9 错因: 重叠部分重复计算, 须减去重叠长",
+      "variables": {
+        "board1": 5,
+        "board2": 5,
+        "overlap": 1
+      },
+      "expected": {
+        "total_length": 9.0
+      },
+      "key_cognition": "拼接总长=两板和-重叠"
+    },
+    {
+      "id": "g2-ceil-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g2-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "ceil_vs_floor_mix"
+      ],
+      "problem_text": "22人坐船每条船坐5人, 至少几条船? 错解: 22÷5=4...2, 4条 正解: 4+1=5条 (剩2人也要1条, 进一法) 错因: 分不清至少进一/最多去尾",
+      "variables": {
+        "total": 22,
+        "per_group": 5
+      },
+      "expected": {
+        "answer": 5
+      },
+      "key_cognition": "至少=进一法: 商+1"
+    },
+    {
+      "id": "g2-floor-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g2-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "ceil_vs_floor_mix"
+      ],
+      "problem_text": "22米布每5米做一件衣服, 最多几件? 错解: 4+1=5 正解: 4件 (余布不够, 去尾法) 错因: 最多=去尾, 余下舍去",
+      "variables": {
+        "total": 22,
+        "per_group": 5
+      },
+      "expected": {
+        "answer": 4
+      },
+      "key_cognition": "最多=去尾法: 商舍余"
+    },
+    {
+      "id": "g2-clock-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g2-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "clock_cross_hour_borrow"
+      ],
+      "problem_text": "2:40到3:10经过多久? 错解: 40-10=30 正解: 60-40+10=30分钟 错因: 分钟不够减, 借1小时当60分",
+      "variables": {},
+      "expected": {
+        "answer": 30
+      },
+      "key_cognition": "跨小时: 借1时=60分"
+    },
+    {
+      "id": "g2-mult-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g2-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "multiple_word_trap"
+      ],
+      "problem_text": "8的2倍是多少? 8是2的几倍? 错解: 都用8÷2=4 正解: 8的2倍=8×2=16; 8是2的几倍=8÷2=4 错因: 求几倍用除, 求谁的几倍用乘",
+      "variables": {},
+      "expected": {
+        "answer": "16, 4"
+      },
+      "key_cognition": "求倍数用除, 求几倍用乘"
+    },
+    {
+      "id": "g2-weight-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g2-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "weight_one_side_fixed"
+      ],
+      "problem_text": "有3g和5g砝码, 能称出几种重量? 错解: 3、5两种 正解: 3、5、3+5=8共3种 错因: 砝码可同侧组合, 思维固化只放一侧",
+      "variables": {},
+      "expected": {
+        "answer": 3
+      },
+      "key_cognition": "砝码可组合: 单+和"
+    },
+    {
+      "id": "g2-fold-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g2-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fold_count_wrong"
+      ],
+      "problem_text": "正方形对折两次, 每份是几分之几? 错解: 1/3 正解: 对折两次=4份, 每份1/4 错因: 对折n次=2^n份, 非n+1",
+      "variables": {},
+      "expected": {
+        "answer": "1/4"
+      },
+      "key_cognition": "对折n次=2^n份"
+    },
+    {
+      "id": "g2-revadd-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g2-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "reverse_solve_add"
+      ],
+      "problem_text": "加数个位3看成8, 和比正确多5, 正确和=错误和-? 错解: 不会逆向 正解: 多看了8-3=5, 正确和=错误和-5 错因: 错中求解须逆向修正",
+      "variables": {},
+      "expected": {
+        "answer": 5
+      },
+      "key_cognition": "错中求解: 看多数=差, 减回"
+    },
+    {
+      "id": "g3-tile-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "unit_convert_area"
+      ],
+      "problem_text": "客厅长6米宽4米, 地砖边长2分米, 要多少块? 错解: 6×4÷2=12 正解: 60×40÷(2×2)=600块 错因: 米分米不统一直接算",
+      "variables": {},
+      "expected": {
+        "answer": 600
+      },
+      "key_cognition": "面积换算: 统一单位再算"
+    },
+    {
+      "id": "g3-roundtrip-ex-01",
+      "kind": "example",
+      "template_id": "round_trip",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "round_trip_miss_double"
+      ],
+      "problem_text": "家到学校450米, 每天往返2次, 一共走多少米? 错解: 450×2=900 正解: 往返1次=2趟, 2次=4趟, 450×4=1800 错因: 往返=去+回漏乘2",
+      "variables": {
+        "distance": 450,
+        "trips": 2
+      },
+      "expected": {
+        "total_distance": 1800.0
+      },
+      "key_cognition": "往返=去+回, 总程=距离×2×次数"
+    },
+    {
+      "id": "g3-summult-ex-01",
+      "kind": "example",
+      "template_id": "sum_multiple",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "sum_multiple_ignore_self"
+      ],
+      "problem_text": "甲乙一共40, 甲是乙的4倍, 甲乙各多少? 错解: 40÷4=10 正解: 40÷(4+1)=8(乙), 甲=8×4=32 错因: 忽略乙自身1倍, 须除以倍数+1",
+      "variables": {
+        "sum": 40,
+        "multiple": 4
+      },
+      "expected": {
+        "small": 8.0,
+        "big": 32.0
+      },
+      "key_cognition": "和倍: 小=和÷(倍+1), 大=小×倍"
+    },
+    {
+      "id": "g3-fracunit-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fraction_with_without_unit"
+      ],
+      "problem_text": "一根绳子8米: ①用去1/4, 用去几米? ②用去1/4米, 剩几米? 错解: 都用乘法 正解: ①8×1/4=2米; ②8-1/4=7又3/4米 错因: 分率(无单位)用乘, 具体量(有单位)用减",
+      "variables": {},
+      "expected": {
+        "answer": "2米, 7又3/4米"
+      },
+      "key_cognition": "分数带单位=具体量, 不带=分率"
+    },
+    {
+      "id": "g3-incl-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "inclusion_exclusion_forget_total"
+      ],
+      "problem_text": "全班30人, 20人语文优秀, 18人数学优秀, 两门都优秀几人? 错解: 20+18=38 正解: 20+18-30=8 错因: 容斥原理须减总人数",
+      "variables": {},
+      "expected": {
+        "answer": 8
+      },
+      "key_cognition": "容斥: 两集和-总数=交集"
+    },
+    {
+      "id": "g3-leap-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "leap_year_century_rule"
+      ],
+      "problem_text": "2100年是平年还是闰年? 错解: 2100÷4=525, 闰年 正解: 整百年÷400, 2100÷400有余数, 平年, 2月28天 错因: 整百年须÷400非÷4",
+      "variables": {},
+      "expected": {
+        "answer": "平年"
+      },
+      "key_cognition": "闰年: 整百年÷400, 非整百年÷4"
+    },
+    {
+      "id": "g3-sprinkler-ex-01",
+      "kind": "example",
+      "template_id": "sprinkler_area",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "sprinkler_miss_time"
+      ],
+      "problem_text": "洒水车每分钟行100米, 洒水宽3米, 5分钟洒水面积? 错解: 100×3=300 正解: 100×3×5=1500平方米 错因: 长方形随时间扩大, 漏乘时间",
+      "variables": {
+        "speed": 100,
+        "width": 3,
+        "time": 5
+      },
+      "expected": {
+        "area": 1500.0
+      },
+      "key_cognition": "洒水面积=速度×宽×时间"
+    },
+    {
+      "id": "g4-subbracket-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "subtraction_bracket_sign"
+      ],
+      "problem_text": "125-27-73简便计算? 错解: 125-(27-73) 正解: 125-(27+73)=25 错因: 连减性质 a-b-c=a-(b+c), 括号内变号",
+      "variables": {},
+      "expected": {
+        "answer": 25
+      },
+      "key_cognition": "连减: a-b-c=a-(b+c)"
+    },
+    {
+      "id": "g4-divbracket-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "division_bracket_sign"
+      ],
+      "problem_text": "360÷12÷3简便计算? 错解: 360÷(12÷3) 正解: 360÷(12×3)=10 错因: 连除性质 a÷b÷c=a÷(b×c), 括号内变号",
+      "variables": {},
+      "expected": {
+        "answer": 10
+      },
+      "key_cognition": "连除: a÷b÷c=a÷(b×c)"
+    },
+    {
+      "id": "g4-decshift-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "decimal_shift_direction"
+      ],
+      "problem_text": "0.06扩大100倍是多少? 错解: 0.06÷100=0.0006 正解: 0.06×100=6 (小数点右移2位) 错因: 扩大右移乘, 缩小左移除",
+      "variables": {},
+      "expected": {
+        "answer": 6
+      },
+      "key_cognition": "扩大×右移, 缩小÷左移"
+    },
+    {
+      "id": "g4-approx-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "approx_max_min"
+      ],
+      "problem_text": "一个两位小数近似数3.6, 最大和最小各是多少? 错解: 最大3.69/最小3.61 正解: 最大3.64, 最小3.55 错因: 四舍五入边界, 最大末位4, 最小末位5",
+      "variables": {},
+      "expected": {
+        "answer": "3.64, 3.55"
+      },
+      "key_cognition": "近似数边界: 最大末位4, 最小末位5"
+    },
+    {
+      "id": "g4-tri-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "triangle_inequality_equal"
+      ],
+      "problem_text": "3cm、4cm、7cm能围成三角形吗? 错解: 3+4>7可以 正解: 3+4=7等于, 不能 错因: 两边之和必须大于第三边, 等于不行",
+      "variables": {},
+      "expected": {
+        "answer": "不能"
+      },
+      "key_cognition": "三角形: 两边和>第三边, 等于不行"
+    },
+    {
+      "id": "g4-tree-ex-01",
+      "kind": "example",
+      "template_id": "tree_planting",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "tree_planting_type_mix"
+      ],
+      "problem_text": "一条20米小路每隔5米栽一棵, 两端都栽, 共几棵? 错解: 20÷5=4 正解: 20÷5+1=5 (两端栽: 棵=段+1) 错因: 植树四类型公式混用",
+      "variables": {
+        "length": 20,
+        "spacing": 5,
+        "mode": "both_ends"
+      },
+      "expected": {
+        "trees": 5.0
+      },
+      "key_cognition": "两端栽: 棵=段+1"
+    },
+    {
+      "id": "g4-tree-ex-02",
+      "kind": "example",
+      "template_id": "tree_planting",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "tree_planting_type_mix"
+      ],
+      "problem_text": "圆形花坛周长60米每隔10米栽一棵, 共几棵? 错解: 60÷10+1=7 正解: 60÷10=6 (封闭: 棵=段) 错因: 封闭图形棵=间隔, 不+1",
+      "variables": {
+        "length": 60,
+        "spacing": 10,
+        "mode": "closed"
+      },
+      "expected": {
+        "trees": 6.0
+      },
+      "key_cognition": "封闭: 棵=段"
+    },
+    {
+      "id": "g4-spdunit-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "speed_unit_incomplete"
+      ],
+      "problem_text": "汽车每小时行60千米, 速度怎么写? 错解: 60千米 正解: 60千米/时 (复合单位) 错因: 速度须带复合单位 时间分母",
+      "variables": {},
+      "expected": {
+        "answer": "60千米/时"
+      },
+      "key_cognition": "速度复合单位: 路程/时间"
+    },
+    {
+      "id": "g4-revmul-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "reverse_solve_mul"
+      ],
+      "problem_text": "乘数23看成32, 积多450, 求正确积? 错解: 不会逆向 正解: 看多32-23=9, 另一乘数=450÷9=50, 正确积=23×50=1150 错因: 错中求解须逆向差值",
+      "variables": {},
+      "expected": {
+        "answer": 1150
+      },
+      "key_cognition": "错中乘: 差÷看多数=另一乘数"
+    },
+    {
+      "id": "g5-prime-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "prime_composite_confuse"
+      ],
+      "problem_text": "最小质数、最小合数、1各是什么? 错解: 1是质数/2是合数 正解: 最小质数2(唯一偶质数), 最小合数4, 1既非质非合 错因: 质合奇偶混淆",
+      "variables": {},
+      "expected": {
+        "answer": "2,4,1非质非合"
+      },
+      "key_cognition": "2唯一偶质, 1非质非合"
+    },
+    {
+      "id": "g5-gcdlcm-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "gcd_lcm_scene_mix"
+      ],
+      "problem_text": "①铺正方形地砖(求最大公因数) ②公交同时发车(求最小公倍数), 区分? 错解: 公式用反 正解: 铺砖求GCD(整除最大), 发车求LCM(公共周期) 错因: 场景与GCD/LCM对应错",
+      "variables": {},
+      "expected": {
+        "answer": "铺砖GCD, 发车LCM"
+      },
+      "key_cognition": "铺砖=GCD, 发车=LCM"
+    },
+    {
+      "id": "g5-cutsurf-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cut_surface_min_max"
+      ],
+      "problem_text": "长方体长10宽5高2, 切一刀表面积最少增加多少? 错解: 10×5×2=100 正解: 选最小面5×2, 增加5×2×2=20 错因: 默认切最大面, 不审题最少",
+      "variables": {},
+      "expected": {
+        "answer": 20
+      },
+      "key_cognition": "切面选最小面, 增2倍切面"
+    },
+    {
+      "id": "g5-disp-ex-01",
+      "kind": "example",
+      "template_id": "displacement_volume",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "displacement_use_total_water"
+      ],
+      "problem_text": "水箱长20宽15水深8cm, 放入石头上升2cm, 石头体积? 错解: 20×15×8=2400 正解: 20×15×2=600 (只算上升部分) 错因: 排水法用整体水量而非上升部分",
+      "variables": {
+        "length": 20,
+        "width": 15,
+        "rise": 2
+      },
+      "expected": {
+        "volume": 600.0
+      },
+      "key_cognition": "排水法: 体积=底面积×上升高"
+    },
+    {
+      "id": "g5-fraccomp-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fraction_compare_dir"
+      ],
+      "problem_text": "比较1/3和1/4大小? 错解: 1/4大(分母大) 正解: 1/3>1/4 (同分子分母大反而小) 错因: 分数比较方向错",
+      "variables": {},
+      "expected": {
+        "answer": "1/3>1/4"
+      },
+      "key_cognition": "同分子: 分母大反而小"
+    },
+    {
+      "id": "g5-mixed-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "mixed_fraction_integer_part"
+      ],
+      "problem_text": "5-3/4=? 错解: 4又0/4-3/4=4又3/4 正解: 4又4/4-3/4=4又1/4 (整数借1当4/4) 错因: 带分数借位整数部分错",
+      "variables": {},
+      "expected": {
+        "answer": "4又1/4"
+      },
+      "key_cognition": "带分数减: 借1当(分母/分母)"
+    },
+    {
+      "id": "g5-profitloss-ex-01",
+      "kind": "example",
+      "template_id": "profit_loss",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "profit_loss_formula"
+      ],
+      "problem_text": "每人分5支多10支, 每人分7支少4支, 几人? 错解: 直接加减 正解: (10+4)÷(7-5)=7人 错因: 盈亏问题 (盈+亏)÷分配差",
+      "variables": {
+        "surplus": 10,
+        "deficit": 4,
+        "diff": 2
+      },
+      "expected": {
+        "people": 7.0
+      },
+      "key_cognition": "盈亏: (盈+亏)÷分配差=人数"
+    },
+    {
+      "id": "g6-unit1-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "unit1_baseline_change"
+      ],
+      "problem_text": "甲比乙多20%, 乙比甲少百分之几? 错解: 20% 正解: 设乙=100, 甲=120, (120-100)÷120≈16.7% 错因: 比较基准变了, 百分比不能直接相等",
+      "variables": {},
+      "expected": {
+        "answer": "16.7%"
+      },
+      "key_cognition": "基准变化: 差÷新基准"
+    },
+    {
+      "id": "g6-salt-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "salt_rate_denominator"
+      ],
+      "problem_text": "20g盐放入100g水, 含盐率? 错解: 20÷100=20% 正解: 20÷(20+100)=20÷120≈16.7% 错因: 含盐率分母为盐水非水",
+      "variables": {},
+      "expected": {
+        "answer": "16.7%"
+      },
+      "key_cognition": "含盐率=盐÷盐水(盐+水)"
+    },
+    {
+      "id": "g6-scale-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "scale_unit_convert"
+      ],
+      "problem_text": "比例尺1:1000, 图上2cm, 实际? 错解: 2×1000=2000cm(忘转米) 正解: 2×1000=2000cm=20m 错因: 图实距离单位换算漏",
+      "variables": {},
+      "expected": {
+        "answer": "20m"
+      },
+      "key_cognition": "实际=图上×比例尺, 须换算单位"
+    },
+    {
+      "id": "g6-cylcut-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cylinder_cut_shape"
+      ],
+      "problem_text": "圆柱切分表面积变化: 沿直径切 vs 平行底面切? 错解: 分不清 正解: 沿直径切增加两个长方形; 平行底面切增加两个圆 错因: 两种切割图形分不清",
+      "variables": {},
+      "expected": {
+        "answer": "直径切增矩形, 平行切增圆"
+      },
+      "key_cognition": "圆柱切: 直径切增2矩形, 平行切增2圆"
+    },
+    {
+      "id": "g6-cone-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cone_volume_forget_third"
+      ],
+      "problem_text": "圆锥形沙堆铺长方形路面, 体积不变, 忘记÷3? 错解: 直接用圆柱体积 正解: 圆锥体积须÷3, V锥=1/3πr²h 错因: 圆锥铺路忘记÷3",
+      "variables": {},
+      "expected": {
+        "answer": "须÷3"
+      },
+      "key_cognition": "圆锥体积=1/3圆柱, 须÷3"
+    },
+    {
+      "id": "g6-ratio-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "ratio_alloc_total_parts"
+      ],
+      "problem_text": "三角形内角比1:2:3, 求各角? 错解: 180÷3=60直接分配 正解: 1+2+3=6份, 180÷6=30, 各角30/60/90 错因: 不会先求总份数",
+      "variables": {},
+      "expected": {
+        "answer": "30,60,90度"
+      },
+      "key_cognition": "按比例: 先求总份数再分配"
+    },
+    {
+      "id": "g6-prop-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "proportion_judge_formula"
+      ],
+      "problem_text": "判断: 路程一定, 速度和时间成正比例? 错解: 对 正解: 错, 反比例 (v×t=s定, 积定反比例) 错因: 见乘法就正比除法就反比",
+      "variables": {},
+      "expected": {
+        "answer": "反比例"
+      },
+      "key_cognition": "积定反比, 商定正比"
+    },
+    {
+      "id": "g6-interest-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "interest_tax_forget"
+      ],
+      "problem_text": "存10000元利率3%存2年, 利息税20%, 到期取回? 错解: 10000+10000×3%×2 正解: 利息=10000×3%×2=600, 税后=600×(1-20%)=480, 本息=10480 错因: 利息税忘记扣",
+      "variables": {},
+      "expected": {
+        "answer": 10480
+      },
+      "key_cognition": "本息=本金+利息×(1-税率)"
+    },
+    {
+      "id": "g6-score-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "chicken_rabbit_score_diff"
+      ],
+      "problem_text": "答题对得5分错扣2分, 答错一题相差几分? 错解: 5分 正解: 5+2=7分 (对错差值=对分+扣分) 错因: 只算对分非差值",
+      "variables": {},
+      "expected": {
+        "answer": 7
+      },
+      "key_cognition": "对错差=对分+扣分"
+    },
+    {
+      "id": "gu-keyword-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g3-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "keyword_ignore"
+      ],
+      "problem_text": "审题关键词: 至少/至多/往返/对折/一半/之间/无盖/通风管/靠墙/上升/减少/节约/便宜多少/原价/现价, 须逐字标注 错因: 关键词忽略致题意错",
+      "variables": {},
+      "expected": {
+        "answer": "逐字标注关键词"
+      },
+      "key_cognition": "关键词决定题型与公式"
+    },
+    {
+      "id": "gu-unit-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "unit_unify_universal"
+      ],
+      "problem_text": "单位统一万能坑: 面积/体积/长度/时间/重量, 做题第一步统一单位, 80%计算错误源于单位混乱 错因: 单位不统一直接算",
+      "variables": {},
+      "expected": {
+        "answer": "先统一单位"
+      },
+      "key_cognition": "单位统一是计算前提"
+    },
+    {
+      "id": "gu-answer-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "answer_incomplete"
+      ],
+      "problem_text": "应用题算出数字, 漏写单位/漏写答句, 考试固定扣分 错因: 答题不完整",
+      "variables": {},
+      "expected": {
+        "answer": "带单位写答句"
+      },
+      "key_cognition": "答题须带单位+答句"
+    },
+    {
+      "id": "gu-hidden-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "hidden_condition_miss"
+      ],
+      "problem_text": "图形题隐藏条件: 直角/等边/等腰/底面直径/高/无盖/空心管道, 须从图中读出 错因: 漏看隐藏条件",
+      "variables": {},
+      "expected": {
+        "answer": "挖掘隐藏条件"
+      },
+      "key_cognition": "图形题须读隐藏条件"
+    },
+    {
+      "id": "gu-reverse-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "reverse_logic_weak"
+      ],
+      "problem_text": "逆向题: 看错数字/倒推原数/还原问题, 习惯顺向计算, 逆向逻辑薄弱 错因: 不会倒推",
+      "variables": {},
+      "expected": {
+        "answer": "逆向倒推"
+      },
+      "key_cognition": "逆向题须从结果倒推"
+    },
+    {
+      "id": "gu-geom-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "geometry_concept_trap"
+      ],
+      "problem_text": "几何概念陷阱: ①周长相等长方形面积不一定等 ②面积相等周长不一定等 ③表面积相等长方体体积不一定等 错因: 混淆周长面积表面积体积关系",
+      "variables": {},
+      "expected": {
+        "answer": "三者各自独立"
+      },
+      "key_cognition": "周长/面积/表面积/体积各自独立"
+    },
+    {
+      "id": "gu-zero-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g3-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "zero_property_confuse"
+      ],
+      "problem_text": "0相关易错: 0不能做除数/0没有倒数/最小自然数是0/0乘任何数得0 错因: 0的性质混淆",
+      "variables": {},
+      "expected": {
+        "answer": "0非除数非倒数最小自然数"
+      },
+      "key_cognition": "0: 非除数/非倒数/最小自然数"
+    },
+    {
+      "id": "gu-cj-avg-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_average_missing"
+      ],
+      "problem_text": "判断: 把一个蛋糕分成4份, 每份是1/4? 错解: 对 正解: 错, 缺'平均'分, 非每份1/4 错因: 分数须平均分",
+      "variables": {},
+      "expected": {
+        "answer": "错, 缺平均"
+      },
+      "key_cognition": "分数前提: 平均分"
+    },
+    {
+      "id": "gu-cj-peri-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_perimeter_area_unit"
+      ],
+      "problem_text": "判断: 边长4cm正方形周长面积相等? 错解: 对(都16) 正解: 错, 单位不同不可比 (周长cm, 面积cm²) 错因: 周长面积单位不同",
+      "variables": {},
+      "expected": {
+        "answer": "错, 单位不同"
+      },
+      "key_cognition": "周长面积单位不同不可比"
+    },
+    {
+      "id": "gu-cj-cone-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_cone_cylinder"
+      ],
+      "problem_text": "判断: 圆锥体积是圆柱1/3? 错解: 对 正解: 错, 须等底等高才成立 错因: 缺等底等高前提",
+      "variables": {},
+      "expected": {
+        "answer": "错, 须等底等高"
+      },
+      "key_cognition": "圆锥÷3须等底等高"
+    },
+    {
+      "id": "gu-cj-even-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_even_composite"
+      ],
+      "problem_text": "判断: 所有偶数都是合数? 错解: 对 正解: 错, 2是偶数也是质数 错因: 2是唯一偶质数",
+      "variables": {},
+      "expected": {
+        "answer": "错, 2是偶质数"
+      },
+      "key_cognition": "2唯一偶质数, 非所有偶数合数"
+    },
+    {
+      "id": "gu-cj-odd-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_odd_prime"
+      ],
+      "problem_text": "判断: 所有奇数都是质数? 错解: 对 正解: 错, 9、15是奇数也是合数 错因: 奇数与质数不等价",
+      "variables": {},
+      "expected": {
+        "answer": "错, 9/15奇合数"
+      },
+      "key_cognition": "9/15奇数合数, 非所有奇数质数"
+    },
+    {
+      "id": "gu-cj-circle-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_circle_area_radius"
+      ],
+      "problem_text": "判断: 圆面积与半径成正比? 错解: 对 正解: 错, 与半径平方正比 (S=πr²) 错因: 面积与半径二次关系",
+      "variables": {},
+      "expected": {
+        "answer": "错, 与r²正比"
+      },
+      "key_cognition": "圆面积∝r²非r"
+    },
+    {
+      "id": "gu-cj-deczero-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_decimal_trailing_zero"
+      ],
+      "problem_text": "判断: 小数点后去掉0大小不变? 错解: 对 正解: 错, 只能去末尾0 (0.50=0.5, 0.05≠0.5) 错因: 只能去末尾0",
+      "variables": {},
+      "expected": {
+        "answer": "错, 只去末尾0"
+      },
+      "key_cognition": "小数去0只末尾"
+    },
+    {
+      "id": "gu-cj-divzero-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_dividend_zero"
+      ],
+      "problem_text": "判断: 被除数末尾有0, 商末尾一定有0? 错解: 对 正解: 错, 20÷5=4 (商无0) 错因: 商由被除数与除数共同决定",
+      "variables": {},
+      "expected": {
+        "answer": "错, 20÷5=4"
+      },
+      "key_cognition": "商末尾0非由被除数定"
+    },
+    {
+      "id": "gu-cj-weight-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_weight_equal"
+      ],
+      "problem_text": "判断: 100千克棉花和100千克铁一样重? 错解: 铁重 正解: 一样重 (质量相同) 错因: 直觉错觉, 密度不同但质量同",
+      "variables": {},
+      "expected": {
+        "answer": "一样重"
+      },
+      "key_cognition": "质量相同则等重"
+    },
+    {
+      "id": "gu-cj-parallel-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_judge_parallel_coplanar"
+      ],
+      "problem_text": "判断: 永不相交的两条直线互相平行? 错解: 对 正解: 错, 须同一平面内 (异面直线不相交不平行) 错因: 缺同一平面前提",
+      "variables": {},
+      "expected": {
+        "answer": "错, 须同一平面"
+      },
+      "key_cognition": "平行须同一平面"
+    },
+    {
+      "id": "g1-redundant-ex-01",
+      "kind": "example",
+      "template_id": "redundant_filter",
+      "difficulty_layer": "A",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "redundant_condition_trap"
+      ],
+      "problem_text": "树上10只鸟, 飞走3只, 又飞来2朵花, 树上剩几只鸟? 错解: 10-3+2=9 正解: 10-3=7 错因: 花是无关条件, 见数字就全部运算",
+      "variables": {
+        "total": 10,
+        "removed": 3,
+        "distraction": 2
+      },
+      "expected": {
+        "remaining": 7
+      },
+      "key_cognition": "多余条件须筛选, 花与鸟无关"
+    },
+    {
+      "id": "g1-mirror-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g1-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "mirror_left_right_reverse"
+      ],
+      "problem_text": "镜子里举左手, 实际举的是哪只手? 错解: 左手 正解: 右手 错因: 镜像左右相反",
+      "variables": {},
+      "expected": {
+        "answer": "右手"
+      },
+      "key_cognition": "镜像左右相反"
+    },
+    {
+      "id": "g2-fold-cut-ex-01",
+      "kind": "example",
+      "template_id": "fold_cut",
+      "difficulty_layer": "B",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g2-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fold_count_wrong"
+      ],
+      "problem_text": "一根绳子对折2次, 从中间剪开, 分成几段? 错解: 2×2=4段 正解: 5段 错因: 对折剪开缠绕结构, 非简单2^n",
+      "variables": {
+        "folds": 2
+      },
+      "expected": {
+        "segments": 5
+      },
+      "key_cognition": "对折剪开段数非2^n, 须数缠绕"
+    },
+    {
+      "id": "g2-picmult-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g2-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "picture_multistep_count"
+      ],
+      "problem_text": "图: 3组5个苹果, 最后一组少2个, 一共几个? 错解: 3×5-2=13 正解: 4×5-2=18 错因: 漏数最后残缺一组, 实为4组",
+      "variables": {},
+      "expected": {
+        "answer": 18
+      },
+      "key_cognition": "看图列式须数全组数含残缺组"
+    },
+    {
+      "id": "g2-timeback-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g2-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "time_backward_add"
+      ],
+      "problem_text": "现在4:10, 20分钟前是几时几分? 错解: 4:10+20=4:30 正解: 4:10-20=3:50 错因: '之前'应倒推减非加",
+      "variables": {},
+      "expected": {
+        "answer": "3:50"
+      },
+      "key_cognition": "时间往前算用减法倒推"
+    },
+    {
+      "id": "g3-tiered-ex-01",
+      "kind": "example",
+      "template_id": "tiered_pricing",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "tiered_ignore_base_price"
+      ],
+      "problem_text": "出租车3千米内8元, 超出每千米2元, 走5千米多少钱? 错解: 5×2=10 正解: 8+(5-3)×2=12 错因: 忽略起步价全程统一单价",
+      "variables": {
+        "base_distance": 3,
+        "base_price": 8,
+        "unit_price": 2,
+        "total_distance": 5
+      },
+      "expected": {
+        "total_price": 12.0
+      },
+      "key_cognition": "分段: 起步价+超出×单价"
+    },
+    {
+      "id": "g3-cutsquare-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cut_max_square_residual"
+      ],
+      "problem_text": "长10cm宽6cm长方形剪最大正方形, 剩余长方形周长? 错解: (10-6+6)×2=20 正解: 剩余长6宽4, (6+4)×2=20 (思路错巧合对) 错因: 直接原长减宽搭配原长",
+      "variables": {},
+      "expected": {
+        "answer": 20
+      },
+      "key_cognition": "剪最大正方形以宽为边, 剩余长宽重算"
+    },
+    {
+      "id": "g3-fraccons-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g3-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "fraction_consecutive_unit1"
+      ],
+      "problem_text": "16颗糖拿走1/2, 再拿走剩下1/2, 剩几颗? 错解: 16-16×1/2-16×1/2=0 正解: 16÷2=8, 8÷2=4 错因: 两次分率单位1不同, 统一用总数",
+      "variables": {},
+      "expected": {
+        "answer": 4
+      },
+      "key_cognition": "连续分率单位1变, 逐步除"
+    },
+    {
+      "id": "g3-weekday-ex-01",
+      "kind": "example",
+      "template_id": "weekday_calc",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g3-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "weekday_exclude_today"
+      ],
+      "problem_text": "今天周三, 再过25天是星期几? 错解: 25÷7=3...4, 3+4=7周日(忘不含当天) 正解: 周三往后数4天=周日 错因: '过几天'不含当天",
+      "variables": {
+        "start_day": 3,
+        "add_days": 25
+      },
+      "expected": {
+        "target_day": 7.0
+      },
+      "key_cognition": "星期: (今天+天数)%7, 0→7"
+    },
+    {
+      "id": "g4-bracket-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "bracket_remove_sign_mix"
+      ],
+      "problem_text": "450-(150+120)简便计算? 错解: 450-150+120=420 正解: 450-150-120=180 错因: 去括号括号前减号内变号, 加变减",
+      "variables": {},
+      "expected": {
+        "answer": 180
+      },
+      "key_cognition": "去括号: 前减号内变号"
+    },
+    {
+      "id": "g4-approx-ex-02",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g4-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "approx_trailing_zero_keep"
+      ],
+      "problem_text": "4.996保留两位小数? 错解: 5 / 4.99 正解: 5.00 错因: 末尾0不省略, 代表精确百分位",
+      "variables": {},
+      "expected": {
+        "answer": "5.00"
+      },
+      "key_cognition": "近似数末尾0保留表精确"
+    },
+    {
+      "id": "g4-parallel-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "parallelogram_area_shrink"
+      ],
+      "problem_text": "长方形拉成平行四边形, 周长面积怎么变? 错解: 周长变小面积不变 正解: 周长不变面积变小(高变短) 错因: 拉动边长不变高变短",
+      "variables": {},
+      "expected": {
+        "answer": "周长不变, 面积变小"
+      },
+      "key_cognition": "长方形拉平行四边形: 周长不变面积减"
+    },
+    {
+      "id": "g4-unitcomb-ex-01",
+      "kind": "example",
+      "template_id": "unitary_combined",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g4-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "unitary_combined_order"
+      ],
+      "problem_text": "4人6天做240个零件, 照这样8人3天做多少? 错解: 240÷4×8÷6×3 正解: 单人单日240÷4÷6=10, 10×8×3=240 错因: 归一顺序混乱乘除颠倒",
+      "variables": {
+        "n_people": 4,
+        "n_days": 6,
+        "total_work": 240,
+        "target_people": 8,
+        "target_days": 3
+      },
+      "expected": {
+        "result": 240.0
+      },
+      "key_cognition": "归一归总: 先求单人单日再乘"
+    },
+    {
+      "id": "g4-ray-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g4-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "ray_line_unmeasurable"
+      ],
+      "problem_text": "判断: 射线长5厘米? 错解: 对 正解: 错, 射线一端无限延伸不可测量 错因: 射线无长度",
+      "variables": {},
+      "expected": {
+        "answer": "错, 不可测量"
+      },
+      "key_cognition": "射线一端无限延伸无长度"
+    },
+    {
+      "id": "g5-coprime-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "coprime_composite_pair"
+      ],
+      "problem_text": "判断: 合数一定不互质? 错解: 对 正解: 错, 8和9都是合数但互质 错因: 合数可有互质对",
+      "variables": {},
+      "expected": {
+        "answer": "错, 8和9互质"
+      },
+      "key_cognition": "合数可互质 (8,9)"
+    },
+    {
+      "id": "g5-container-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "container_ceil_product_floor"
+      ],
+      "problem_text": "油桶2.5L, 21L油至少几个桶? 蛋糕模0.3kg/个, 5kg最多几个? 错解: 21÷2.5=8.4→8个; 5÷0.3≈16.7→17个 正解: 桶9个(进一), 蛋糕16个(去尾) 错因: 容器进一成品去尾",
+      "variables": {},
+      "expected": {
+        "answer": "桶9个, 蛋糕16个"
+      },
+      "key_cognition": "容器装物进一, 成品个数去尾"
+    },
+    {
+      "id": "g5-cuboidcomb-ex-01",
+      "kind": "example",
+      "template_id": "cuboid_combine_surface",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cuboid_combine_min_face"
+      ],
+      "problem_text": "两个长6宽4高2长方体拼大长方体, 最大表面积? 错解: 拼最大面 正解: 拼最小面(4×2=8), 减面积最少, SA最大=2×88-2×8=160 错因: 拼接面越小总表面积越大",
+      "variables": {
+        "length": 6,
+        "width": 4,
+        "height": 2
+      },
+      "expected": {
+        "max_sa": 160.0,
+        "min_face": 8.0
+      },
+      "key_cognition": "拼最小面→最大表面积"
+    },
+    {
+      "id": "g5-divword-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "divide_wording_ab_ba"
+      ],
+      "problem_text": "3/4除以3 和 3除3/4 列式区分? 错解: 都写3/4÷3 正解: ①3/4÷3 ②3/4÷3 (A除B=B÷A, 此题两式相同但语义不同) 易错: A除以B=A÷B, A除B=B÷A",
+      "variables": {},
+      "expected": {
+        "answer": "A除B=B÷A"
+      },
+      "key_cognition": "A除B=B÷A, A除以B=A÷B"
+    },
+    {
+      "id": "g5-overflow-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "overflow_volume_full_water"
+      ],
+      "problem_text": "满水鱼缸放石块溢出50mL水, 石块体积? 错解: 忘满水条件算水位上升 正解: 溢出水体积=石块体积=50cm³ 错因: 须满水条件, 溢出即排开",
+      "variables": {},
+      "expected": {
+        "answer": 50
+      },
+      "key_cognition": "满水溢出: 体积=溢出水量"
+    },
+    {
+      "id": "g6-conspct-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "consecutive_percent_compound"
+      ],
+      "problem_text": "商品先降价10%再涨10%, 现价是原价百分之几? 错解: 100% 正解: 1×0.9×1.1=99% 错因: 连续百分率不能直接相减, 须连乘",
+      "variables": {},
+      "expected": {
+        "answer": "99%"
+      },
+      "key_cognition": "连续百分率连乘非相减"
+    },
+    {
+      "id": "g6-semicirc-ex-01",
+      "kind": "example",
+      "template_id": "semicircle_perimeter",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "semicircle_perimeter_add_diameter"
+      ],
+      "problem_text": "半径3cm半圆周长? 错解: 2×3.14×3÷2=9.42 正解: 弧9.42+直径6=15.42 错因: 半圆周长含直径高频丢分",
+      "variables": {
+        "radius": 3
+      },
+      "expected": {
+        "perimeter": 15.42
+      },
+      "key_cognition": "半圆周长=弧+直径"
+    },
+    {
+      "id": "g6-prop-ex-02",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "proportion_product_rule"
+      ],
+      "problem_text": "比例两外项积12, 一个内项4, 另一内项? 错解: 12×4=48 正解: 12÷4=3 (内项积=外项积) 错因: 求另一项用除非乘",
+      "variables": {},
+      "expected": {
+        "answer": 3
+      },
+      "key_cognition": "比例: 内项积=外项积, 求项用除"
+    },
+    {
+      "id": "g6-dilution-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "dilution_sugar_unchanged"
+      ],
+      "problem_text": "200g10%糖水加水稀释成5%, 加水多少? 错解: 200×10%-200×5% 正解: 糖不变20g, 总质量20÷5%=400, 加水400-200=200g 错因: 稀释糖不变求新总质量",
+      "variables": {},
+      "expected": {
+        "answer": 200
+      },
+      "key_cognition": "稀释: 糖不变, 新总=糖÷新浓度"
+    },
+    {
+      "id": "g6-cyllat-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "analyze",
+      "knowledge_node_id": "math-g6-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "cylinder_lateral_application"
+      ],
+      "problem_text": "烟囱/通风管求面积? 无盖水桶呢? 错解: 通风管加两底 正解: 通风管只侧面积; 无盖桶侧面积+一个底 错因: 通风管无底, 无盖桶一底",
+      "variables": {},
+      "expected": {
+        "answer": "通风管只侧面积, 无盖桶侧+一底"
+      },
+      "key_cognition": "圆柱应用: 通风管只侧, 无盖桶侧+一底"
+    },
+    {
+      "id": "g6-combcount-ex-01",
+      "kind": "example",
+      "template_id": "combination_count",
+      "difficulty_layer": "A",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "combination_use_addition"
+      ],
+      "problem_text": "2件上衣3条裤子几种搭配? 错解: 2+3=5 正解: 2×3=6 错因: 搭配组合用乘非加",
+      "variables": {
+        "n_items1": 2,
+        "n_items2": 3
+      },
+      "expected": {
+        "combinations": 6.0
+      },
+      "key_cognition": "搭配组合用乘法"
+    },
+    {
+      "id": "gu-cj-decint-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g3-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_decimal_smaller_than_int"
+      ],
+      "problem_text": "判断: 小数都比整数小? 错解: 对 正解: 错, 3.5>2 错因: 小数可大于整数",
+      "variables": {},
+      "expected": {
+        "answer": "错, 3.5>2"
+      },
+      "key_cognition": "小数不一定比整数小"
+    },
+    {
+      "id": "gu-cj-lcm-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-01",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_lcm_not_always_bigger"
+      ],
+      "problem_text": "判断: 两个数公倍数一定大于这两个数? 错解: 对 正解: 错, 4和2最小公倍数4=较大数 错因: 公倍数可等于较大数",
+      "variables": {},
+      "expected": {
+        "answer": "错, 4和2 LCM=4"
+      },
+      "key_cognition": "公倍数不一定大于两数"
+    },
+    {
+      "id": "gu-cj-cubevol-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "C",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_cube_edge_volume_cube"
+      ],
+      "problem_text": "判断: 正方体棱长扩大2倍体积扩大2倍? 错解: 对 正解: 错, 扩大8倍 (2³) 错因: 体积与棱长立方关系",
+      "variables": {},
+      "expected": {
+        "answer": "错, 扩大8倍"
+      },
+      "key_cognition": "体积∝棱长³, 扩2倍→8倍"
+    },
+    {
+      "id": "gu-cj-pctunit-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "A",
+      "cognitive_level": "remember",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_percent_no_unit"
+      ],
+      "problem_text": "判断: 百分数能带单位? 错解: 对 正解: 错, 50%米说法错误 (百分数是比率无单位) 错因: 百分数无单位",
+      "variables": {},
+      "expected": {
+        "answer": "错, 百分数无单位"
+      },
+      "key_cognition": "百分数是比率无单位"
+    },
+    {
+      "id": "gu-cj-triex-ex-01",
+      "kind": "example",
+      "template_id": "concept_discrimination",
+      "difficulty_layer": "B",
+      "cognitive_level": "understand",
+      "knowledge_node_id": "math-g5-na-03",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "concept_triangle_half_parallelogram"
+      ],
+      "problem_text": "判断: 三角形面积是平行四边形一半? 错解: 对 正解: 错, 须等底等高才成立 错因: 缺等底等高前提",
+      "variables": {},
+      "expected": {
+        "answer": "错, 须等底等高"
+      },
+      "key_cognition": "三角形=平行四边形一半须等底等高"
+    },
+    {
+      "id": "g6-interest-ex-01",
+      "kind": "example",
+      "template_id": "simple_interest",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g6-na-02",
+      "prerequisite_node_ids": [],
+      "misconception_tags": [
+        "interest_tax_forget"
+      ],
+      "problem_text": "存1000元年利率2%存两年单利利息? 错解: 1000×(1+2%)²复利 正解: 1000×2%×2=40元 错因: 小学只考单利非复利",
+      "variables": {
+        "principal": 1000,
+        "rate": 0.02,
+        "years": 2
+      },
+      "expected": {
+        "interest": 40,
+        "total": 1040
+      },
+      "key_cognition": "单利=本金×利率×年数, 非复利"
+    },
+    {
+      "id": "g5-starsbars-ex-01",
+      "kind": "example",
+      "template_id": "stars_bars",
+      "difficulty_layer": "B",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-04",
+      "prerequisite_node_ids": [
+        "math-g4-na-03"
+      ],
+      "misconception_tags": [
+        "stars_bars_use_permutation"
+      ],
+      "problem_text": "阿瓜有7根棒棒糖全部放进3个不同篮子里每个篮子至少1根有几种放法? 错解: 用排列A或乘法 正解: 隔板法C(6,2)=15 错因: 相同物品放不同容器用隔板法非排列",
+      "variables": {
+        "n_items": 7,
+        "n_bins": 3,
+        "min_per": 1
+      },
+      "expected": {
+        "ways": 15
+      },
+      "key_cognition": "相同物品放不同容器每容器至少1个, 用隔板法C(n-1,k-1)"
+    },
+    {
+      "id": "g5-starsbars-ex-02",
+      "kind": "example",
+      "template_id": "stars_bars",
+      "difficulty_layer": "C",
+      "cognitive_level": "apply",
+      "knowledge_node_id": "math-g5-na-04",
+      "prerequisite_node_ids": [
+        "math-g4-na-03"
+      ],
+      "misconception_tags": [
+        "stars_bars_ignore_minimum"
+      ],
+      "problem_text": "将12块巧克力全部分给三位小朋友每位小朋友最少分到三块有多少种不同分法? 错解: C(11,2)=55 (按每篮≥1) 正解: 先每人预留3块余12-9=3块再隔板C(3+3-1,2)=C(5,2)=10 错因: 忽略每容器最少m块须先预留m*k再隔板",
+      "variables": {
+        "n_items": 12,
+        "n_bins": 3,
+        "min_per": 3
+      },
+      "expected": {
+        "ways": 10
+      },
+      "key_cognition": "每容器最少m块, 先预留m*k块, 剩余n-m*k块再隔板C(n-m*k+k-1,k-1)"
+    }
+  ]
+}
