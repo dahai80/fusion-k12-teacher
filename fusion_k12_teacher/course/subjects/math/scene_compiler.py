@@ -171,6 +171,11 @@ class MathSceneCompiler(SceneCompilerBase):
             if m and re.search(r"多长|多少米|路长|这段路", problem):
                 var_map["trees"] = float(m.group(1))
                 var_map.pop("length", None)
+                # 逆向型同时需要间距 — LLM 常漏提, 从题面正则兜底 ("每隔40米/每40米")
+                if "spacing" not in var_map:
+                    ms = re.search(r"每\s*(?:隔)?\s*(\d+(?:\.\d+)?)\s*米", problem)
+                    if ms:
+                        var_map["spacing"] = float(ms.group(1))
         verify = self.verifier.verify_scene(scenario, var_map) if scenario in _KNOWN_SCENARIOS else None
 
         if verify and verify.error and "未知场景" not in verify.error:
