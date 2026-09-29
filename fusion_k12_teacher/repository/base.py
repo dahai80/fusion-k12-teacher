@@ -77,6 +77,57 @@ class Repository(ABC):
         """清理 before_ts 之前的审计事件 — 返删除条数。默认 0。"""
         return 0
 
+    # ── 教师身份 ──
+    # teachers/sessions/materials 三表: 注册/登录/令牌/资源库。
+
+    def create_teacher(self, teacher: dict[str, Any]) -> str:
+        """写教师记录, 返 teacher_id。默认空实现。"""
+        return ""
+
+    def get_teacher_by_username(self, username: str) -> dict[str, Any] | None:
+        """按用户名查教师。默认 None。"""
+        return None
+
+    def get_teacher(self, teacher_id: str) -> dict[str, Any] | None:
+        """按 id 查教师。默认 None。"""
+        return None
+
+    def create_session(self, token: str, teacher_id: str, expires_at: float) -> None:
+        """写登录会话 (token->teacher_id, 过期时间)。默认空。"""
+
+    def get_session(self, token: str) -> dict[str, Any] | None:
+        """查会话。默认 None。"""
+        return None
+
+    def delete_session(self, token: str) -> None:
+        """注销会话。默认空。"""
+
+    def save_material(self, material: dict[str, Any]) -> str:
+        """保存生成资源, 返 material id。默认空。"""
+        return ""
+
+    def list_materials(
+        self,
+        teacher_id: str,
+        *,
+        type: str | None = None,
+        subject: str | None = None,
+        grade: str | None = None,
+        lesson_id: str | None = None,
+        edition: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """列教师资源 (按条件过滤)。默认空列表。"""
+        return []
+
+    def get_material(self, material_id: str) -> dict[str, Any] | None:
+        """查单条资源。默认 None。"""
+        return None
+
+    def delete_material(self, material_id: str, teacher_id: str) -> bool:
+        """删资源 (须校验 teacher_id 归属)。默认 False。"""
+        return False
+
     def close(self) -> None:
         """释放后端资源 (连接/文件句柄)。默认空实现。"""
 

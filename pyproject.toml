@@ -23,6 +23,19 @@ test = [
 web = ["fastapi>=0.104.0", "uvicorn>=0.24.0", "apscheduler>=3.10.0", "sqlalchemy>=2.0.0"]
 # M1-T2/T5/T12: cluster 模式 Postgres 后端 + AES-256-GCM 加密 + Redis 缓存/限流 — 可选, 缺失则回退 SQLite/明文/进程内。
 cluster = ["asyncpg>=0.29.0,<1.0.0", "cryptography>=42.0.0,<46.0.0", "redis>=5.0.0,<6.0.0"]
+# 数学课程模块: SymPy 符号引擎(数值权威覆写) + networkx 知识图谱 DAG(Tarjan 校验) — 纯 Python 离线。
+math = ["sympy>=1.12,<2.0", "networkx>=3.2,<4.0"]
+# 数字人模块: MuseTalk 数字人 (MLX 唇形同步, torch 加载 .pth) + LiveKit SFU 实时音视频传输 — 缺失则降级 StaticAvatar/WS-only。
+digital-human = [
+    "mlx>=0.20.0",
+    "mlx-lm>=0.21.0",
+    "opencv-python-headless>=4.8.0",
+    "librosa>=0.10.0",
+    "jsonschema>=4.20.0",
+    "torch>=2.2.0",
+    "livekit>=0.10.0",
+    "livekit-agents>=0.10.0",
+]
 
 [project.scripts]
 fusion-k12 = "fusion_k12_teacher.cli:main"

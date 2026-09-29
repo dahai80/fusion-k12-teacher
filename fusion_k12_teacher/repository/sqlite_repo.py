@@ -50,6 +50,36 @@ CREATE TABLE IF NOT EXISTS audit_events (
     error        TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts);
+CREATE TABLE IF NOT EXISTS teachers (
+    id            TEXT PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    name          TEXT NOT NULL DEFAULT '',
+    school        TEXT NOT NULL DEFAULT '',
+    region        TEXT NOT NULL DEFAULT '',
+    default_edition TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    teacher_id TEXT NOT NULL,
+    expires_at REAL    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS materials (
+    id           TEXT PRIMARY KEY,
+    teacher_id   TEXT NOT NULL,
+    edition      TEXT NOT NULL DEFAULT '',
+    subject      TEXT NOT NULL DEFAULT '',
+    grade        TEXT NOT NULL DEFAULT '',
+    lesson_id    TEXT NOT NULL DEFAULT '',
+    unit_title   TEXT NOT NULL DEFAULT '',
+    lesson_title TEXT NOT NULL DEFAULT '',
+    type         TEXT NOT NULL,
+    title        TEXT NOT NULL DEFAULT '',
+    payload      TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_materials_teacher ON materials(teacher_id);
 """
 
 # M1-T6: 加密列 — name_hash (sha256 查询键, 无明文) + name_encrypted (AES-GCM 可逆)。
@@ -302,3 +332,139 @@ class SQLiteRepository(Repository):
             )
             self._conn.commit()
             return cur.rowcount
+
+    # ── 教师身份 ──
+
+    _TEACHER_COLS = (
+        "id", "username", "name", "school", "region",
+        "default_edition", "password_hash", "created_at",
+    )
+
+    def create_teacher(self, teacher: dict[str, Any]) -> str:
+        cols = self._TEACHER_COLS
+        vals = [str(teacher.get(c, "")) for c in cols]
+        placeholders = ",".join("?" * len(cols))
+        with self._lock:
+            self._conn.execute(
+                f"INSERT INTO teachers ({','.join(cols)}) VALUES ({placeholders})",
+                vals,
+            )
+            self._conn.commit()
+        return str(teacher.get("id", ""))
+
+    def _row_to_teacher(self, row) -> dict[str, Any]:
+        return dict(zip(self._TEACHER_COLS, row))
+
+    def get_teacher_by_username(self, username: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT {','.join(self._TEACHER_COLS)} FROM teachers WHERE username = ?",
+                (username,),
+            ).fetchone()
+        return self._row_to_teacher(row) if row else None
+
+    def get_teacher(self, teacher_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT {','.join(self._TEACHER_COLS)} FROM teachers WHERE id = ?",
+                (teacher_id,),
+            ).fetchone()
+        return self._row_to_teacher(row) if row else None
+
+    def create_session(self, token: str, teacher_id: str, expires_at: float) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO sessions (token, teacher_id, expires_at) VALUES (?, ?, ?)",
+                (token, teacher_id, expires_at),
+            )
+            self._conn.commit()
+
+    def get_session(self, token: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT token, teacher_id, expires_at FROM sessions WHERE token = ?",
+                (token,),
+            ).fetchone()
+        if not row:
+            return None
+        return {"token": row[0], "teacher_id": row[1], "expires_at": row[2]}
+
+    def delete_session(self, token: str) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            self._conn.commit()
+
+    # ── 资源库 ──
+
+    _MATERIAL_COLS = (
+        "id", "teacher_id", "edition", "subject", "grade", "lesson_id",
+        "unit_title", "lesson_title", "type", "title", "payload", "created_at",
+    )
+
+    def save_material(self, material: dict[str, Any]) -> str:
+        cols = self._MATERIAL_COLS
+        vals = [str(material.get(c, "")) for c in cols]
+        placeholders = ",".join("?" * len(cols))
+        with self._lock:
+            self._conn.execute(
+                f"INSERT INTO materials ({','.join(cols)}) VALUES ({placeholders})",
+                vals,
+            )
+            self._conn.commit()
+        return str(material.get("id", ""))
+
+    def list_materials(
+        self,
+        teacher_id: str,
+        *,
+        type: str | None = None,
+        subject: str | None = None,
+        grade: str | None = None,
+        lesson_id: str | None = None,
+        edition: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        cols = self._MATERIAL_COLS
+        where = ["teacher_id = ?"]
+        params: list[Any] = [teacher_id]
+        if type:
+            where.append("type = ?")
+            params.append(type)
+        if subject:
+            where.append("subject = ?")
+            params.append(subject)
+        if grade:
+            where.append("grade = ?")
+            params.append(grade)
+        if lesson_id:
+            where.append("lesson_id = ?")
+            params.append(lesson_id)
+        if edition:
+            where.append("edition = ?")
+            params.append(edition)
+        params.append(limit)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {','.join(cols)} FROM materials WHERE {' AND '.join(where)} "
+                f"ORDER BY id DESC LIMIT ?",
+                params,
+            ).fetchall()
+        return [dict(zip(cols, r)) for r in rows]
+
+    def get_material(self, material_id: str) -> dict[str, Any] | None:
+        cols = self._MATERIAL_COLS
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT {','.join(cols)} FROM materials WHERE id = ?",
+                (material_id,),
+            ).fetchone()
+        return dict(zip(cols, row)) if row else None
+
+    def delete_material(self, material_id: str, teacher_id: str) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM materials WHERE id = ? AND teacher_id = ?",
+                (material_id, teacher_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0

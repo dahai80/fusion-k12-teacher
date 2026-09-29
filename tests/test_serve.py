@@ -62,6 +62,10 @@ def mock_engines():
         "ready": srv._ready,
         "allowed_dirs": list(srv._ALLOWED_DATA_DIRS),
         "standards_aligner": srv.standards_aligner,
+        "subject_registry": srv.subject_registry,
+        "lesson_scripter": srv.lesson_scripter,
+        "packager": srv.packager,
+        "session_manager": srv.session_manager,
     }
     # SRV-1: 受保护端点 fail-closed, 测试须注入 key
     # R1: require_api_key 每请求读 FUSION_K12_API_KEY env, 注入到 os.environ
@@ -91,6 +95,17 @@ def mock_engines():
     srv.analytics_engine = bundle.analytics
     srv.content_filter = ContentFilter()
     srv.sensitive_wordlist = SensitiveWordList()
+    srv.subject_registry = bundle.subject_registry
+    from fusion_k12_teacher.classroom import (
+        ClassroomStore,
+        LessonScripter,
+        Packager,
+        SessionManager,
+    )
+    _store = ClassroomStore(db_path="/tmp/test-k12-classroom.db")
+    srv.lesson_scripter = LessonScripter(srv.mlx_client)
+    srv.packager = Packager(_store)
+    srv.session_manager = SessionManager(_store)
     yield
     for k, v in saved.items():
         if k == "allowed_dirs":
@@ -300,6 +315,47 @@ class TestStandardsEndpoints:
         data = resp.json()
         assert "coverage_ratio" in data
         assert "missing_points" in data
+
+    @pytest.mark.asyncio
+    async def test_standards_remediate(self, client):
+        # 缺失知识点补齐方案 — LLM mock 返回结构化 JSON, 验证成功路径
+        from fusion_k12_teacher import serve as srv
+        mock_resp = '{"strategies":["数形结合"],"exercises":[{"topic":"万以内数","type":"填空","difficulty":"easy","count":3}],"timeline":"1周","estimated_duration":"20分钟"}'
+        saved_chat = srv.mlx_client.chat
+        srv.mlx_client.chat = _mock_chat(mock_resp)
+        try:
+            resp = await client.post("/api/standards/remediate", json={
+                "subject": "数学", "grade": "3", "topic": "分数",
+                "missing_points": ["math-g3-na-01"],
+            })
+        finally:
+            srv.mlx_client.chat = saved_chat
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["subject"] == "数学"
+        assert isinstance(data["missing_points"], list)
+        assert len(data["missing_points"]) >= 1
+        assert data["strategies"] == ["数形结合"]
+        assert data["exercises"][0]["topic"] == "万以内数"
+        assert data["estimated_duration"] == "20分钟"
+
+    @pytest.mark.asyncio
+    async def test_standards_remediate_degrade(self, client):
+        # LLM 返回非 JSON → 优雅降级, 返 error 非空 + 空策略
+        from fusion_k12_teacher import serve as srv
+        saved_chat = srv.mlx_client.chat
+        srv.mlx_client.chat = _mock_chat("not-a-json")
+        try:
+            resp = await client.post("/api/standards/remediate", json={
+                "subject": "数学", "grade": "3", "topic": "分数",
+                "missing_points": ["math-g3-na-01"],
+            })
+        finally:
+            srv.mlx_client.chat = saved_chat
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["error"]
+        assert data["strategies"] == []
 
 
 class TestAnalyticsEndpoints:

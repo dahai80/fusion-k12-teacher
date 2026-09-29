@@ -55,6 +55,9 @@ class Quiz:
     answer_key: str = ""
     error: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return {k: v for k, v in self.__dict__.items() if v or k == "error"}
+
 
 class CurriculumEngine:
     """课程规划引擎 — 对标 Claude K-12 Teacher 的课程设计能力。

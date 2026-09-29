@@ -62,9 +62,13 @@ class TestConfigCenterSaltProvider:
 
     def test_missing_redis_lib_raises(self, monkeypatch):
         # redis 未安装 (cluster extras 不含 redis), 应抛清晰 ImportError
+        import sys
         monkeypatch.setenv("FUSION_K12_REDIS_URL", "redis://localhost:6379")
+        monkeypatch.setitem(sys.modules, "redis", None)
+        p = ConfigCenterSaltProvider()
+        p._client = None
         with pytest.raises(ImportError, match="redis"):
-            ConfigCenterSaltProvider().get_salt()
+            p.get_salt()
 
 
 class TestGetSaltProvider:

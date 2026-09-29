@@ -1,0 +1,227 @@
+{
+    "edition": "renjiao",
+    "publisher": "人民教育出版社",
+    "name": "人教版小学数学",
+    "subject": "数学",
+    "grade_range": "1-6",
+    "grades": {
+        "1": {
+            "units": [
+                {"unit": 1, "title": "准备课", "lessons": [
+                    {"lesson": 1, "title": "数一数", "topic": "数一数", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 2, "title": "比多少", "topic": "比多少", "knowledge_point_ids": ["math-g1-na-01"]}
+                ]},
+                {"unit": 2, "title": "位置", "lessons": [
+                    {"lesson": 1, "title": "上下前后", "topic": "上下前后", "knowledge_point_ids": ["math-g1-gm-01"]},
+                    {"lesson": 2, "title": "左右", "topic": "左右", "knowledge_point_ids": ["math-g1-gm-01"]}
+                ]},
+                {"unit": 3, "title": "1-5的认识和加减法", "lessons": [
+                    {"lesson": 1, "title": "1-5的认识", "topic": "1-5的认识", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 2, "title": "比大小", "topic": "比大小", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 3, "title": "第几", "topic": "第几", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 4, "title": "加法", "topic": "加法", "knowledge_point_ids": ["math-g1-na-02"]},
+                    {"lesson": 5, "title": "减法", "topic": "减法", "knowledge_point_ids": ["math-g1-na-02"]}
+                ]},
+                {"unit": 4, "title": "认识图形（一）", "lessons": [
+                    {"lesson": 1, "title": "认识立体图形", "topic": "认识立体图形", "knowledge_point_ids": ["math-g1-gm-02"]}
+                ]},
+                {"unit": 5, "title": "6-10的认识和加减法", "lessons": [
+                    {"lesson": 1, "title": "6和7的认识", "topic": "6和7的认识", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 2, "title": "6和7的加减法", "topic": "6和7的加减法", "knowledge_point_ids": ["math-g1-na-02"]},
+                    {"lesson": 3, "title": "8和9的认识", "topic": "8和9的认识", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 4, "title": "8和9的加减法", "topic": "8和9的加减法", "knowledge_point_ids": ["math-g1-na-02"]},
+                    {"lesson": 5, "title": "10的认识", "topic": "10的认识", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 6, "title": "10的加减法", "topic": "10的加减法", "knowledge_point_ids": ["math-g1-na-02"]}
+                ]},
+                {"unit": 6, "title": "11-20各数的认识", "lessons": [
+                    {"lesson": 1, "title": "11-20各数的认识", "topic": "11-20各数的认识", "knowledge_point_ids": ["math-g1-na-01"]},
+                    {"lesson": 2, "title": "10加几和相应的减法", "topic": "10加几和相应的减法", "knowledge_point_ids": ["math-g1-na-02"]}
+                ]},
+                {"unit": 7, "title": "认识钟表", "lessons": [
+                    {"lesson": 1, "title": "认识整时", "topic": "认识整时", "knowledge_point_ids": []}
+                ]},
+                {"unit": 8, "title": "20以内的进位加法", "lessons": [
+                    {"lesson": 1, "title": "9加几", "topic": "9加几", "knowledge_point_ids": ["math-g1-na-02"]},
+                    {"lesson": 2, "title": "8、7、6加几", "topic": "8、7、6加几", "knowledge_point_ids": ["math-g1-na-02"]},
+                    {"lesson": 3, "title": "5、4、3、2加几", "topic": "5、4、3、2加几", "knowledge_point_ids": ["math-g1-na-02"]}
+                ]}
+            ]
+        },
+        "2": {
+            "units": [
+                {"unit": 1, "title": "数据收集整理", "lessons": [
+                    {"lesson": 1, "title": "数据收集整理", "topic": "数据收集整理", "knowledge_point_ids": ["math-g2-sp-01"]}
+                ]},
+                {"unit": 2, "title": "表内除法（一）", "lessons": [
+                    {"lesson": 1, "title": "平均分", "topic": "平均分", "knowledge_point_ids": ["math-g2-na-04"]},
+                    {"lesson": 2, "title": "除法的初步认识", "topic": "除法的初步认识", "knowledge_point_ids": ["math-g2-na-04"]},
+                    {"lesson": 3, "title": "用2-6的乘法口诀求商", "topic": "用2-6的乘法口诀求商", "knowledge_point_ids": ["math-g2-na-04"]}
+                ]},
+                {"unit": 3, "title": "图形的运动（一）", "lessons": [
+                    {"lesson": 1, "title": "轴对称图形", "topic": "轴对称图形", "knowledge_point_ids": ["math-g2-gm-02"]},
+                    {"lesson": 2, "title": "平移和旋转", "topic": "平移和旋转", "knowledge_point_ids": ["math-g2-gm-02"]}
+                ]},
+                {"unit": 4, "title": "表内除法（二）", "lessons": [
+                    {"lesson": 1, "title": "用7、8、9的乘法口诀求商", "topic": "用7、8、9的乘法口诀求商", "knowledge_point_ids": ["math-g2-na-04"]},
+                    {"lesson": 2, "title": "解决问题", "topic": "解决问题", "knowledge_point_ids": ["math-g2-na-04"]}
+                ]},
+                {"unit": 5, "title": "混合运算", "lessons": [
+                    {"lesson": 1, "title": "混合运算", "topic": "混合运算", "knowledge_point_ids": ["math-g2-na-02"]},
+                    {"lesson": 2, "title": "解决问题", "topic": "解决问题（混合运算）", "knowledge_point_ids": ["math-g2-na-02"]}
+                ]},
+                {"unit": 6, "title": "有余数的除法", "lessons": [
+                    {"lesson": 1, "title": "有余数的除法", "topic": "有余数的除法", "knowledge_point_ids": ["math-g2-na-04"]}
+                ]},
+                {"unit": 7, "title": "万以内数的认识", "lessons": [
+                    {"lesson": 1, "title": "1000以内数的认识", "topic": "1000以内数的认识", "knowledge_point_ids": ["math-g2-na-01"]},
+                    {"lesson": 2, "title": "10000以内数的认识", "topic": "10000以内数的认识", "knowledge_point_ids": ["math-g2-na-01"]},
+                    {"lesson": 3, "title": "整百、整千数加减法", "topic": "整百、整千数加减法", "knowledge_point_ids": ["math-g2-na-02"]}
+                ]},
+                {"unit": 8, "title": "克和千克", "lessons": [
+                    {"lesson": 1, "title": "克和千克", "topic": "克和千克", "knowledge_point_ids": []}
+                ]},
+                {"unit": 9, "title": "数学广角—推理", "lessons": [
+                    {"lesson": 1, "title": "推理", "topic": "推理", "knowledge_point_ids": []}
+                ]}
+            ]
+        },
+        "3": {
+            "units": [
+                {"unit": 1, "title": "时、分、秒", "lessons": [
+                    {"lesson": 1, "title": "秒的认识", "topic": "秒的认识", "knowledge_point_ids": ["math-g3-na-06"]},
+                    {"lesson": 2, "title": "时间的计算", "topic": "时间的计算", "knowledge_point_ids": ["math-g3-na-06"]}
+                ]},
+                {"unit": 2, "title": "万以内的加法和减法（一）", "lessons": [
+                    {"lesson": 1, "title": "两位数加两位数", "topic": "万以内的加减法", "knowledge_point_ids": ["math-g3-na-02"]},
+                    {"lesson": 2, "title": "两位数减两位数", "topic": "万以内的加减法", "knowledge_point_ids": ["math-g3-na-02"]},
+                    {"lesson": 3, "title": "几百几十加减", "topic": "万以内的加减法", "knowledge_point_ids": ["math-g3-na-02"]}
+                ]},
+                {"unit": 3, "title": "测量", "lessons": [
+                    {"lesson": 1, "title": "毫米、分米的认识", "topic": "测量", "knowledge_point_ids": ["math-g3-gm-01"]},
+                    {"lesson": 2, "title": "千米的认识", "topic": "测量", "knowledge_point_ids": ["math-g3-gm-01"]},
+                    {"lesson": 3, "title": "吨的认识", "topic": "测量", "knowledge_point_ids": ["math-g3-gm-01"]}
+                ]},
+                {"unit": 4, "title": "万以内的加法和减法（二）", "lessons": [
+                    {"lesson": 1, "title": "三位数加三位数", "topic": "万以内的加减法", "knowledge_point_ids": ["math-g3-na-02"]},
+                    {"lesson": 2, "title": "三位数减三位数", "topic": "万以内的加减法", "knowledge_point_ids": ["math-g3-na-02"]}
+                ]},
+                {"unit": 5, "title": "倍的认识", "lessons": [
+                    {"lesson": 1, "title": "倍的认识", "topic": "倍的认识", "knowledge_point_ids": ["math-g3-na-03"]}
+                ]},
+                {"unit": 6, "title": "多位数乘一位数", "lessons": [
+                    {"lesson": 1, "title": "口算乘法", "topic": "多位数乘一位数", "knowledge_point_ids": ["math-g3-na-03"]},
+                    {"lesson": 2, "title": "笔算乘法", "topic": "多位数乘一位数", "knowledge_point_ids": ["math-g3-na-03"]},
+                    {"lesson": 3, "title": "解决问题", "topic": "多位数乘一位数", "knowledge_point_ids": ["math-g3-na-03"]}
+                ]},
+                {"unit": 7, "title": "分数的初步认识", "lessons": [
+                    {"lesson": 1, "title": "认识几分之一", "topic": "分数的初步认识", "knowledge_point_ids": ["math-g3-na-05"]},
+                    {"lesson": 2, "title": "认识几分之几", "topic": "分数的初步认识", "knowledge_point_ids": ["math-g3-na-05"]},
+                    {"lesson": 3, "title": "分数的简单加减法", "topic": "分数的初步认识", "knowledge_point_ids": ["math-g3-na-05"]}
+                ]},
+                {"unit": 8, "title": "数学广角—集合", "lessons": [
+                    {"lesson": 1, "title": "集合", "topic": "集合", "knowledge_point_ids": []}
+                ]},
+                {"unit": 9, "title": "数学广角—搭配（一）", "lessons": [
+                    {"lesson": 1, "title": "搭配问题", "topic": "搭配问题", "knowledge_point_ids": []}
+                ]}
+            ]
+        },
+        "4": {
+            "units": [
+                {"unit": 1, "title": "大数的认识", "lessons": [
+                    {"lesson": 1, "title": "亿以内数的认识", "topic": "大数的认识", "knowledge_point_ids": ["math-g4-na-01"]},
+                    {"lesson": 2, "title": "亿以上数的认识", "topic": "大数的认识", "knowledge_point_ids": ["math-g4-na-01"]}
+                ]},
+                {"unit": 2, "title": "公顷和平方千米", "lessons": [
+                    {"lesson": 1, "title": "公顷和平方千米", "topic": "公顷和平方千米", "knowledge_point_ids": ["math-g4-gm-02"]}
+                ]},
+                {"unit": 3, "title": "角的度量", "lessons": [
+                    {"lesson": 1, "title": "线段、直线、射线", "topic": "角的度量", "knowledge_point_ids": ["math-g4-gm-01"]},
+                    {"lesson": 2, "title": "角的度量", "topic": "角的度量", "knowledge_point_ids": ["math-g4-gm-01"]}
+                ]},
+                {"unit": 4, "title": "三位数乘两位数", "lessons": [
+                    {"lesson": 1, "title": "三位数乘两位数", "topic": "三位数乘两位数", "knowledge_point_ids": ["math-g4-na-02"]},
+                    {"lesson": 2, "title": "积的变化规律", "topic": "三位数乘两位数", "knowledge_point_ids": ["math-g4-na-02"]}
+                ]},
+                {"unit": 5, "title": "平行四边形和梯形", "lessons": [
+                    {"lesson": 1, "title": "平行与垂直", "topic": "平行四边形和梯形", "knowledge_point_ids": ["math-g4-gm-02"]},
+                    {"lesson": 2, "title": "平行四边形和梯形", "topic": "平行四边形和梯形", "knowledge_point_ids": ["math-g4-gm-02"]}
+                ]},
+                {"unit": 6, "title": "除数是两位数的除法", "lessons": [
+                    {"lesson": 1, "title": "口算除法", "topic": "除数是两位数的除法", "knowledge_point_ids": ["math-g4-na-03"]},
+                    {"lesson": 2, "title": "笔算除法", "topic": "除数是两位数的除法", "knowledge_point_ids": ["math-g4-na-03"]}
+                ]},
+                {"unit": 7, "title": "条形统计图", "lessons": [
+                    {"lesson": 1, "title": "条形统计图", "topic": "条形统计图", "knowledge_point_ids": ["math-g4-sp-01"]}
+                ]},
+                {"unit": 8, "title": "数学广角—优化", "lessons": [
+                    {"lesson": 1, "title": "优化", "topic": "优化", "knowledge_point_ids": []}
+                ]}
+            ]
+        },
+        "5": {
+            "units": [
+                {"unit": 1, "title": "小数乘法", "lessons": [
+                    {"lesson": 1, "title": "小数乘整数", "topic": "小数乘法", "knowledge_point_ids": ["math-g5-na-01"]},
+                    {"lesson": 2, "title": "小数乘小数", "topic": "小数乘法", "knowledge_point_ids": ["math-g5-na-01"]}
+                ]},
+                {"unit": 2, "title": "位置", "lessons": [
+                    {"lesson": 1, "title": "用数对确定位置", "topic": "用数对确定位置", "knowledge_point_ids": ["math-g5-gm-01"]}
+                ]},
+                {"unit": 3, "title": "小数除法", "lessons": [
+                    {"lesson": 1, "title": "小数除以整数", "topic": "小数除法", "knowledge_point_ids": ["math-g5-na-02"]},
+                    {"lesson": 2, "title": "一个数除以小数", "topic": "小数除法", "knowledge_point_ids": ["math-g5-na-02"]}
+                ]},
+                {"unit": 4, "title": "可能性", "lessons": [
+                    {"lesson": 1, "title": "可能性", "topic": "可能性", "knowledge_point_ids": ["math-g5-sp-01"]}
+                ]},
+                {"unit": 5, "title": "简易方程", "lessons": [
+                    {"lesson": 1, "title": "用字母表示数", "topic": "简易方程", "knowledge_point_ids": ["math-g5-na-03"]},
+                    {"lesson": 2, "title": "解简易方程", "topic": "简易方程", "knowledge_point_ids": ["math-g5-na-03"]}
+                ]},
+                {"unit": 6, "title": "多边形的面积", "lessons": [
+                    {"lesson": 1, "title": "平行四边形的面积", "topic": "多边形的面积", "knowledge_point_ids": ["math-g5-gm-01"]},
+                    {"lesson": 2, "title": "三角形的面积", "topic": "多边形的面积", "knowledge_point_ids": ["math-g5-gm-01"]},
+                    {"lesson": 3, "title": "梯形的面积", "topic": "多边形的面积", "knowledge_point_ids": ["math-g5-gm-01"]}
+                ]},
+                {"unit": 7, "title": "数学广角—植树问题", "lessons": [
+                    {"lesson": 1, "title": "植树问题", "topic": "植树问题", "knowledge_point_ids": []}
+                ]}
+            ]
+        },
+        "6": {
+            "units": [
+                {"unit": 1, "title": "分数乘法", "lessons": [
+                    {"lesson": 1, "title": "分数乘整数", "topic": "分数乘法", "knowledge_point_ids": ["math-g6-na-01"]},
+                    {"lesson": 2, "title": "分数乘分数", "topic": "分数乘法", "knowledge_point_ids": ["math-g6-na-01"]}
+                ]},
+                {"unit": 2, "title": "位置与方向（二）", "lessons": [
+                    {"lesson": 1, "title": "位置与方向", "topic": "位置与方向", "knowledge_point_ids": ["math-g6-gm-01"]}
+                ]},
+                {"unit": 3, "title": "分数除法", "lessons": [
+                    {"lesson": 1, "title": "倒数的认识", "topic": "分数除法", "knowledge_point_ids": ["math-g6-na-02"]},
+                    {"lesson": 2, "title": "分数除法", "topic": "分数除法", "knowledge_point_ids": ["math-g6-na-02"]}
+                ]},
+                {"unit": 4, "title": "比", "lessons": [
+                    {"lesson": 1, "title": "比的意义和性质", "topic": "比", "knowledge_point_ids": ["math-g6-na-03"]},
+                    {"lesson": 2, "title": "比的应用", "topic": "比", "knowledge_point_ids": ["math-g6-na-03"]}
+                ]},
+                {"unit": 5, "title": "圆", "lessons": [
+                    {"lesson": 1, "title": "圆的认识", "topic": "圆", "knowledge_point_ids": ["math-g6-gm-01"]},
+                    {"lesson": 2, "title": "圆的周长", "topic": "圆", "knowledge_point_ids": ["math-g6-gm-01"]},
+                    {"lesson": 3, "title": "圆的面积", "topic": "圆", "knowledge_point_ids": ["math-g6-gm-01"]}
+                ]},
+                {"unit": 6, "title": "百分数（一）", "lessons": [
+                    {"lesson": 1, "title": "百分数的认识", "topic": "百分数", "knowledge_point_ids": ["math-g6-na-04"]},
+                    {"lesson": 2, "title": "百分数与分数小数互化", "topic": "百分数", "knowledge_point_ids": ["math-g6-na-04"]}
+                ]},
+                {"unit": 7, "title": "扇形统计图", "lessons": [
+                    {"lesson": 1, "title": "扇形统计图", "topic": "扇形统计图", "knowledge_point_ids": ["math-g6-sp-01"]}
+                ]},
+                {"unit": 8, "title": "数学广角—数与形", "lessons": [
+                    {"lesson": 1, "title": "数与形", "topic": "数与形", "knowledge_point_ids": []}
+                ]}
+            ]
+        }
+    }
+}
