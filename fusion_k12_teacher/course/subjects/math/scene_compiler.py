@@ -66,8 +66,8 @@ _EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本�
 - simple_interest: 单利利息 (本金×年利率×年数) (entities 含 deposit.principal=本金, deposit.rate=年利率(小数如0.02), deposit.years=年数)
 - tiered_pricing: 分段计费 (出租车起步价+超出单价) (entities 含 trip.base_distance=起步距离, trip.base_price=起步价, trip.unit_price=超出单价, trip.total_distance=总距离)
 - weekday_calc: 星期推算 (今天周a, 再过b天是星期几) (entities 含 cal.start_day=今天星期数1-7, cal.add_days=过几天)
-- semicircle_perimeter: 半圆周长 (弧长+直径) (entities 含 shape.radius=半径)
-- cuboid_combine_surface: 长方体拼接表面积 (两相同长方体拼大长方体求最大/最小表面积) (entities 含 box.length, box.width, box.height)
+- semicircle_perimeter: 半圆周长 (弧长+直径) (entities 含 shape.radius=半径) 注意: 题目必须明确问"半圆/半圆形", 整圆周长/圆面积不是此场景
+- cuboid_combine_surface: 长方体拼接表面积 (两相同长方体拼大长方体求最大/最小表面积) (entities 含 box.length, box.width, box.height) 注意: 仅限"拼/接后求表面积", 求周长/切割正方体求增加表面积均不是此场景 (切割正方体表面积增加无对应场景时填 unknown)
 - combination_count: 搭配问题 (a件上衣b条裤子几种搭配) (entities 含 set.n_items1=上衣数, set.n_items2=裤子数)
 - unitary_combined: 归一归总混合 (a人b天做c个, 求d人e天做多少) (entities 含 work.n_people, work.n_days, work.total_work, work.target_people, work.target_days)
 - redundant_filter: 多余条件筛选题 (含干扰数字不参与运算, 如树上鸟飞走几只又飞来几朵花, 花与鸟无关) (entities 含 scene.total=有效总数如鸟数, scene.removed=减少数如飞走, scene.distraction=干扰数如花朵不参与运算)
@@ -274,9 +274,12 @@ class MathSceneCompiler(SceneCompilerBase):
             error=verify.error if verify else ("未知场景, 降级静态推导" if scenario == "unknown" else ""),
             fallback=bool(verify and verify.fallback) or scenario not in _KNOWN_SCENARIOS,
         )
-        # 通用路径 (issue: 新题型全部降级) — 模板未命中/校验失败时, S1 开放提取
+        # 通用路径 (issue: 新题型全部降级) — 模板未命中/校验失败/无答案时, S1 开放提取
         # → S2 SymPy 解方程 → S3 可视化原语, 仅当提取失败或不可解才真正降级。
-        if dsl.fallback:
+        # 模板 verify "通过"但 total_distance/total_time 均空 (如 queue_counting 映射缺失)
+        # 同样视为模板未产出答案, 回退通用管线兜底。
+        template_no_answer = not (total_distance or total_time)
+        if dsl.fallback or template_no_answer:
             generic = await self._compile_generic(problem, knowledge_node_id)
             if generic is not None:
                 return generic
