@@ -120,6 +120,21 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 关键: 目标是"几岁时"→ 方程 x + age_gap = k*x (两边同时成长);
    目标是"几年前"→ 方程 age_father - x = k*(age_child - x)。
 
+范例8 (复杂平均数类 — 部分均值推单值 / 改数后新均值):
+题A: 小明前四次测验平均 89 分, 第五次后平均提到 90, 第五次多少分?
+关键: 用"总分"桥接 — 前四次总分 89*4=356, 五次总分 90*5=450, 第五次 = 450-356 = 94。易错: 不能用 (90-89)*5, 平均数不能直接相减乘次数。
+题B: 六个数平均 27, 其中一个数改为 33 后平均变 30, 原数多少?
+关键: 新总分 - 旧总分 = 33 - 原数 → 30*6 - 27*6 = 18 = 33 - 原数 → 原数 = 33 - 18 = 15。改成更大的数平均才会升, 所以 原数 = 新数 - 总分差 (减法, 不是加法)。
+{"knowns": {"old_avg": {"value": 89, "unit": "分"}, "old_count": {"value": 4, "unit": "次"}, "new_avg": {"value": 90, "unit": "分"}, "new_count": {"value": 5, "unit": "次"}}, "unknowns": ["target"], "equations": ["target - (new_avg*new_count - old_avg*old_count)"], "answer_expr": "target", "answer_unit": "分", "steps": ["前四次总分 89*4=356", "五次总分 90*5=450", "第五次 = 450-356 = 94"], "pipeline": [{"step":1,"title":"旧总分","formula":"89*4=356","eval":"params.old_avg*params.old_count","result_unit":"分"},{"step":2,"title":"新总分","formula":"90*5=450","eval":"params.new_avg*params.new_count","result_unit":"分"},{"step":3,"title":"第五次成绩","formula":"450-356=94","eval":"results[2] - results[1]","result_unit":"分"}], "visual": {"kind": "flow"}, "question_focus": "第五次成绩", "misconception_hint": "平均数不能直接相减, 必须经总分桥接 (avg*count)"}
+关键: 一切复杂平均数题都经"总分 = 平均×个数"桥接; 改数题
+   新旧总分之差 = 改动值, 逆推原数。
+
+范例9 (移多补少/转移类 — 变化前后守恒, 差的一半是移动量):
+题: 甲乙两桶油共 40 千克, 从甲倒 5 千克给乙后两桶同样重, 甲原来多少?
+关键: 倒 5 后相等 → 原来甲比乙多 2*5=10 (移动量=差的一半) → 甲 = (40+10)/2 = 25, 乙 = 15。
+{"knowns": {"total": {"value": 40, "unit": "千克"}, "moved": {"value": 5, "unit": "千克"}}, "unknowns": ["target"], "equations": ["target + target - 2*moved - total"], "answer_expr": "target", "answer_unit": "千克", "steps": ["倒5后相等 → 原甲-原乙 = 2*5=10", "甲 = (40+10)/2 = 25", "乙 = 40-25 = 15"], "pipeline": [{"step":1,"title":"原来差","formula":"2*5=10","eval":"2*params.moved","result_unit":"千克"},{"step":2,"title":"甲桶","formula":"(40+10)/2=25","eval":"(params.total + results[1]) / 2","result_unit":"千克"}], "visual": {"kind": "bar_model"}, "question_focus": "甲桶原重", "misconception_hint": "移动 m 后相等 → 原差是 2m 不是 m; 和差问题: 大数=(和+差)/2"}
+关键: "移动 m 后相等"→原差=2m; 再套和差公式 大数=(和+差)/2。
+
 只输出 JSON, 不要解释。"""
 
 
