@@ -56,7 +56,7 @@ _EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本�
 - chicken_rabbit: 鸡兔同笼 (头数腿数求各几只, 鸡2腿兔4腿, 腿数远大于头数) (entities 含 cage.heads=头数, cage.legs=腿数) 注意: 鸟飞走/飞来不是鸡兔同笼
 - basic_motion: 基本行程 路程=速度×时间 (entities 含 traveler.distance, traveler.speed, traveler.time, 给两个求第三个, 缺项填0)
 - work_problem: 工程问题 (甲a天乙b天合作几天) (entities 含 worker1.days=甲天数, worker2.days=乙天数)
-- average_problem: 平均数 (总和÷个数) (entities 含 data.total_sum=总和, data.count=个数)
+- average_problem: 平均数 (总和÷个数直接一步求平均) (entities 含 data.total_sum=总和, data.count=个数) 注意: 仅限"已知总和与个数求平均" — 部分均值推整体/改数后新均值/加人后均值等复杂平均题不是此场景, 填 unknown
 - overlap_splice: 重叠拼接 (两板重叠1cm求总长) (entities 含 board.board1=板1长, board.board2=板2长, board.overlap=重叠长)
 - round_trip: 往返路程 (去+回, 漏乘2) (entities 含 trip.distance=单程, trip.trips=往返次数)
 - sum_multiple: 和倍问题 (两量之和 + 倍数关系, 求各量) (entities 含 pair.sum=和, pair.multiple=倍数) 注意: 仅限"两量之和"题型 — 已知各自年龄/相差年份求倍数时刻的年龄题不是此场景, 填 unknown (年龄问题用年龄差不变解)
