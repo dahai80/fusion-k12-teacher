@@ -160,33 +160,48 @@ class MathSceneCompiler(SceneCompilerBase):
             entities_raw = {}
 
         var_map = self._flatten_entities(scenario, entities_raw)
-        # 确定性变体兜底 (prompt 引导不可靠 — 实测 LLM 常漏 sides/逆向字段):
-        # ① 植树"两旁/两侧" → sides=2 (棵数翻倍); ② 植树逆向 "共N根+求路长" → trees=N
-        # 逆向型 LLM 常幻觉出一个错误的 length — 命中 "(共|一共)埋/栽N根" 句式时覆盖,
-        # 并删除 length 让 handler 走逆向分支 (数量关系以题面正则为准, 不信 LLM)。
+        # 植树题强兜底: 题面正则重构全部参数 (不信 LLM 字段组合 — 实测其输出
+        # 每次不同: 漏 sides/幻觉 length/漏 spacing 轮番出现)。
+        # 提取 4 个候选: 路长/周长、间距、棵数、封闭/两侧标志; 再按题目所问
+        # 目标 (棵数/间距/路长) 反推 handler 需要的字段组合, 整体重构 var_map。
         if scenario == "tree_planting":
-            if re.search(r"两旁|两侧|两边", problem) and "sides" not in var_map:
-                var_map["sides"] = 2.0
-            # 封闭型: 环形/一圈/周围/四周/四角都种 → 棵数=间隔数 (mode_code=0), 易误 +1/-1
-            if re.search(r"封闭|一圈|周围|环绕|环形|四周|四个?角都(?:种|栽)|四角都(?:种|栽)", problem):
-                var_map["mode_code"] = 0.0
-                var_map.pop("sides", None)
-            m = re.search(r"(?:共埋了|共栽了|共种了|一共(?:埋|栽|种)了|共栽|共种)\s*(\d+)\s*[根棵株]", problem)
-            is_tree_reverse = False
-            if m and re.search(r"多长|多少米|路长|这段路|相距|间隔|距离", problem):
-                var_map["trees"] = float(m.group(1))
-                var_map.pop("length", None)
-                var_map.pop("spacing", None)
-                is_tree_reverse = True
-                # 逆向型需间距或周长之一 — LLM 常漏提, 从题面正则兜底
-                if "spacing" not in var_map:
-                    ms = re.search(r"每\s*(?:隔)?\s*(\d+(?:\.\d+)?)\s*米", problem)
-                    if ms:
-                        var_map["spacing"] = float(ms.group(1))
-                if "length" not in var_map:
-                    ml = re.search(r"周长\s*(?:是|为)?\s*(\d+(?:\.\d+)?)\s*米", problem)
-                    if ml:
-                        var_map["length"] = float(ml.group(1))
+            m_len = re.search(r"(?:周长|全长|路长|边长)\s*(?:是|为)?\s*(\d+(?:\.\d+)?)\s*米", problem)
+            m_sp = re.search(r"每\s*(?:隔)?\s*(\d+(?:\.\d+)?)\s*米", problem)
+            m_tr = re.search(r"(?:共|一共)?(?:栽|种|埋|插)(?:了|上)?\s*(\d+)\s*[棵株根面]", problem)
+            closed = bool(re.search(r"封闭|一圈|周围|环绕|环形|四周|圆(形|圈)|池塘|月潭|四角都|四个?角都", problem))
+            ask_trees = bool(re.search(r"多少[棵株面]", problem))
+            ask_spacing = bool(re.search(r"相距|间距|间隔多少|距离是多少|每相邻", problem))
+            ask_length = bool(re.search(r"多长|路长|周长是多少", problem))
+            if m_len or m_sp or m_tr:
+                # mode_code 推断: 封闭=0; 两端都栽=1; 一端=2; 两端不栽=3; 默认两端栽
+                if closed:
+                    mode = 0.0
+                elif re.search(r"两端都(?:要)?(?:栽|种|埋|插)", problem):
+                    mode = 1.0
+                elif re.search(r"一端(?:栽|种|埋)|只栽一端", problem):
+                    mode = 2.0
+                elif re.search(r"两端都不|两端都不栽|都不栽|不栽两端", problem):
+                    mode = 3.0
+                else:
+                    mode = 1.0
+                if ask_trees and m_len and m_sp:
+                    # 问棵数: 标准正向 (handler: length+spacing+mode → trees)
+                    length_val = float(m_len.group(1))
+                    if closed and re.search(r"边长", problem):
+                        length_val = length_val * 4.0  # 正方形边长 → 周长
+                    var_map = {"length": length_val, "spacing": float(m_sp.group(1)),
+                               "mode_code": mode}
+                    if re.search(r"两旁|两侧|两边", problem):
+                        var_map["sides"] = 2.0
+                elif ask_spacing and m_len and m_tr:
+                    # 已知周长/路长 + 棵数 → 求间距 (handler 分支: spacing=length/trees 或 /(trees-1))
+                    var_map = {"length": float(m_len.group(1)), "trees": float(m_tr.group(1)),
+                               "mode_code": mode}
+                elif ask_length and m_tr and m_sp:
+                    # 已知棵数 + 间距 → 求路长 (handler 逆向: length=(trees/sides-1)*spacing)
+                    var_map = {"trees": float(m_tr.group(1)), "spacing": float(m_sp.group(1))}
+                    if re.search(r"两旁|两侧|两边", problem):
+                        var_map["sides"] = 2.0
         verify = self.verifier.verify_scene(scenario, var_map) if scenario in _KNOWN_SCENARIOS else None
 
         if verify and verify.error and "未知场景" not in verify.error:
@@ -240,8 +255,15 @@ class MathSceneCompiler(SceneCompilerBase):
             total_distance = self._var_value(verify, "area")
             total_time = self._var_value(verify, "length") or 0.0
         elif scenario == "tree_planting":
-            if is_tree_reverse:
-                # 逆向型 (已知棵数求路长): 答案是路长, 不是棵数
+            # 答案映射按 handler 实际产出的变量推断 —
+            # 标准型/两侧栽: trees 是主解; 逆向求路长: trees 是输入、length 是解;
+            # 求间距: spacing 是解。用"题目问了什么 + 哪个变量是新算出来的"双重判断。
+            m_tr_ask = re.search(r"多少[棵株面]", problem)
+            m_sp_ask = re.search(r"相距|间距|间隔多少|距离", problem)
+            if m_sp_ask and self._var_value(verify, "spacing") is not None:
+                total_distance = self._var_value(verify, "spacing")
+            elif not m_tr_ask and self._var_value(verify, "length") is not None:
+                # 逆向求路长: 题目问路长 ( trees 是输入)
                 total_distance = self._var_value(verify, "length")
             else:
                 total_distance = self._var_value(verify, "trees")

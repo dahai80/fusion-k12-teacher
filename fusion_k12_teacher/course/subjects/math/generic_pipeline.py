@@ -113,6 +113,13 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 关键: 正向验证一遍 (4+10=14, ×2=28, -8=20 ✓) 确认无误; 含"一半多a/少a"
    的题用逆向逐层还原, 注意"运出一半少1"意为剩下一半多1。
 
+范例7 (年龄倍数时刻类 — 年龄差恒不变, 求"几岁/哪年"时成 k 倍):
+题: 1997年爸爸45岁，儿子9岁，当儿子多少岁时爸爸的年龄是儿子的4倍？
+关键推导: 年龄差恒不变 = 45-9 = 36。设儿子 x 岁时成 4 倍: 爸爸当时 = x+36 (爸爸也长了同样的年数, 不能用 45-x) → x+36 = 4x → 3x = 36 → x = 12。
+{"knowns": {"age_father": {"value": 45, "unit": "岁"}, "age_child": {"value": 9, "unit": "岁"}, "multiple": {"value": 4, "unit": ""}}, "unknowns": ["target"], "equations": ["target + (age_father - age_child) - multiple*target"], "answer_expr": "target", "answer_unit": "岁", "steps": ["年龄差不变: 45-9=36", "成4倍时: 儿子x岁, 爸爸 x+36 (两人都长大)", "x+36=4x → x=12"], "pipeline": [{"step":1,"title":"年龄差","formula":"45-9=36","eval":"params.age_father - params.age_child","result_unit":"岁"},{"step":2,"title":"解 x+36=4x","formula":"x=36/(4-1)=12","eval":"results[1] / (params.multiple - 1)","result_unit":"岁"}], "visual": {"kind": "timeline"}, "question_focus": "儿子几岁时", "misconception_hint": "爸爸的年龄也在增长 — 未来时态用 x+差, 不是 45-x; '几年前'用差-x, '几年后/几岁时'用 x+差, 方程 (差) = (k-1)*x"}
+关键: 目标是"几岁时"→ 方程 x + age_gap = k*x (两边同时成长);
+   目标是"几年前"→ 方程 age_father - x = k*(age_child - x)。
+
 只输出 JSON, 不要解释。"""
 
 
