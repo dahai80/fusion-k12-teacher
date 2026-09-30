@@ -282,6 +282,13 @@ async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
 @click.option("--port", default=0, help="监听端口 (0=读 FUSION_K12_PORT env, 默认 11448)")
 def serve(host, port):
     """启动 HTTP API 服务。"""
+    # 进程标题显示服务名 (ps/top 可辨识), 不裸露 "python ..." — macOS 下
+    # exec -a 会被 Python.app 覆盖 argv, 须 setproctitle 才可靠
+    try:
+        import setproctitle
+        setproctitle.setproctitle("k12-teacher-serve")
+    except ImportError:
+        pass
     # P3: FUSION_K12_PORT env 生效 — deploy.md 原文档提及但 serve 未读, CMD 硬编码 11448 误导运维。
     if port == 0:
         port = int(os.environ.get("FUSION_K12_PORT", "11448"))
