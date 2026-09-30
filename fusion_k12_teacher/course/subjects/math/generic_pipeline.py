@@ -91,6 +91,14 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 关键: 判断题不设 unknowns/equations/pipeline, criterion.expr 用已知量算出数值 —
 结果 >0 取 true_meaning, =0 或 <0 取 false_meaning。
 
+范例4 (余数/同余类 — 除以a余r, 除以b余r, 余数相同, 求最小正数):
+题: 一个数除以2余1，除以3余1，除以5余1，这个数最小是多少？
+关键推导: 余数相同 (都是1) → 这个数减去1后能同时被 2、3、5 整除 → 减去余数后是公倍数 → 最小就是最小公倍数 lcm(2,3,5)。逐个验证: 30/2=15 ✓ 30/3=10 ✓ 30/5=6 ✓ → lcm=30 → 所求数 = 30+1 = 31。
+{"question_kind": "solve", "knowns": {"divisor_product": {"value": 30, "unit": ""}, "remainder": {"value": 1, "unit": ""}}, "unknowns": ["target"], "equations": ["target - divisor_product - remainder"], "answer_expr": "target", "answer_unit": "", "steps": ["余数相同(1) → 数-1 是 2,3,5 的公倍数", "最小公倍数逐个验证: 30/2=15✓ 30/3=10✓ 30/5=6✓ → lcm=30", "所求数 = 30+1 = 31"], "pipeline": [{"step":1,"title":"求最小公倍数并逐个验证","formula":"30/2=15✓ 30/3=10✓ 30/5=6✓ → lcm=30","eval":"params.divisor_product","result_unit":""},{"step":2,"title":"加余数","formula":"30+1=31","eval":"results[1] + params.remainder","result_unit":""}], "visual": {"kind": "flow"}, "question_focus": "最小正数", "misconception_hint": "divisor_product 必须逐个验证能被每个除数整除且最小 — 是 lcm 而非随便的公倍数; 两两互质的除数 lcm=连乘 (如 2*3*5=30, 3*5*7=105), 不要多乘任何因子"}
+关键: divisor_product 必须填**最小公倍数**, 填完逐个验证能被每个除数整除;
+   两两互质的除数 lcm = 连乘 (如 2*3*5=30, 3*5*7=105), 不要多乘任何因子;
+   方程 target - divisor_product - remainder。
+
 只输出 JSON, 不要解释。"""
 
 
