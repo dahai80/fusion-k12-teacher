@@ -135,6 +135,21 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 {"knowns": {"total": {"value": 40, "unit": "千克"}, "moved": {"value": 5, "unit": "千克"}}, "unknowns": ["target"], "equations": ["target + target - 2*moved - total"], "answer_expr": "target", "answer_unit": "千克", "steps": ["倒5后相等 → 原甲-原乙 = 2*5=10", "甲 = (40+10)/2 = 25", "乙 = 40-25 = 15"], "pipeline": [{"step":1,"title":"原来差","formula":"2*5=10","eval":"2*params.moved","result_unit":"千克"},{"step":2,"title":"甲桶","formula":"(40+10)/2=25","eval":"(params.total + results[1]) / 2","result_unit":"千克"}], "visual": {"kind": "bar_model"}, "question_focus": "甲桶原重", "misconception_hint": "移动 m 后相等 → 原差是 2m 不是 m; 和差问题: 大数=(和+差)/2"}
 关键: "移动 m 后相等"→原差=2m; 再套和差公式 大数=(和+差)/2。
 
+范例10 (页码/逐位计数类 — 统计某数字出现次数, 按位分别数后求和):
+题: 一本故事书共200页，页码中共用了多少个数字'3'？
+关键推导: 逐位统计, 同一个数含多个'3'要算多次 (33 贡献 2 个'3', 不去重!)。
+个位是3: 3,13,23,...,193 共 20 个; 十位是3: 30-39,130-139 共 20 个 (33 算 1 个十位3 + 1 个个位3, 两处都算); 百位是3: 1-200 无 → 0; 总计 20+20+0 = 40。
+{"knowns": {"units_count": {"value": 20, "unit": "个"}, "tens_count": {"value": 20, "unit": "个"}, "hundreds_count": {"value": 0, "unit": "个"}}, "unknowns": ["target"], "equations": ["target - units_count - tens_count - hundreds_count"], "answer_expr": "target", "answer_unit": "个", "steps": ["个位是3: 3,13,...,193 共20个", "十位是3: 30-39,130-139 共20个 (33 算两个'3', 不去重)", "百位无3", "20+20+0=40"], "pipeline": [{"step":1,"title":"个位3","formula":"20","eval":"params.units_count","result_unit":"个"},{"step":2,"title":"十位3","formula":"20","eval":"params.tens_count","result_unit":"个"},{"step":3,"title":"合计","formula":"20+20+0=40","eval":"results[1] + results[2] + params.hundreds_count","result_unit":"个"}], "visual": {"kind": "grid"}, "question_focus": "数字3出现总次数", "misconception_hint": "逐位计数不按数去重 — 33 含两个'3'要算 2 次; 先逐位枚举填 knowns, 再求和"}
+关键: 枚举计数题的列式范式 — 每个位/每类的数量由枚举得出后填进 knowns
+   (个位3每10页1次、十位3每100页10次), 方程只做求和 target − 各类计数。
+
+范例11 (封闭双层栽树类 — 封闭路线: 间隔数=棵数; 双层再乘每间隔棵数):
+题: 圆形池塘周长240米，沿池塘周围每隔8米栽一棵柳树，再在每相邻两棵柳树之间等距离栽2棵桃树，一共栽树多少棵？
+关键推导: 封闭路线棵数=间隔数 → 柳树 = 240/8 = 30; "每相邻两棵柳树之间栽2棵桃树" → 桃树 = 30*2 = 60; 共 30+60 = 90。这不是逻辑矛盾 — "柳树之间"指相邻柳树的间隔, 桃树栽在间隔里。
+{"knowns": {"length": {"value": 240, "unit": "米"}, "spacing": {"value": 8, "unit": "米"}, "peach_per_gap": {"value": 2, "unit": "棵"}}, "unknowns": ["target"], "equations": ["target - length/spacing - length/spacing*peach_per_gap"], "answer_expr": "target", "answer_unit": "棵", "steps": ["封闭路线: 柳树=周长/间距=240/8=30", "桃树=柳树数×每间隔棵数=30*2=60", "共 30+60=90"], "pipeline": [{"step":1,"title":"柳树","formula":"240/8=30","eval":"params.length / params.spacing","result_unit":"棵"},{"step":2,"title":"桃树","formula":"30*2=60","eval":"results[1] * params.peach_per_gap","result_unit":"棵"},{"step":3,"title":"合计","formula":"30+60=90","eval":"results[1] + results[2]","result_unit":"棵"}], "visual": {"kind": "grid"}, "question_focus": "一共栽树棵数", "misconception_hint": "封闭路线间隔数=棵数 (不+1不-1); 每间隔栽 a 棵第二层树 → 第二层 = 第一层×a"}
+关键: 封闭路线 (环形/池塘/一圈) 棵数 = 周长/间距, 严格等于间隔数;
+   "每相邻两棵A之间栽 b 棵B" → B = A棵数 × b, 分层算完再求和。
+
 只输出 JSON, 不要解释。"""
 
 
