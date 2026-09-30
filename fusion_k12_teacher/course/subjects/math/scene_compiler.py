@@ -59,7 +59,7 @@ _EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本�
 - average_problem: 平均数 (总和÷个数) (entities 含 data.total_sum=总和, data.count=个数)
 - overlap_splice: 重叠拼接 (两板重叠1cm求总长) (entities 含 board.board1=板1长, board.board2=板2长, board.overlap=重叠长)
 - round_trip: 往返路程 (去+回, 漏乘2) (entities 含 trip.distance=单程, trip.trips=往返次数)
-- sum_multiple: 和倍问题 (甲乙和, 甲是乙几倍) (entities 含 pair.sum=和, pair.multiple=倍数)
+- sum_multiple: 和倍问题 (两量之和 + 倍数关系, 求各量) (entities 含 pair.sum=和, pair.multiple=倍数) 注意: 仅限"两量之和"题型 — 已知各自年龄/相差年份求倍数时刻的年龄题不是此场景, 填 unknown (年龄问题用年龄差不变解)
 - sprinkler_area: 洒水车面积 (长方形随时间扩大) (entities 含 sprinkler.speed=速度, sprinkler.width=宽, sprinkler.time=时间)
 - tree_planting: 植树问题变体 (entities 含 road.length=路长, road.spacing=间距, road.mode_code=1两端栽/2一端/3两端不栽/0封闭) — ①标准型: 求棵数; ②两侧栽: "两旁/两侧"时加 road.sides=2 (棵数翻倍, 易漏); ③逆向型: 已知棵数求路长 (entities 含 road.trees=棵数, road.spacing=间距, 不填 length)
 - displacement_volume: 排水法求体积 (不规则物放入水箱水位上升) (entities 含 tank.length=水箱长, tank.width=水箱宽, tank.rise=上升高)
@@ -167,17 +167,26 @@ class MathSceneCompiler(SceneCompilerBase):
         if scenario == "tree_planting":
             if re.search(r"两旁|两侧|两边", problem) and "sides" not in var_map:
                 var_map["sides"] = 2.0
-            m = re.search(r"(?:共埋了|共栽了|共种了|一共(?:埋|栽|种)了)\s*(\d+)\s*[根棵]", problem)
+            # 封闭型: 环形/一圈/周围/四周/四角都种 → 棵数=间隔数 (mode_code=0), 易误 +1/-1
+            if re.search(r"封闭|一圈|周围|环绕|环形|四周|四个?角都(?:种|栽)|四角都(?:种|栽)", problem):
+                var_map["mode_code"] = 0.0
+                var_map.pop("sides", None)
+            m = re.search(r"(?:共埋了|共栽了|共种了|一共(?:埋|栽|种)了|共栽|共种)\s*(\d+)\s*[根棵株]", problem)
             is_tree_reverse = False
-            if m and re.search(r"多长|多少米|路长|这段路", problem):
+            if m and re.search(r"多长|多少米|路长|这段路|相距|间隔|距离", problem):
                 var_map["trees"] = float(m.group(1))
                 var_map.pop("length", None)
+                var_map.pop("spacing", None)
                 is_tree_reverse = True
-                # 逆向型同时需要间距 — LLM 常漏提, 从题面正则兜底 ("每隔40米/每40米")
+                # 逆向型需间距或周长之一 — LLM 常漏提, 从题面正则兜底
                 if "spacing" not in var_map:
                     ms = re.search(r"每\s*(?:隔)?\s*(\d+(?:\.\d+)?)\s*米", problem)
                     if ms:
                         var_map["spacing"] = float(ms.group(1))
+                if "length" not in var_map:
+                    ml = re.search(r"周长\s*(?:是|为)?\s*(\d+(?:\.\d+)?)\s*米", problem)
+                    if ml:
+                        var_map["length"] = float(ml.group(1))
         verify = self.verifier.verify_scene(scenario, var_map) if scenario in _KNOWN_SCENARIOS else None
 
         if verify and verify.error and "未知场景" not in verify.error:

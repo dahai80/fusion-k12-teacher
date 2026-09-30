@@ -99,6 +99,20 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
    两两互质的除数 lcm = 连乘 (如 2*3*5=30, 3*5*7=105), 不要多乘任何因子;
    方程 target - divisor_product - remainder。
 
+范例5 (间隔类 — 敲钟/锯木/爬楼: 次数与间隔数差 1):
+题: 钟敲6下用了10秒，敲12下要用多少秒？
+关键推导: 敲6下有 6-1=5 个间隔, 每个间隔 10/5=2 秒; 敲12下有 11 个间隔 → 11*2=22 秒。
+{"knowns": {"first_times": {"value": 6, "unit": "下"}, "first_seconds": {"value": 10, "unit": "秒"}, "target_times": {"value": 12, "unit": "下"}}, "unknowns": ["target"], "equations": ["target - (target_times - 1) * (first_seconds / (first_times - 1))"], "answer_expr": "target", "answer_unit": "秒", "steps": ["敲6下 → 5个间隔, 每间隔 10/5=2秒", "敲12下 → 11个间隔", "11*2=22秒"], "pipeline": [{"step":1,"title":"求每个间隔时长","formula":"10/(6-1)=2秒","eval":"params.first_seconds / (params.first_times - 1)","result_unit":"秒"},{"step":2,"title":"求敲12下总时长","formula":"(12-1)*2=22秒","eval":"results[1] * (params.target_times - 1)","result_unit":"秒"}], "visual": {"kind": "timeline"}, "question_focus": "总时长", "misconception_hint": "次数与间隔数差 1: 间隔数=次数-1, 直接用次数乘会多算一个间隔"}
+关键: 锯木(段数-1=锯次)、爬楼(楼层-1=层数)、敲钟(下数-1=间隔) 同构 —
+   都用 (次数-1) 作为间隔数, 不要直接乘次数。
+
+范例6 (还原倒推类 — 从结果往回推, 逆运算逐层还原):
+题: 一个数加上10再乘2，再减去8得20，这个数是多少？
+关键: 从结果 20 出发倒推: (20+8)/2-10 = 4。逆运算顺序与题目叙述完全相反。
+{"knowns": {"final": {"value": 20, "unit": ""}}, "unknowns": ["target"], "equations": ["(target + 10) * 2 - 8 - final"], "answer_expr": "target", "answer_unit": "", "steps": ["最后是减8 → 倒推先加8: 20+8=28", "之前是乘2 → 倒推除2: 28/2=14", "最先是加10 → 倒推减10: 14-10=4"], "pipeline": [{"step":1,"title":"逆推减8","formula":"20+8=28","eval":"params.final + 8","result_unit":""},{"step":2,"title":"逆推乘2","formula":"28/2=14","eval":"results[1] / 2","result_unit":""},{"step":3,"title":"逆推加10","formula":"14-10=4","eval":"results[2] - 10","result_unit":""}], "visual": {"kind": "flow"}, "question_focus": "原数", "misconception_hint": "倒推顺序 = 题目运算的完全逆序; '一半又多a' 类含分数动作时逆推为 (值+a) 后 ×2 — 逐层验算一遍"}
+关键: 正向验证一遍 (4+10=14, ×2=28, -8=20 ✓) 确认无误; 含"一半多a/少a"
+   的题用逆向逐层还原, 注意"运出一半少1"意为剩下一半多1。
+
 只输出 JSON, 不要解释。"""
 
 
