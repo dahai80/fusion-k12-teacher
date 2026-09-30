@@ -192,6 +192,14 @@ def _h_tree_planting(v: dict[str, float]) -> dict[str, float]:
         per_side = trees / sides if sides else trees
         length = (per_side - 1.0) * spacing
         return {**v, "length": length, "segments": length / spacing if spacing else 0.0, "trees": trees}
+    # 已知路长/周长 + 棵数 → 求间距 (封闭型: 间距 = length/trees; 直线两端栽: length/(trees-1))
+    if "spacing" not in v and "trees" in v and "length" in v:
+        trees = v["trees"]
+        length = v["length"]
+        closed = str(int(v.get("mode_code", 0.0))) == "0"
+        spacing = length / trees if closed else length / max(trees - 1.0, 1.0)
+        segments = length / spacing if spacing else 0.0
+        return {**v, "spacing": spacing, "segments": segments, "trees": trees}
     length = v["length"]
     spacing = v["spacing"]
     mode = str(int(v.get("mode_code", 0.0)))
@@ -453,6 +461,7 @@ class MathSympyVerifier(VerifierBase):
         variant_ok = (
             any(k in vars_f for k in ("front_count", "behind_count"))
             or (scenario == "tree_planting" and "trees" in vars_f and "spacing" in vars_f)
+            or (scenario == "tree_planting" and "trees" in vars_f and "length" in vars_f)  # 已知周长+棵数求间距
         )
         if missing and not variant_ok:
             return VerifyResult(error=f"缺失变量: {missing}", fallback=True)
