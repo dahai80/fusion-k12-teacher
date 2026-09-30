@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import typing
 from typing import Any
 
 from ...._parse import parse_json
@@ -407,11 +408,134 @@ class MathSceneCompiler(SceneCompilerBase):
             fallback=False,
         )
 
+    # 中文数字 → 整数 (题面计数常为汉字: "六个数")
+    _CN_NUM: typing.ClassVar[dict[str, int]] = {"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
+                                                "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+
+    def _build_direct_dsl(self, problem: str, knowledge_node_id: str, *,
+                          answer: float, answer_unit: str, steps: list[str],
+                          visual_kind: str, focus: str, misconception: str,
+                          knowns: dict[str, float]) -> SceneDSL:
+        """确定性兜底 DSL — 数值关系由题面正则直接计算, 未经 LLM, verified 恒真。"""
+        entities = [SceneEntity(id=k, type="reference_line", label=k, value=v, unit="")
+                    for k, v in knowns.items()]
+        milestones = [
+            Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
+                      highlight_entities=[e.id for e in entities[:3]],
+                      formula_state=steps[0] if steps else ""),
+            Milestone(progress_percentage=50.0, time_mark=0.5, event_name="按公式计算",
+                      highlight_entities=[],
+                      formula_state=steps[1] if len(steps) > 1 else ""),
+            Milestone(progress_percentage=100.0, time_mark=1.0, event_name="求解完成",
+                      highlight_entities=[],
+                      formula_state=f"答案 = {answer:g}{answer_unit}"),
+        ]
+        return SceneDSL(
+            subject="math",
+            template_type="generic_solve",
+            meta={"title": problem[:60], "original_text": problem,
+                  "knowledge_node_id": knowledge_node_id,
+                  "pipeline": "generic", "pipeline_kind": "direct"},
+            entities=[e.to_dict() for e in entities],
+            canvas_config={
+                "dimension": "2D",
+                "visual": {"kind": visual_kind},
+                "pipeline": [],
+                "parameters": [{"key": k, "label": k, "value": v, "unit": ""} for k, v in knowns.items()],
+                "scale_mapping": {"unit_to_pixel_ratio": self._calc_scale(abs(answer) or 1.0), "auto_fit": True},
+            },
+            timeline={
+                "total_distance": abs(answer) or 1.0,
+                "total_time": 1.0,
+                "answer": answer,
+                "answer_unit": answer_unit,
+                "milestones": [m.to_dict() for m in milestones],
+            },
+            pedagogy={
+                "misconception_breakdown": misconception,
+                "key_takeaway": steps[-1] if steps else "",
+                "prerequisite_node_ids": [],
+                "steps": steps,
+                "question_focus": focus,
+            },
+            verified=True,
+            error="",
+            fallback=False,
+        )
+
+    def _try_average_change(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
+        """改数均值题确定性兜底 — 原数 = 新值 − (新均−旧均)×个数, 题面正则直取。"""
+        if "平均" not in problem or "原来" not in problem:
+            return None
+        avgs = re.findall(r"平均(?:数)?(?:变为|变成|是|为)?\s*(\d+(?:\.\d+)?)", problem)
+        m_new = re.search(r"(?:改为|改成|换成|变成)\s*(\d+(?:\.\d+)?)", problem)
+        m_cnt = re.search(r"([\d一二两三四五六七八九十]+)\s*个数", problem)
+        if len(avgs) < 2 or m_new is None or m_cnt is None:
+            return None
+        old_avg, new_avg = float(avgs[0]), float(avgs[1])
+        new_val = float(m_new.group(1))
+        raw = m_cnt.group(1)
+        count = float(raw) if raw.isdigit() else float(self._CN_NUM.get(raw[0], 0))
+        if count <= 0 or new_avg == old_avg:
+            return None
+        diff = (new_avg - old_avg) * count
+        original = new_val - diff
+        if original <= 0:
+            return None
+        steps = [
+            f"旧总分 = {old_avg:g}×{count:g} = {old_avg * count:g}",
+            f"新总分 = {new_avg:g}×{count:g} = {new_avg * count:g}",
+            f"总分差 = {diff:g} → 原数 = {new_val:g} − {diff:g} = {original:g}",
+        ]
+        return self._build_direct_dsl(
+            problem, knowledge_node_id,
+            answer=original, answer_unit="",
+            steps=steps, visual_kind="flow",
+            focus="原来的数", knowns={"old_avg": old_avg, "new_avg": new_avg,
+                                      "new_value": new_val, "count": count},
+            misconception="平均数不能直接相减×次数 — 必须经总分桥接; "
+                          "改成更大的数平均才升, 原数 = 新值 − 总分差 (减法)",
+        )
+
+    def _try_transfer_equal(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
+        """移多补少题确定性兜底 — 移动 m 后相等 ⇒ 原差=2m, 大数=(和+差)/2。"""
+        if "原来" not in problem or not re.search(r"同样重|一样重|相等|一样多", problem):
+            return None
+        m_total = re.search(r"共\s*(?:重|有)?\s*(\d+(?:\.\d+)?)", problem)
+        m_moved = re.search(r"(?:倒出|拿出|给出|移了|移走|移出|转移)\s*(\d+(?:\.\d+)?)", problem)
+        if m_total is None or m_moved is None:
+            return None
+        total = float(m_total.group(1))
+        moved = float(m_moved.group(1))
+        if moved <= 0 or moved * 2 >= total:
+            return None
+        diff = moved * 2
+        larger = (total + diff) / 2
+        steps = [
+            f"移动 {moved:g} 后相等 → 原差 = 2×{moved:g} = {diff:g}",
+            f"大数 (给出方) = ({total:g}+{diff:g})/2 = {larger:g}",
+            f"小数 = {total:g} − {larger:g} = {total - larger:g}",
+        ]
+        return self._build_direct_dsl(
+            problem, knowledge_node_id,
+            answer=larger, answer_unit="",
+            steps=steps, visual_kind="bar_model",
+            focus="原来多少 (给出方)",
+            knowns={"total": total, "moved": moved},
+            misconception="移动 m 后相等 → 原差是 2m 不是 m; 和差公式: 大数=(和+差)/2",
+        )
+
     async def _compile_generic(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
         """通用路径 — 任意新题型: 开放提取 → SymPy 求解 → 可视化原语 DSL。
 
         返回 None 表示通用路径也失败 (提取不可用/方程不可解), 调用方维持降级。
         """
+        # 确定性兜底优先 — 改数均值/移多补少: 数值关系固定, 题面正则直接公式
+        # 计算, 不经 LLM (实测 LLM 对方向/语义反复出错: 51/-15/unknown)
+        direct = self._try_average_change(problem, knowledge_node_id) or self._try_transfer_equal(problem, knowledge_node_id)
+        if direct is not None:
+            logger.info("scene_compiler: 确定性兜底命中 (direct)")
+            return direct
         prompt = generic_pipeline.build_generic_prompt(problem)
         try:
             raw = await self.mlx.chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=1024)
