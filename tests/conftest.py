@@ -34,6 +34,9 @@ def _offline_llm(monkeypatch):
     if not _LIVE_ENABLED:
         monkeypatch.setenv("FUSION_MLX_URL", "http://127.0.0.1:9/v1")
         monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+        # issue #18: MLXClient.__init__ 现在读 FUSION_MLX_MODEL env —
+        # 离线模式清掉, 防 shell 环境变量污染 test_default_model 断言
+        monkeypatch.delenv("FUSION_MLX_MODEL", raising=False)
     yield
 
 

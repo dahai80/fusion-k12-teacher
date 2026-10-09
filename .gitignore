@@ -23,6 +23,10 @@ htmlcov/
 # Runtime data (serve upload artifacts, agent history) — 仅根目录 data/,
 # 包内 data/ (题库/课标等随包分发的数据文件) 必须入库, CI 测试依赖
 /data/
+# issue #17: 包内 data/ 的 upload_*.json 是运行时上传产物, 非随包数据, 不入库
+fusion_k12_teacher/data/upload_*.json
+# 运行时锁文件
+fusion_k12_teacher/.serve.lock
 
 # Local-only docs (not for repo)
 CLAUDE.md

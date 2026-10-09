@@ -79,3 +79,40 @@ class TestDeleteMaterial:
 
     def test_delete_unknown(self, repo):
         assert repo.delete_material("ghost", "t_a") is False
+
+
+class TestPurgeMaterials:
+    """issue #17: 资源保留策略 — 按天数 + 每教师上限清理。"""
+
+    def test_purge_by_age(self, repo):
+        repo.save_material(_make_material("t_a", mid="old1", title="旧"))
+        old = _make_material("t_a", mid="old2", title="更旧")
+        old["created_at"] = "2020-01-01 00:00:00"
+        repo.save_material(old)
+        deleted = repo.purge_old_materials(before_ts="2025-01-01 00:00:00")
+        assert deleted == 1
+        assert repo.get_material("old2") is None
+        assert repo.get_material("old1") is not None
+
+    def test_purge_by_max_per_teacher(self, repo):
+        for i in range(10):
+            repo.save_material(_make_material("t_a", mid=f"m{i:02d}"))
+        deleted = repo.purge_old_materials(max_per_teacher=3)
+        assert deleted == 7
+        remaining = repo.list_materials("t_a", limit=100)
+        assert len(remaining) == 3
+
+    def test_purge_noop_when_under_limit(self, repo):
+        repo.save_material(_make_material("t_a", mid="m1"))
+        deleted = repo.purge_old_materials(max_per_teacher=500)
+        assert deleted == 0
+
+    def test_purge_multi_teacher(self, repo):
+        for i in range(5):
+            repo.save_material(_make_material("t_a", mid=f"a{i}"))
+        for i in range(3):
+            repo.save_material(_make_material("t_b", mid=f"b{i}"))
+        deleted = repo.purge_old_materials(max_per_teacher=2)
+        assert deleted == 4
+        assert len(repo.list_materials("t_a", limit=100)) == 2
+        assert len(repo.list_materials("t_b", limit=100)) == 2

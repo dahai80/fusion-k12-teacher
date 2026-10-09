@@ -409,6 +409,47 @@ def _release_instance_lock() -> None:
     _instance_lockfd = None
 
 
+# issue #17: 运行时数据保留策略 — serve 启动时惰性清理, 防无限膨胀。
+_MAT_RETENTION_DAYS = int(os.environ.get("FUSION_K12_MATERIAL_RETENTION_DAYS", "90"))
+_MAT_MAX_PER_TEACHER = int(os.environ.get("FUSION_K12_MATERIAL_MAX_PER_TEACHER", "500"))
+_UPLOAD_MAX_AGE_DAYS = int(os.environ.get("FUSION_K12_UPLOAD_RETENTION_DAYS", "90"))
+
+
+def _purge_old_uploads() -> int:
+    """清理 upload_*.json 旧文件 — data/ 和 fusion_k12_teacher/data/ 两处。"""
+    import glob
+    now = time.time()
+    cutoff = now - _UPLOAD_MAX_AGE_DAYS * 86400
+    purged = 0
+    for pattern in ("data/upload_*.json", "fusion_k12_teacher/data/upload_*.json"):
+        for fp in glob.glob(pattern):
+            try:
+                if os.path.getmtime(fp) < cutoff:
+                    os.remove(fp)
+                    purged += 1
+            except OSError as e:
+                logger.warning("清理上传文件失败 %s: %s", fp, e)
+    if purged:
+        logger.info("issue #17: 清理 %d 个过期上传文件 (>=%d天)", purged, _UPLOAD_MAX_AGE_DAYS)
+    return purged
+
+
+def _purge_old_materials() -> int:
+    """清理旧资源记录 — 按天数+每教师上限。"""
+    if _materials_repo is None:
+        return 0
+    before_ts = ""
+    if _MAT_RETENTION_DAYS > 0:
+        import datetime
+        cutoff = datetime.datetime.now() - datetime.timedelta(days=_MAT_RETENTION_DAYS)
+        before_ts = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        return _materials_repo.purge_old_materials(before_ts, _MAT_MAX_PER_TEACHER)
+    except Exception as e:
+        logger.warning("issue #17: 资源清理失败 (不影响启动): %s", e)
+        return 0
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global mlx_client, curriculum_engine, assessment_engine
@@ -488,6 +529,9 @@ async def lifespan(app: FastAPI):
         global _inflight_zero
         _inflight_zero = asyncio.Event()
         _install_sigterm_handler()
+        # issue #17: 启动时惰性清理旧上传文件 + 旧资源记录
+        _purge_old_uploads()
+        _purge_old_materials()
         logger.info("Fusion-K12-Teacher API started, MLXClient initialized")
     except Exception as exc:
         logger.error("lifespan 启动失败, 清理已分配资源: %s", exc, exc_info=True)
@@ -1052,8 +1096,9 @@ async def health():
             models = await mlx_client.list_models()
             backend = "ok" if models is not None else "down"
             if models:
-                # 取当前选定聊天模型名 (无 model 时标 auto-select 状态)
-                model_id = mlx_client.model or "auto"
+                # issue #18: 显示有效模型 — env 已在 init 读取, auto-select 后也赋值;
+                # 仅首调前 (env 未设 + auto-select 未跑) 显示 (pending) 而非误导性 "auto"
+                model_id = mlx_client.model or "(pending)"
         except Exception as e:
             logger.warning("health: fusion-mlx 探测失败: %s", e)
             backend = "down"

@@ -24,6 +24,17 @@ class TestMLXClient:
         client = MLXClient()
         assert client.model == ""
 
+    def test_env_model_at_init(self, monkeypatch):
+        # issue #18: __init__ 须读 FUSION_MLX_MODEL env, 不等 auto-select 首调才赋值
+        monkeypatch.setenv("FUSION_MLX_MODEL", "mlx-community--Qwen3-8B-4bit")
+        client = MLXClient()
+        assert client.model == "mlx-community--Qwen3-8B-4bit"
+
+    def test_explicit_model_overrides_env(self, monkeypatch):
+        monkeypatch.setenv("FUSION_MLX_MODEL", "env-model")
+        client = MLXClient(model="explicit-model")
+        assert client.model == "explicit-model"
+
 
 class TestCurriculumEngine:
     def test_lesson_plan_defaults(self):
@@ -219,7 +230,7 @@ class TestContentGenerator:
 class TestModuleIntegrity:
     def test_all_modules_importable(self):
         import fusion_k12_teacher
-        assert fusion_k12_teacher.__version__ == "2.0.0rc1"
+        assert fusion_k12_teacher.__version__ == "2.0.1"
 
     def test_cli_importable(self):
         from fusion_k12_teacher import cli

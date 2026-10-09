@@ -128,6 +128,14 @@ class Repository(ABC):
         """删资源 (须校验 teacher_id 归属)。默认 False。"""
         return False
 
+    # issue #17: 资源落盘无限增长 — 按天数+每教师上限清理, serve 启动时惰性执行。
+    def purge_old_materials(
+        self, before_ts: str = "", max_per_teacher: int = 500
+    ) -> int:
+        """清理旧资源 — before_ts 之前的全删, 每教师超 max_per_teacher 的旧记录删。
+        返删除条数。默认空实现返 0。"""
+        return 0
+
     def close(self) -> None:
         """释放后端资源 (连接/文件句柄)。默认空实现。"""
 

@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
   <img src="https://img.shields.io/badge/AI-MLX%20Native-orange" alt="MLX">
   <img src="https://img.shields.io/badge/Offline-First-important" alt="Offline">
-  <img src="https://img.shields.io/badge/tests-548%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-591%20passed-brightgreen" alt="Tests">
 </p>
 
 ---
