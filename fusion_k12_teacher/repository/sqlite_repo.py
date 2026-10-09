@@ -468,3 +468,38 @@ class SQLiteRepository(Repository):
             )
             self._conn.commit()
             return cur.rowcount > 0
+
+    def purge_old_materials(
+        self, before_ts: str = "", max_per_teacher: int = 500
+    ) -> int:
+        # issue #17: 两策略合并 — 1) before_ts 之前全删; 2) 每教师超 max 的旧记录删。
+        # created_at 格式 "YYYY-MM-DD HH:MM:SS" 字典序 = 时间序, 可直接字符串比较。
+        deleted = 0
+        with self._lock:
+            if before_ts:
+                cur = self._conn.execute(
+                    "DELETE FROM materials WHERE created_at < ?", (before_ts,)
+                )
+                deleted += cur.rowcount
+            if max_per_teacher > 0:
+                teacher_ids = [
+                    r[0] for r in self._conn.execute(
+                        "SELECT DISTINCT teacher_id FROM materials"
+                    ).fetchall()
+                ]
+                for tid in teacher_ids:
+                    count = self._conn.execute(
+                        "SELECT COUNT(*) FROM materials WHERE teacher_id = ?", (tid,)
+                    ).fetchone()[0]
+                    if count > max_per_teacher:
+                        cur = self._conn.execute(
+                            "DELETE FROM materials WHERE teacher_id = ? AND id NOT IN "
+                            "(SELECT id FROM materials WHERE teacher_id = ? "
+                            "ORDER BY id DESC LIMIT ?)",
+                            (tid, tid, max_per_teacher),
+                        )
+                        deleted += cur.rowcount
+            if deleted > 0:
+                self._conn.commit()
+                logger.info("purge_old_materials: 清理 %d 条旧资源", deleted)
+        return deleted

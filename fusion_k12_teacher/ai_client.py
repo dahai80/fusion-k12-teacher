@@ -86,7 +86,10 @@ class MLXClient:
 
     def __init__(self, model: str = "", base_url: str = ""):
         self.base_url = (base_url or _env_url()).rstrip("/")
-        self.model = model or ""
+        # issue #18: __init__ 读 FUSION_MLX_MODEL env — 原仅 model="" 留空,
+        # env 模型只到 _auto_select_model 首次 chat 时才赋值, health 探测前 self.model
+        # 仍空 → 报 "auto" 误导运维。此处 init 即读 env, health 可显示有效模型。
+        self.model = model or os.environ.get("FUSION_MLX_MODEL", "")
         self._inner: Any = None
         self._httpx_client: Any = None
         # LLM-5: 锁不在 __init__ 创建 — __init__ 常在无运行循环时被调(CLI 组解析期),
