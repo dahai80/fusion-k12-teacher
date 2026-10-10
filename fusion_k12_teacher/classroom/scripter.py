@@ -61,20 +61,30 @@ class LessonScripter:
             if not isinstance(pages_raw, list) or not pages_raw:
                 script.error = "LLM 返回无 pages, 降级切页"
                 return self._fallback(script, lesson_plan)
+            # prompt 泄漏检测: 小模型常把 prompt 指令文本当讲稿输出
+            # (如 "老师讲课口语化讲解词, 80-150字, 引导学生思考") — 含特征词的页丢弃
+            _LEAK_MARKS = ("口语化讲解词", "80-150字", "question_point", "narration\"", "{{")
+            leaked = 0
             for i, p in enumerate(pages_raw):
                 if not isinstance(p, dict):
+                    continue
+                narration = str(p.get("narration", ""))
+                if any(m in narration for m in _LEAK_MARKS):
+                    leaked += 1
                     continue
                 qp = p.get("question_point", {})
                 if not isinstance(qp, dict):
                     qp = {}
                 script.pages.append(ScriptPage(
-                    page_index=i,
-                    title=str(p.get("title", f"第{i+1}页"))[:80],
-                    narration=str(p.get("narration", ""))[:600],
+                    page_index=len(script.pages),
+                    title=str(p.get("title", f"第{len(script.pages)+1}页"))[:80],
+                    narration=narration[:600],
                     slide_content=str(p.get("slide_content", ""))[:300],
                     question_point=qp,
                     emotion_tag=str(p.get("emotion_tag", "neutral"))[:20],
                 ))
+            if leaked:
+                logger.warning("scripter: topic=%s 丢弃 %d 个 prompt 泄漏页", topic_s, leaked)
             logger.info("scripter: topic=%s pages=%d", topic_s, len(script.pages))
             if not script.pages:
                 script.error = "解析后无有效页"

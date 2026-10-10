@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { NCard, NTabs, NTabPane, NForm, NFormItem, NInput, NButton, NSpace, useMessage } from 'naive-ui'
+import { reactive, ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { NCard, NTabs, NTabPane, NForm, NFormItem, NInput, NButton, NSpace, NAlert, useMessage } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const message = useMessage()
+// 守卫把未登录访问重定向到 /login?reason=auth&from=... — 显示提示并登录后回跳
+const needAuthHint = computed(() => route.query.reason === 'auth')
+const returnTo = computed(() => (typeof route.query.from === 'string' && route.query.from.startsWith('/')) ? route.query.from : '/dashboard')
 const tab = ref('login')
 const loginForm = reactive({ username: '', password: '' })
 const regForm = reactive({
@@ -28,7 +32,7 @@ async function doLogin() {
   try {
     await auth.login(loginForm.username, loginForm.password)
     message.success('登录成功')
-    router.push('/dashboard')
+    router.push(returnTo.value)
   } catch (e: any) {
     message.error('登录失败: ' + (e?.message || e))
   } finally {
@@ -53,7 +57,7 @@ async function doRegister() {
       default_edition: regForm.default_edition,
     })
     message.success('注册成功, 已自动登录')
-    router.push('/dashboard')
+    router.push(returnTo.value)
   } catch (e: any) {
     message.error('注册失败: ' + (e?.message || e))
   } finally {
@@ -68,6 +72,9 @@ async function doRegister() {
       <div style="text-align: center; font-weight: 700; font-size: 18px; margin-bottom: 16px">
         Fusion K12 教师助手
       </div>
+      <n-alert v-if="needAuthHint" type="warning" :bordered="false" style="margin-bottom: 14px">
+        请先登录后再访问该页面，登录后将自动返回
+      </n-alert>
       <n-tabs v-model:value="tab" type="line">
         <n-tab-pane name="login" tab="登录">
           <n-form label-placement="top" :show-feedback="false" size="medium">

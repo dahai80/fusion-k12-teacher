@@ -36,3 +36,5 @@ k12-prd-plan.md
 # 本地会话/洞察文件
 .claude/
 claude-k12-teacher-insight.md
+.env
+architecture/

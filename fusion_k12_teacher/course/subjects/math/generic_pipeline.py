@@ -14,10 +14,24 @@ import ast
 import logging
 from typing import Any
 
+from ...prompts.bnup_socratic import route_visual_type
+
 logger = logging.getLogger(__name__)
 
-# 可视化原语白名单 — S3 前端按 kind 渲染, 不执行任何 LLM 生成代码
-_VISUAL_KINDS = ("number_line", "bar_model", "flow", "grid", "timeline")
+# issue #19: DSL v3.0 — 8 可视化基元白名单 (替代旧 5 种 _VISUAL_KINDS)
+# 旧值映射: number_line/timeline→track_timeline, bar_model→tape_diagram,
+#           flow→flow_card, grid→array_grid
+_LEGACY_VISUAL_MAP = {
+    "number_line": "track_timeline",
+    "timeline": "track_timeline",
+    "bar_model": "tape_diagram",
+    "flow": "flow_card",
+    "grid": "array_grid",
+}
+_VISUAL_KINDS = (
+    "array_grid", "tape_diagram", "geometry_2d", "isometric_3d",
+    "track_timeline", "bucket_divider", "data_chart", "flow_card",
+)
 
 _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已知量 + 方程组」, 严格输出 JSON。
 
@@ -26,9 +40,11 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 2. 未知量命名 target (若多个未知, 用 target, x2, x3 ...)。
 3. 用 SymPy 语法写方程 (Python 字符串), 只用已知量名和未知量名做符号, 乘法必须写 *。
    方程右端为 0 (如 speed*target - distance 形式移项)。
-4. visual 从这几种选一个最合适的可视化: number_line(线段/行程/累计),
-   bar_model(比较/占比/分组), flow(流程/分步计算), grid(阵列/搭配/枚举),
-   timeline(时间推算/日程)。
+4. visual 从 8 种基元选一个最合适的可视化 (issue #19 v3.0):
+   array_grid(计数/圈画/阵列), tape_diagram(和差倍比/分数, 核心通用),
+   geometry_2d(平面几何/周长面积), isometric_3d(立体几何/切削展开),
+   track_timeline(行程/追及/时间推算), bucket_divider(组合/隔板/抽屉),
+   data_chart(统计/条形/折线图), flow_card(纯计算/方程/通用兜底)。
 5. steps: 用中文写 3 步内解题思路, 每步一句。
 6. answer_unit: 答案单位 (如 "米", "秒", "元", "个")。
 7. 单位协调: 已知量单位不一致时先统一成同一单位再填 value (如 cm→m)。
@@ -63,7 +79,7 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
   "equations": ["20*target - 1000"],
   "answer_expr": "target",
   "answer_unit": "秒",
-  "visual": {"kind": "number_line", "start_label": "车头上桥", "end_label": "车尾离桥", "segments": [{"label": "车长200m"}, {"label": "桥长800m"}]},
+  "visual": {"kind": "track_timeline", "start_label": "车头上桥", "end_label": "车尾离桥", "segments": [{"label": "车长200m"}, {"label": "桥长800m"}]},
   "steps": ["总路程=车长+桥长=1000米", "时间=路程÷速度", "1000÷20=50秒"],
   "pipeline": [
     {"step": 1, "title": "求总路程", "formula": "S = 200+800 = 1000", "eval": "params.train_length + params.bridge_length", "result_unit": "米"},
@@ -87,14 +103,14 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 
 范例3 (判断型题 — 能不能/对不对/够不够, 无需求未知数):
 题: 用长 3cm、4cm 和 8cm 的三根小棒, 能拼成一个三角形吗?
-{"question_kind": "judgment", "knowns": {"side1": {"value": 3, "unit": "cm"}, "side2": {"value": 4, "unit": "cm"}, "side3": {"value": 8, "unit": "cm"}}, "criterion": {"expr": "side1 + side2 - side3", "true_meaning": "两边之和大于第三边, 能拼成三角形", "false_meaning": "两边之和小于等于第三边, 三线段重合, 不能拼成三角形"}, "steps": ["三角形需任意两边之和大于第三边", "最短两边之和 3+4=7 < 8", "结论: 不能"], "visual": {"kind": "bar_model"}, "misconception_hint": "只验证一对边之和大于第三边不够, 须最短两边之和大于最长边"}
+{"question_kind": "judgment", "knowns": {"side1": {"value": 3, "unit": "cm"}, "side2": {"value": 4, "unit": "cm"}, "side3": {"value": 8, "unit": "cm"}}, "criterion": {"expr": "side1 + side2 - side3", "true_meaning": "两边之和大于第三边, 能拼成三角形", "false_meaning": "两边之和小于等于第三边, 三线段重合, 不能拼成三角形"}, "steps": ["三角形需任意两边之和大于第三边", "最短两边之和 3+4=7 < 8", "结论: 不能"], "visual": {"kind": "tape_diagram"}, "misconception_hint": "只验证一对边之和大于第三边不够, 须最短两边之和大于最长边"}
 关键: 判断题不设 unknowns/equations/pipeline, criterion.expr 用已知量算出数值 —
 结果 >0 取 true_meaning, =0 或 <0 取 false_meaning。
 
 范例4 (余数/同余类 — 除以a余r, 除以b余r, 余数相同, 求最小正数):
 题: 一个数除以2余1，除以3余1，除以5余1，这个数最小是多少？
 关键推导: 余数相同 (都是1) → 这个数减去1后能同时被 2、3、5 整除 → 减去余数后是公倍数 → 最小就是最小公倍数 lcm(2,3,5)。逐个验证: 30/2=15 ✓ 30/3=10 ✓ 30/5=6 ✓ → lcm=30 → 所求数 = 30+1 = 31。
-{"question_kind": "solve", "knowns": {"divisor_product": {"value": 30, "unit": ""}, "remainder": {"value": 1, "unit": ""}}, "unknowns": ["target"], "equations": ["target - divisor_product - remainder"], "answer_expr": "target", "answer_unit": "", "steps": ["余数相同(1) → 数-1 是 2,3,5 的公倍数", "最小公倍数逐个验证: 30/2=15✓ 30/3=10✓ 30/5=6✓ → lcm=30", "所求数 = 30+1 = 31"], "pipeline": [{"step":1,"title":"求最小公倍数并逐个验证","formula":"30/2=15✓ 30/3=10✓ 30/5=6✓ → lcm=30","eval":"params.divisor_product","result_unit":""},{"step":2,"title":"加余数","formula":"30+1=31","eval":"results[1] + params.remainder","result_unit":""}], "visual": {"kind": "flow"}, "question_focus": "最小正数", "misconception_hint": "divisor_product 必须逐个验证能被每个除数整除且最小 — 是 lcm 而非随便的公倍数; 两两互质的除数 lcm=连乘 (如 2*3*5=30, 3*5*7=105), 不要多乘任何因子"}
+{"question_kind": "solve", "knowns": {"divisor_product": {"value": 30, "unit": ""}, "remainder": {"value": 1, "unit": ""}}, "unknowns": ["target"], "equations": ["target - divisor_product - remainder"], "answer_expr": "target", "answer_unit": "", "steps": ["余数相同(1) → 数-1 是 2,3,5 的公倍数", "最小公倍数逐个验证: 30/2=15✓ 30/3=10✓ 30/5=6✓ → lcm=30", "所求数 = 30+1 = 31"], "pipeline": [{"step":1,"title":"求最小公倍数并逐个验证","formula":"30/2=15✓ 30/3=10✓ 30/5=6✓ → lcm=30","eval":"params.divisor_product","result_unit":""},{"step":2,"title":"加余数","formula":"30+1=31","eval":"results[1] + params.remainder","result_unit":""}], "visual": {"kind": "flow_card"}, "question_focus": "最小正数", "misconception_hint": "divisor_product 必须逐个验证能被每个除数整除且最小 — 是 lcm 而非随便的公倍数; 两两互质的除数 lcm=连乘 (如 2*3*5=30, 3*5*7=105), 不要多乘任何因子"}
 关键: divisor_product 必须填**最小公倍数**, 填完逐个验证能被每个除数整除;
    两两互质的除数 lcm = 连乘 (如 2*3*5=30, 3*5*7=105), 不要多乘任何因子;
    方程 target - divisor_product - remainder。
@@ -102,21 +118,21 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 范例5 (间隔类 — 敲钟/锯木/爬楼: 次数与间隔数差 1):
 题: 钟敲6下用了10秒，敲12下要用多少秒？
 关键推导: 敲6下有 6-1=5 个间隔, 每个间隔 10/5=2 秒; 敲12下有 11 个间隔 → 11*2=22 秒。
-{"knowns": {"first_times": {"value": 6, "unit": "下"}, "first_seconds": {"value": 10, "unit": "秒"}, "target_times": {"value": 12, "unit": "下"}}, "unknowns": ["target"], "equations": ["target - (target_times - 1) * (first_seconds / (first_times - 1))"], "answer_expr": "target", "answer_unit": "秒", "steps": ["敲6下 → 5个间隔, 每间隔 10/5=2秒", "敲12下 → 11个间隔", "11*2=22秒"], "pipeline": [{"step":1,"title":"求每个间隔时长","formula":"10/(6-1)=2秒","eval":"params.first_seconds / (params.first_times - 1)","result_unit":"秒"},{"step":2,"title":"求敲12下总时长","formula":"(12-1)*2=22秒","eval":"results[1] * (params.target_times - 1)","result_unit":"秒"}], "visual": {"kind": "timeline"}, "question_focus": "总时长", "misconception_hint": "次数与间隔数差 1: 间隔数=次数-1, 直接用次数乘会多算一个间隔"}
+{"knowns": {"first_times": {"value": 6, "unit": "下"}, "first_seconds": {"value": 10, "unit": "秒"}, "target_times": {"value": 12, "unit": "下"}}, "unknowns": ["target"], "equations": ["target - (target_times - 1) * (first_seconds / (first_times - 1))"], "answer_expr": "target", "answer_unit": "秒", "steps": ["敲6下 → 5个间隔, 每间隔 10/5=2秒", "敲12下 → 11个间隔", "11*2=22秒"], "pipeline": [{"step":1,"title":"求每个间隔时长","formula":"10/(6-1)=2秒","eval":"params.first_seconds / (params.first_times - 1)","result_unit":"秒"},{"step":2,"title":"求敲12下总时长","formula":"(12-1)*2=22秒","eval":"results[1] * (params.target_times - 1)","result_unit":"秒"}], "visual": {"kind": "track_timeline"}, "question_focus": "总时长", "misconception_hint": "次数与间隔数差 1: 间隔数=次数-1, 直接用次数乘会多算一个间隔"}
 关键: 锯木(段数-1=锯次)、爬楼(楼层-1=层数)、敲钟(下数-1=间隔) 同构 —
    都用 (次数-1) 作为间隔数, 不要直接乘次数。
 
 范例6 (还原倒推类 — 从结果往回推, 逆运算逐层还原):
 题: 一个数加上10再乘2，再减去8得20，这个数是多少？
 关键: 从结果 20 出发倒推: (20+8)/2-10 = 4。逆运算顺序与题目叙述完全相反。
-{"knowns": {"final": {"value": 20, "unit": ""}}, "unknowns": ["target"], "equations": ["(target + 10) * 2 - 8 - final"], "answer_expr": "target", "answer_unit": "", "steps": ["最后是减8 → 倒推先加8: 20+8=28", "之前是乘2 → 倒推除2: 28/2=14", "最先是加10 → 倒推减10: 14-10=4"], "pipeline": [{"step":1,"title":"逆推减8","formula":"20+8=28","eval":"params.final + 8","result_unit":""},{"step":2,"title":"逆推乘2","formula":"28/2=14","eval":"results[1] / 2","result_unit":""},{"step":3,"title":"逆推加10","formula":"14-10=4","eval":"results[2] - 10","result_unit":""}], "visual": {"kind": "flow"}, "question_focus": "原数", "misconception_hint": "倒推顺序 = 题目运算的完全逆序; '一半又多a' 类含分数动作时逆推为 (值+a) 后 ×2 — 逐层验算一遍"}
+{"knowns": {"final": {"value": 20, "unit": ""}}, "unknowns": ["target"], "equations": ["(target + 10) * 2 - 8 - final"], "answer_expr": "target", "answer_unit": "", "steps": ["最后是减8 → 倒推先加8: 20+8=28", "之前是乘2 → 倒推除2: 28/2=14", "最先是加10 → 倒推减10: 14-10=4"], "pipeline": [{"step":1,"title":"逆推减8","formula":"20+8=28","eval":"params.final + 8","result_unit":""},{"step":2,"title":"逆推乘2","formula":"28/2=14","eval":"results[1] / 2","result_unit":""},{"step":3,"title":"逆推加10","formula":"14-10=4","eval":"results[2] - 10","result_unit":""}], "visual": {"kind": "flow_card"}, "question_focus": "原数", "misconception_hint": "倒推顺序 = 题目运算的完全逆序; '一半又多a' 类含分数动作时逆推为 (值+a) 后 ×2 — 逐层验算一遍"}
 关键: 正向验证一遍 (4+10=14, ×2=28, -8=20 ✓) 确认无误; 含"一半多a/少a"
    的题用逆向逐层还原, 注意"运出一半少1"意为剩下一半多1。
 
 范例7 (年龄倍数时刻类 — 年龄差恒不变, 求"几岁/哪年"时成 k 倍):
 题: 1997年爸爸45岁，儿子9岁，当儿子多少岁时爸爸的年龄是儿子的4倍？
 关键推导: 年龄差恒不变 = 45-9 = 36。设儿子 x 岁时成 4 倍: 爸爸当时 = x+36 (爸爸也长了同样的年数, 不能用 45-x) → x+36 = 4x → 3x = 36 → x = 12。
-{"knowns": {"age_father": {"value": 45, "unit": "岁"}, "age_child": {"value": 9, "unit": "岁"}, "multiple": {"value": 4, "unit": ""}}, "unknowns": ["target"], "equations": ["target + (age_father - age_child) - multiple*target"], "answer_expr": "target", "answer_unit": "岁", "steps": ["年龄差不变: 45-9=36", "成4倍时: 儿子x岁, 爸爸 x+36 (两人都长大)", "x+36=4x → x=12"], "pipeline": [{"step":1,"title":"年龄差","formula":"45-9=36","eval":"params.age_father - params.age_child","result_unit":"岁"},{"step":2,"title":"解 x+36=4x","formula":"x=36/(4-1)=12","eval":"results[1] / (params.multiple - 1)","result_unit":"岁"}], "visual": {"kind": "timeline"}, "question_focus": "儿子几岁时", "misconception_hint": "爸爸的年龄也在增长 — 未来时态用 x+差, 不是 45-x; '几年前'用差-x, '几年后/几岁时'用 x+差, 方程 (差) = (k-1)*x"}
+{"knowns": {"age_father": {"value": 45, "unit": "岁"}, "age_child": {"value": 9, "unit": "岁"}, "multiple": {"value": 4, "unit": ""}}, "unknowns": ["target"], "equations": ["target + (age_father - age_child) - multiple*target"], "answer_expr": "target", "answer_unit": "岁", "steps": ["年龄差不变: 45-9=36", "成4倍时: 儿子x岁, 爸爸 x+36 (两人都长大)", "x+36=4x → x=12"], "pipeline": [{"step":1,"title":"年龄差","formula":"45-9=36","eval":"params.age_father - params.age_child","result_unit":"岁"},{"step":2,"title":"解 x+36=4x","formula":"x=36/(4-1)=12","eval":"results[1] / (params.multiple - 1)","result_unit":"岁"}], "visual": {"kind": "track_timeline"}, "question_focus": "儿子几岁时", "misconception_hint": "爸爸的年龄也在增长 — 未来时态用 x+差, 不是 45-x; '几年前'用差-x, '几年后/几岁时'用 x+差, 方程 (差) = (k-1)*x"}
 关键: 目标是"几岁时"→ 方程 x + age_gap = k*x (两边同时成长);
    目标是"几年前"→ 方程 age_father - x = k*(age_child - x)。
 
@@ -125,28 +141,28 @@ _GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已�
 关键: 用"总分"桥接 — 前四次总分 89*4=356, 五次总分 90*5=450, 第五次 = 450-356 = 94。易错: 不能用 (90-89)*5, 平均数不能直接相减乘次数。
 题B: 六个数平均 27, 其中一个数改为 33 后平均变 30, 原数多少?
 关键: 新总分 - 旧总分 = 33 - 原数 → 30*6 - 27*6 = 18 = 33 - 原数 → 原数 = 33 - 18 = 15。改成更大的数平均才会升, 所以 原数 = 新数 - 总分差 (减法, 不是加法)。
-{"knowns": {"old_avg": {"value": 89, "unit": "分"}, "old_count": {"value": 4, "unit": "次"}, "new_avg": {"value": 90, "unit": "分"}, "new_count": {"value": 5, "unit": "次"}}, "unknowns": ["target"], "equations": ["target - (new_avg*new_count - old_avg*old_count)"], "answer_expr": "target", "answer_unit": "分", "steps": ["前四次总分 89*4=356", "五次总分 90*5=450", "第五次 = 450-356 = 94"], "pipeline": [{"step":1,"title":"旧总分","formula":"89*4=356","eval":"params.old_avg*params.old_count","result_unit":"分"},{"step":2,"title":"新总分","formula":"90*5=450","eval":"params.new_avg*params.new_count","result_unit":"分"},{"step":3,"title":"第五次成绩","formula":"450-356=94","eval":"results[2] - results[1]","result_unit":"分"}], "visual": {"kind": "flow"}, "question_focus": "第五次成绩", "misconception_hint": "平均数不能直接相减, 必须经总分桥接 (avg*count)"}
+{"knowns": {"old_avg": {"value": 89, "unit": "分"}, "old_count": {"value": 4, "unit": "次"}, "new_avg": {"value": 90, "unit": "分"}, "new_count": {"value": 5, "unit": "次"}}, "unknowns": ["target"], "equations": ["target - (new_avg*new_count - old_avg*old_count)"], "answer_expr": "target", "answer_unit": "分", "steps": ["前四次总分 89*4=356", "五次总分 90*5=450", "第五次 = 450-356 = 94"], "pipeline": [{"step":1,"title":"旧总分","formula":"89*4=356","eval":"params.old_avg*params.old_count","result_unit":"分"},{"step":2,"title":"新总分","formula":"90*5=450","eval":"params.new_avg*params.new_count","result_unit":"分"},{"step":3,"title":"第五次成绩","formula":"450-356=94","eval":"results[2] - results[1]","result_unit":"分"}], "visual": {"kind": "flow_card"}, "question_focus": "第五次成绩", "misconception_hint": "平均数不能直接相减, 必须经总分桥接 (avg*count)"}
 关键: 一切复杂平均数题都经"总分 = 平均×个数"桥接; 改数题
    新旧总分之差 = 改动值, 逆推原数。
 
 范例9 (移多补少/转移类 — 变化前后守恒, 差的一半是移动量):
 题: 甲乙两桶油共 40 千克, 从甲倒 5 千克给乙后两桶同样重, 甲原来多少?
 关键: 倒 5 后相等 → 原来甲比乙多 2*5=10 (移动量=差的一半) → 甲 = (40+10)/2 = 25, 乙 = 15。
-{"knowns": {"total": {"value": 40, "unit": "千克"}, "moved": {"value": 5, "unit": "千克"}}, "unknowns": ["target"], "equations": ["target + target - 2*moved - total"], "answer_expr": "target", "answer_unit": "千克", "steps": ["倒5后相等 → 原甲-原乙 = 2*5=10", "甲 = (40+10)/2 = 25", "乙 = 40-25 = 15"], "pipeline": [{"step":1,"title":"原来差","formula":"2*5=10","eval":"2*params.moved","result_unit":"千克"},{"step":2,"title":"甲桶","formula":"(40+10)/2=25","eval":"(params.total + results[1]) / 2","result_unit":"千克"}], "visual": {"kind": "bar_model"}, "question_focus": "甲桶原重", "misconception_hint": "移动 m 后相等 → 原差是 2m 不是 m; 和差问题: 大数=(和+差)/2"}
+{"knowns": {"total": {"value": 40, "unit": "千克"}, "moved": {"value": 5, "unit": "千克"}}, "unknowns": ["target"], "equations": ["target + target - 2*moved - total"], "answer_expr": "target", "answer_unit": "千克", "steps": ["倒5后相等 → 原甲-原乙 = 2*5=10", "甲 = (40+10)/2 = 25", "乙 = 40-25 = 15"], "pipeline": [{"step":1,"title":"原来差","formula":"2*5=10","eval":"2*params.moved","result_unit":"千克"},{"step":2,"title":"甲桶","formula":"(40+10)/2=25","eval":"(params.total + results[1]) / 2","result_unit":"千克"}], "visual": {"kind": "tape_diagram"}, "question_focus": "甲桶原重", "misconception_hint": "移动 m 后相等 → 原差是 2m 不是 m; 和差问题: 大数=(和+差)/2"}
 关键: "移动 m 后相等"→原差=2m; 再套和差公式 大数=(和+差)/2。
 
 范例10 (页码/逐位计数类 — 统计某数字出现次数, 按位分别数后求和):
 题: 一本故事书共200页，页码中共用了多少个数字'3'？
 关键推导: 逐位统计, 同一个数含多个'3'要算多次 (33 贡献 2 个'3', 不去重!)。
 个位是3: 3,13,23,...,193 共 20 个; 十位是3: 30-39,130-139 共 20 个 (33 算 1 个十位3 + 1 个个位3, 两处都算); 百位是3: 1-200 无 → 0; 总计 20+20+0 = 40。
-{"knowns": {"units_count": {"value": 20, "unit": "个"}, "tens_count": {"value": 20, "unit": "个"}, "hundreds_count": {"value": 0, "unit": "个"}}, "unknowns": ["target"], "equations": ["target - units_count - tens_count - hundreds_count"], "answer_expr": "target", "answer_unit": "个", "steps": ["个位是3: 3,13,...,193 共20个", "十位是3: 30-39,130-139 共20个 (33 算两个'3', 不去重)", "百位无3", "20+20+0=40"], "pipeline": [{"step":1,"title":"个位3","formula":"20","eval":"params.units_count","result_unit":"个"},{"step":2,"title":"十位3","formula":"20","eval":"params.tens_count","result_unit":"个"},{"step":3,"title":"合计","formula":"20+20+0=40","eval":"results[1] + results[2] + params.hundreds_count","result_unit":"个"}], "visual": {"kind": "grid"}, "question_focus": "数字3出现总次数", "misconception_hint": "逐位计数不按数去重 — 33 含两个'3'要算 2 次; 先逐位枚举填 knowns, 再求和"}
+{"knowns": {"units_count": {"value": 20, "unit": "个"}, "tens_count": {"value": 20, "unit": "个"}, "hundreds_count": {"value": 0, "unit": "个"}}, "unknowns": ["target"], "equations": ["target - units_count - tens_count - hundreds_count"], "answer_expr": "target", "answer_unit": "个", "steps": ["个位是3: 3,13,...,193 共20个", "十位是3: 30-39,130-139 共20个 (33 算两个'3', 不去重)", "百位无3", "20+20+0=40"], "pipeline": [{"step":1,"title":"个位3","formula":"20","eval":"params.units_count","result_unit":"个"},{"step":2,"title":"十位3","formula":"20","eval":"params.tens_count","result_unit":"个"},{"step":3,"title":"合计","formula":"20+20+0=40","eval":"results[1] + results[2] + params.hundreds_count","result_unit":"个"}], "visual": {"kind": "array_grid"}, "question_focus": "数字3出现总次数", "misconception_hint": "逐位计数不按数去重 — 33 含两个'3'要算 2 次; 先逐位枚举填 knowns, 再求和"}
 关键: 枚举计数题的列式范式 — 每个位/每类的数量由枚举得出后填进 knowns
    (个位3每10页1次、十位3每100页10次), 方程只做求和 target − 各类计数。
 
 范例11 (封闭双层栽树类 — 封闭路线: 间隔数=棵数; 双层再乘每间隔棵数):
 题: 圆形池塘周长240米，沿池塘周围每隔8米栽一棵柳树，再在每相邻两棵柳树之间等距离栽2棵桃树，一共栽树多少棵？
 关键推导: 封闭路线棵数=间隔数 → 柳树 = 240/8 = 30; "每相邻两棵柳树之间栽2棵桃树" → 桃树 = 30*2 = 60; 共 30+60 = 90。这不是逻辑矛盾 — "柳树之间"指相邻柳树的间隔, 桃树栽在间隔里。
-{"knowns": {"length": {"value": 240, "unit": "米"}, "spacing": {"value": 8, "unit": "米"}, "peach_per_gap": {"value": 2, "unit": "棵"}}, "unknowns": ["target"], "equations": ["target - length/spacing - length/spacing*peach_per_gap"], "answer_expr": "target", "answer_unit": "棵", "steps": ["封闭路线: 柳树=周长/间距=240/8=30", "桃树=柳树数×每间隔棵数=30*2=60", "共 30+60=90"], "pipeline": [{"step":1,"title":"柳树","formula":"240/8=30","eval":"params.length / params.spacing","result_unit":"棵"},{"step":2,"title":"桃树","formula":"30*2=60","eval":"results[1] * params.peach_per_gap","result_unit":"棵"},{"step":3,"title":"合计","formula":"30+60=90","eval":"results[1] + results[2]","result_unit":"棵"}], "visual": {"kind": "grid"}, "question_focus": "一共栽树棵数", "misconception_hint": "封闭路线间隔数=棵数 (不+1不-1); 每间隔栽 a 棵第二层树 → 第二层 = 第一层×a"}
+{"knowns": {"length": {"value": 240, "unit": "米"}, "spacing": {"value": 8, "unit": "米"}, "peach_per_gap": {"value": 2, "unit": "棵"}}, "unknowns": ["target"], "equations": ["target - length/spacing - length/spacing*peach_per_gap"], "answer_expr": "target", "answer_unit": "棵", "steps": ["封闭路线: 柳树=周长/间距=240/8=30", "桃树=柳树数×每间隔棵数=30*2=60", "共 30+60=90"], "pipeline": [{"step":1,"title":"柳树","formula":"240/8=30","eval":"params.length / params.spacing","result_unit":"棵"},{"step":2,"title":"桃树","formula":"30*2=60","eval":"results[1] * params.peach_per_gap","result_unit":"棵"},{"step":3,"title":"合计","formula":"30+60=90","eval":"results[1] + results[2]","result_unit":"棵"}], "visual": {"kind": "array_grid"}, "question_focus": "一共栽树棵数", "misconception_hint": "封闭路线间隔数=棵数 (不+1不-1); 每间隔栽 a 棵第二层树 → 第二层 = 第一层×a"}
 关键: 封闭路线 (环形/池塘/一圈) 棵数 = 周长/间距, 严格等于间隔数;
    "每相邻两棵A之间栽 b 棵B" → B = A棵数 × b, 分层算完再求和。
 
@@ -366,13 +382,20 @@ def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
         return None
 
 
-def _sanitize_visual(raw: Any) -> dict[str, Any]:
-    """可视化配置白名单过滤 — 只保留已知 kind 与受控字段, 防注入任意结构。"""
-    if not isinstance(raw, dict):
-        return {"kind": "number_line"}
-    kind = str(raw.get("kind", "number_line"))
+def _sanitize_visual(raw: Any, problem_text: str = "") -> dict[str, Any]:
+    """issue #19/#22: v3.0 可视化基元白名单过滤 — 8 基元 + 旧值映射 + 题型路由兜底。"""
+    if not isinstance(raw, dict) or not raw.get("kind"):
+        # issue #22: LLM 未指定 visual 时按题型关键词路由
+        if problem_text:
+            routed = route_visual_type("", problem_text)
+            return {"kind": routed}
+        return {"kind": "flow_card"}
+    kind = str(raw.get("kind", "flow_card"))
+    if kind in _LEGACY_VISUAL_MAP:
+        kind = _LEGACY_VISUAL_MAP[kind]
+        logger.info("visual 旧值映射 -> %s", kind)
     if kind not in _VISUAL_KINDS:
-        kind = "number_line"
+        kind = "flow_card"
     out: dict[str, Any] = {"kind": kind}
     for key in ("start_label", "end_label", "title", "unit"):
         val = raw.get(key)

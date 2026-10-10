@@ -1,8 +1,9 @@
-"""数学苏格拉底课稿生成 — FusionSocratic DSL v2.1.0 (PRD §5)。
+"""数学苏格拉底课稿生成 — FusionSocratic DSL v3.0 (PRD §5, issue #19)。
 
-按 5E 生成 TeachingStep[]: speech_narration + animation segment + checkpoint。
+按 5E 生成 TeachingStep[]: speech_narration + animation segment + checkpoint + visual_state。
 苏格拉底式: 分步揭示, 连错 2 次降层 (B→A) + 回放前置节点 (PRD §5.3)。
 数值字段经 MathSympyVerifier 校验。课稿供学生端逐页播放。
+v3.0: meta.visual_type (8 基元路由) + meta.fallback_type + step.visual_state.action。
 """
 
 from __future__ import annotations
@@ -16,13 +17,19 @@ from ....errors import rethrow_if_fatal
 from ....safety.filter import sanitize_input
 from ...base import SocraticTutorBase
 from ...models import (
+    FALLBACK_TYPES,
+    VISUAL_TYPES,
     AnimationSegment,
     Checkpoint,
+    FallbackType,
     FusionSocraticDSL,
     JudgeResult,
     Landmark,
     TeachingStep,
+    VisualState,
+    VisualType,
 )
+from ...prompts.bnup_socratic import route_visual_type
 from .sympy_verifier import MathSympyVerifier
 
 logger = logging.getLogger(__name__)
@@ -40,9 +47,13 @@ _SCRIPT_PROMPT = """你是 K12 数学苏格拉底课稿生成器。按 5E 教学
 - 每步含 speech_narration (讲课词, 中文) + animation 段 (start_ratio/end_ratio 0-1) + 至少 2 个步骤带 checkpoint。
 - checkpoint 不直接给答案, 用 hints 分级提示。
 - 数值必须准确。
+- meta.visual_type 从 8 基元选一: array_grid(计数阵列) / tape_diagram(和差倍比) / geometry_2d(平面几何) / isometric_3d(立体几何) / track_timeline(行程追及) / bucket_divider(组合隔板) / data_chart(统计图表) / flow_card(纯计算兜底)。
+- meta.fallback_type 从 2 兜底选一: tape_diagram / flow_card。
+- 每步 visual_state 描述该步可视化动作 (action=进入/更新/高亮/消隐, active_entities=实体id列表)。
 
 输出 JSON:
 {{
+  "meta": {{"visual_type": "track_timeline", "fallback_type": "tape_diagram"}},
   "global_variables": {{"L_train": {{"label": "车长", "unit": "m", "value": 200, "is_unknown": false}}}},
   "steps": [
     {{
@@ -50,6 +61,7 @@ _SCRIPT_PROMPT = """你是 K12 数学苏格拉底课稿生成器。按 5E 教学
       "speech_narration": "...",
       "landmarks": [{{"timeOffsetMs": 0, "progressRatio": 0.0, "latexHighlightVar": "L_train"}}],
       "animation": {{"start_ratio": 0.0, "end_ratio": 0.3, "camera_focus_entity": "train_head", "highlight_entities": ["train_head"]}},
+      "visual_state": {{"visual_type": "track_timeline", "action": "进入:列车从左驶入", "progress_range": [0.0, 0.3], "active_entities": ["train_head", "bridge"], "latex_state": "L_train=200"}},
       "checkpoint": {{
         "id": "cp1", "type": "multiple_choice", "prompt": "...",
         "options": [{{"id": "a", "label": "...", "is_correct": false, "feedback": "..."}}],
@@ -94,6 +106,19 @@ class MathSocraticTutor(SocraticTutorBase):
 
         data = parse_json(raw)
         if not data or not isinstance(data, dict):
+            # 小模型常见失败: 输出被截断/夹带非 JSON 前后缀 — 重试一次再降级,
+            # 避免一次抖动直接打空讲稿 (上层回退兜底)
+            logger.warning("socratic_tutor: 首次输出非 JSON (len=%d), 重试一次", len(raw or ""))
+            try:
+                raw2 = await self.mlx.chat(
+                    [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
+                    temperature=0.2, max_tokens=4096,
+                )
+                data = parse_json(raw2)
+            except Exception as exc:
+                logger.warning("socratic_tutor: 重试失败 %s", exc)
+                rethrow_if_fatal(exc)
+        if not data or not isinstance(data, dict):
             return FusionSocraticDSL(subject="math", meta={"title": topic_s}, error="LLM 输出非 JSON")
 
         dsl = self._build_dsl(data, topic_s, knowledge_node_id)
@@ -110,6 +135,25 @@ class MathSocraticTutor(SocraticTutorBase):
         steps_raw = data.get("steps", [])
         if not isinstance(steps_raw, list):
             steps_raw = []
+        meta_raw = data.get("meta", {})
+        if not isinstance(meta_raw, dict):
+            meta_raw = {}
+        visual_type = str(meta_raw.get("visual_type", data.get("visual_type", "")))
+        if visual_type and visual_type not in VISUAL_TYPES:
+            logger.warning("socratic_tutor: visual_type 非法 %s -> flow_card", visual_type)
+            visual_type = VisualType.FLOW_CARD.value
+        if not visual_type:
+            # issue #22: LLM 未指定时按题型关键词自动路由
+            visual_type = route_visual_type(title)
+            logger.info("socratic_tutor: auto-route visual_type=%s", visual_type)
+        fallback_type = str(meta_raw.get("fallback_type", data.get("fallback_type", "")))
+        if fallback_type and fallback_type not in FALLBACK_TYPES:
+            fallback_type = FallbackType.TAPE_DIAGRAM.value
+        if not fallback_type:
+            fallback_type = FallbackType.TAPE_DIAGRAM.value
+        scene_raw = data.get("scene", {})
+        if not isinstance(scene_raw, dict):
+            scene_raw = {}
         steps: list[TeachingStep] = []
         for i, s in enumerate(steps_raw[:8]):
             if not isinstance(s, dict):
@@ -128,6 +172,13 @@ class MathSocraticTutor(SocraticTutorBase):
                 progress_ratio=float(lm.get("progressRatio", 0) or 0),
                 latex_highlight_var=str(lm.get("latexHighlightVar", "")),
             ) for lm in (s.get("landmarks", []) if isinstance(s.get("landmarks"), list) else [])][:8]
+            vs_raw = s.get("visual_state", {})
+            if isinstance(vs_raw, dict):
+                vs = VisualState.from_dict(vs_raw)
+            else:
+                vs = VisualState(visual_type=visual_type)
+            if not vs.visual_type:
+                vs.visual_type = visual_type
             steps.append(TeachingStep(
                 step_id=str(s.get("step_id", f"step{i+1}")),
                 step_title=str(s.get("step_title", ""))[:100],
@@ -136,10 +187,15 @@ class MathSocraticTutor(SocraticTutorBase):
                 landmarks=landmarks,
                 animation=anim,
                 checkpoint=checkpoint,
+                visual_state=vs,
             ))
+        meta = {"title": title, "knowledge_node_id": node_id,
+                "visual_type": visual_type, "fallback_type": fallback_type}
+        logger.info("socratic_tutor: v3.0 visual_type=%s fallback=%s steps=%d", visual_type, fallback_type, len(steps))
         return FusionSocraticDSL(
             subject="math",
-            meta={"title": title, "knowledge_node_id": node_id},
+            meta=meta,
             global_variables={str(k): dict(v) if isinstance(v, dict) else {"value": v} for k, v in global_vars.items()},
             steps=steps,
+            scene=scene_raw,
         )

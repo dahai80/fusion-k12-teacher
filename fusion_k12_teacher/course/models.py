@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class CheckpointType(StrEnum):
@@ -23,6 +26,28 @@ class OnErrorAction(StrEnum):
     REWIND = "rewind"
     SHOW_HINT = "show_hint"
     JUMP = "jump"
+
+
+# issue #19: DSL v3.0 — 8 可视化基元 (visual_type 路由)
+class VisualType(StrEnum):
+    ARRAY_GRID = "array_grid"            # 1-2年级 计数/圈画/阵列
+    TAPE_DIAGRAM = "tape_diagram"        # 2-6年级 和差倍比/分数 (核心通用)
+    GEOMETRY_2D = "geometry_2d"          # 3-5年级 平面几何/周长面积
+    ISOMETRIC_3D = "isometric_3d"        # 5-6年级 立体几何/切削展开
+    TRACK_TIMELINE = "track_timeline"    # 4-6年级 速度/时间/行程追及
+    BUCKET_DIVIDER = "bucket_divider"    # 4-6年级 组合/隔板/抽屉原理
+    DATA_CHART = "data_chart"            # 4-5年级 统计/条形/折线图
+    FLOW_CARD = "flow_card"              # 纯计算/方程/通用兜底
+
+
+# issue #19: DSL v3.0 — 二级兜底基元 (fallback_type)
+class FallbackType(StrEnum):
+    TAPE_DIAGRAM = "tape_diagram"
+    FLOW_CARD = "flow_card"
+
+
+VISUAL_TYPES = tuple(v.value for v in VisualType)
+FALLBACK_TYPES = tuple(v.value for v in FallbackType)
 
 
 @dataclass
@@ -76,6 +101,42 @@ class Checkpoint:
 
 
 @dataclass
+class VisualState:
+    """issue #19: DSL v3.0 — 步骤级可视化状态 (visual_type 路由驱动)。"""
+    visual_type: str = ""
+    action: str = ""
+    progress_range: tuple[float, float] = (0.0, 1.0)
+    active_entities: list[str] = field(default_factory=list)
+    latex_state: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "visual_type": self.visual_type, "action": self.action,
+            "progress_range": list(self.progress_range),
+            "active_entities": self.active_entities,
+            "latex_state": self.latex_state,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> VisualState:
+        vt = str(d.get("visual_type", ""))
+        if vt and vt not in VISUAL_TYPES:
+            logger.warning("visual_type 不在白名单: %s -> flow_card 兜底", vt)
+            vt = VisualType.FLOW_CARD.value
+        pr = d.get("progress_range", [0.0, 1.0])
+        if not isinstance(pr, (list, tuple)) or len(pr) != 2:
+            pr = (0.0, 1.0)
+        else:
+            pr = (float(pr[0]), float(pr[1]))
+        return cls(
+            visual_type=vt, action=str(d.get("action", ""))[:200],
+            progress_range=pr,
+            active_entities=[str(e) for e in d.get("active_entities", [])][:20],
+            latex_state=str(d.get("latex_state", ""))[:500],
+        )
+
+
+@dataclass
 class AnimationSegment:
     start_ratio: float = 0.0
     end_ratio: float = 1.0
@@ -114,6 +175,7 @@ class TeachingStep:
     landmarks: list[Landmark] = field(default_factory=list)
     animation: AnimationSegment = field(default_factory=AnimationSegment)
     checkpoint: Checkpoint | None = None
+    visual_state: VisualState = field(default_factory=VisualState)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -122,17 +184,25 @@ class TeachingStep:
             "landmarks": [lm.to_dict() for lm in self.landmarks],
             "animation": self.animation.to_dict(),
             "checkpoint": self.checkpoint.to_dict() if self.checkpoint else None,
+            "visual_state": self.visual_state.to_dict(),
         }
 
 
 @dataclass
 class FusionSocraticDSL:
-    """苏格拉底课稿 DSL v2.1.0 — 学科中立。"""
-    version: str = "2.1.0"
+    """苏格拉底课稿 DSL v3.0 — 学科中立 (issue #19)。
+
+    v3.0 变更:
+    - meta 新增 visual_type (8 基元路由) + fallback_type (2 兜底)
+    - step.visual_state 携带步骤级可视化动作
+    - scene 字段统一 SceneDSL 合约 (废弃独立 SceneDSL 实例)
+    """
+    version: str = "3.0.0"
     subject: str = ""
     meta: dict[str, str] = field(default_factory=dict)
     global_variables: dict[str, dict[str, Any]] = field(default_factory=dict)
     steps: list[TeachingStep] = field(default_factory=list)
+    scene: dict[str, Any] = field(default_factory=dict)
     error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -140,6 +210,7 @@ class FusionSocraticDSL:
             "version": self.version, "subject": self.subject, "meta": self.meta,
             "global_variables": self.global_variables,
             "steps": [s.to_dict() for s in self.steps],
+            "scene": self.scene,
             "error": self.error,
         }
 
@@ -225,15 +296,16 @@ class JudgeResult:
 
 @dataclass
 class GraphNode:
-    """知识图谱节点 — 学科中立 (PRD §3.2 schema 抽象)。"""
+    """知识图谱节点 — 学科中立 (PRD §3.2 schema 抽象, issue #21 扩展)。"""
     id: str
     title: str
     node_type: str = "Concept"  # Concept | Theorem | Method | Misconception
     stage: str = ""
     strand: str = ""
     grade: str = ""
+    semester: str = ""
     spatial: dict[str, float] = field(default_factory=dict)
-    visual_engine: str = ""
+    visual_type: str = ""
     formula: str = ""
     misconceptions: list[str] = field(default_factory=list)
     cognitive_level: str = ""
@@ -241,11 +313,20 @@ class GraphNode:
     curriculum_code: str = ""
     edges: dict[str, list[str]] = field(default_factory=dict)
 
+    @property
+    def visual_engine(self) -> str:
+        return self.visual_type
+
+    @visual_engine.setter
+    def visual_engine(self, v: str) -> None:
+        self.visual_type = v
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id, "title": self.title, "node_type": self.node_type,
             "stage": self.stage, "strand": self.strand, "grade": self.grade,
-            "spatial": self.spatial, "visual_engine": self.visual_engine,
+            "semester": self.semester,
+            "spatial": self.spatial, "visual_type": self.visual_type,
             "formula": self.formula, "misconceptions": self.misconceptions,
             "cognitive_level": self.cognitive_level, "description": self.description,
             "curriculum_code": self.curriculum_code, "edges": self.edges,

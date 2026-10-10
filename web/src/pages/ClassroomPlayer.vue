@@ -65,6 +65,7 @@ async function submitAnswer() {
       student_answer: String(answerInput.value ?? ''),
       expected_answer: String(qp.answer ?? ''),
       question_type: qp.type || 'multiple_choice',
+      options: Array.isArray(qp.options) ? qp.options.map(String) : [],
     })
     lastJudge.value = r
     if (r.correct) message.success('回答正确!')

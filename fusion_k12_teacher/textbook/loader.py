@@ -12,6 +12,15 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
 
+# subject 别名: 数据文件里 subject 是中文("数学"), API/前端用英文 id("math") —
+# 查询时双向归一, 否则 get_units("beishi","math","2") 永远查空
+_SUBJECT_ALIAS = {"数学": "math", "math": "数学", "语文": "chinese",
+                  "chinese": "语文", "英语": "english", "english": "英语"}
+
+
+def _norm_subject(s: str) -> str:
+    return _SUBJECT_ALIAS.get(s, s)
+
 
 class TextbookLoader:
     """教材目录加载器 — 从 JSON 文件加载教材目录到内存。
@@ -99,14 +108,23 @@ class TextbookLoader:
         if not self._loaded:
             self.load_all()
         ed = self._editions.get(edition)
-        if not ed or ed.subject != subject:
+        if not ed:
+            return []
+        # 兼容中/英 subject (数据="数学", API/前端="math") — 原文或别名任一匹配
+        if ed.subject != subject and ed.subject != _norm_subject(subject):
             return []
         return sorted(ed.grades.keys(), key=_grade_sort_key)
 
     def get_units(self, edition: str, subject: str, grade: str) -> list[Unit]:
         if not self._loaded:
             self.load_all()
-        return list(self._esg_index.get((edition, subject, grade), []))
+        # 兼容中/英 subject: 索引键是数据原文("数学"), 调用方可能传英文 id("math")
+        # 或原文 — 归一后命中不了时再试原文, 任一命中即返回 (test 用中文, API 用英文)
+        key = (edition, _norm_subject(subject), grade)
+        units = self._esg_index.get(key)
+        if units is None and _norm_subject(subject) != subject:
+            units = self._esg_index.get((edition, subject, grade))
+        return list(units or [])
 
     def get_lesson(
         self, edition: str, subject: str, grade: str, lesson_id: str

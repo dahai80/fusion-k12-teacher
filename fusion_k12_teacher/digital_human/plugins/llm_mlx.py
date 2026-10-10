@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -36,6 +37,28 @@ class MlxLLM(LLMPlugin):
             return
         self._available = True
         logger.info("llm_mlx: init")
+
+    async def describe_image(self, image_b64: str, question: str = "") -> str:
+        """图片提问 (模式3): Qwen2.5-VL 看图 → 文字描述, 结果并入答疑上下文。
+
+        VLM 模型可配 FUSION_K12_VLM_MODEL; 不存在/失败返空串 (降级纯文字答疑)。
+        """
+        if not self._available or not image_b64:
+            return ""
+        model = os.environ.get("FUSION_K12_VLM_MODEL", "mlx-community--Qwen2.5-VL-7B-Instruct-4bit")
+        content = [
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+            {"type": "text", "text": question or "请描述这张图片的内容，若是题目请抄出题目"},
+        ]
+        try:
+            desc = await self._mlx.chat(
+                [{"role": "user", "content": content}], temperature=0.3, max_tokens=512, model=model,
+            )
+            logger.info("llm_mlx: VLM 看图完成 %d 字节描述", len(desc or ""))
+            return (desc or "").strip()
+        except Exception as exc:
+            logger.warning("llm_mlx: VLM 看图失败 (降级纯文字): %s", exc)
+            return ""
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         if not self._available:

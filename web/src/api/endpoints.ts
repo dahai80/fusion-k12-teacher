@@ -73,6 +73,7 @@ export const analyticsApi = {
 export const agentApi = {
   tasks: () => api.get('/api/agent/tasks'),
   run: (body: any) => api.post('/api/agent/run', body),
+  schedule: (body: { task_id: string; enable: boolean }) => api.post('/api/agent/schedule', body),
   history: () => api.get('/api/agent/history'),
 }
 

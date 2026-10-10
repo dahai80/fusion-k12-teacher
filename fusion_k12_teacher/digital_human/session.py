@@ -41,6 +41,8 @@ class DigitalHumanSession:
         session_manager: Any = None,
         layer: str = "B",
         idle_timeout: float = IDLE_TIMEOUT_SEC,
+        mode: str = "topic",
+        knowledge_node_id: str = "",
     ) -> None:
         self.session_id = session_id
         self.subject = subject
@@ -49,6 +51,9 @@ class DigitalHumanSession:
         self.code = code
         self.student_id = student_id
         self.layer = layer
+        # 会话模式: topic=自由主题 | course=按教案讲 | expand=举一反三 | qa=纯问答
+        self.mode = mode
+        self.knowledge_node_id = knowledge_node_id
         self.idle_timeout = idle_timeout
 
         self.fsm = SessionFSM(session_id)
@@ -124,6 +129,7 @@ class DigitalHumanSession:
         load_task = asyncio.create_task(self.content.load_lesson(
             self.subject, self.topic, self.grade, layer=self.layer,
             lesson_plan=lesson_plan,
+            mode=self.mode, knowledge_node_id=self.knowledge_node_id,
         ))
         init_tasks = [p.init() for p in (self.asr, self.llm, self.tts, self.avatar) if p is not None]
         if init_tasks:
@@ -263,7 +269,7 @@ class DigitalHumanSession:
             return {"error": "empty_transcription"}
         return await self._answer(text)
 
-    async def raise_hand(self, text: str) -> dict[str, Any]:
+    async def raise_hand(self, text: str, image_b64: str = "") -> dict[str, Any]:
         self._last_active = time.monotonic()
         self._speaking = False
         if self._narrate_task is not None and not self._narrate_task.done():
@@ -274,6 +280,14 @@ class DigitalHumanSession:
                 pass
             self._narrate_task = None
         await self.bus.fire("raise_hand")
+        if not text and not image_b64:
+            await self.fsm.transition(SessionState.IDLE, reason="empty_hand")
+            return {"error": "empty_text"}
+        # 图片提问 (模式3): 有图先走 VLM 看图 → 描述并入问题文本 (失败降级纯文字)
+        if image_b64 and self.llm is not None and hasattr(self.llm, "describe_image"):
+            desc = await self.llm.describe_image(image_b64, text)
+            if desc:
+                text = f"{text}（学生上传了图片，图片内容: {desc}）" if text else f"请讲解图片中的题目: {desc}"
         if not text:
             await self.fsm.transition(SessionState.IDLE, reason="empty_hand")
             return {"error": "empty_text"}
@@ -355,6 +369,8 @@ class DigitalHumanSession:
                 logger.warning("session[%s]: 记录提问失败 %s", self.session_id, exc)
         await self.fsm.transition(SessionState.IDLE, reason="qa_done")
         logger.info("session[%s]: 答疑 q=%s answer=%d字 pcm=%d", self.session_id, text[:20], len(clean), len(total_pcm))
+        # 场景动画不在答疑链路同步生成 (LLM 提取耗时分钟级, 会拖慢语音答复) —
+        # 前端拿到答案后异步调 /api/course/{subject}/scene-compile 加载动画
         return {"question": text, "answer": clean, "emotion": tag,
                 "has_audio": bool(total_pcm), "audio_len": len(total_pcm)}
 
