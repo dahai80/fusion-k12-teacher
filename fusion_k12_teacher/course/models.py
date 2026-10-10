@@ -255,6 +255,7 @@ class FusionSocraticDSL:
     - meta 新增 visual_type (8 基元路由) + fallback_type (2 兜底)
     - step.visual_state 携带步骤级可视化动作
     - scene 字段为 SceneDSL 类型 (统一 v3.0 合约, 不再是 plain dict)
+    - to_spec_dict() 输出符合 spec DSL v3.0 JSON Schema (fusion-core SOCRATIC_DSL_V3_SCHEMA)
     """
     version: str = "3.0.0"
     subject: str = ""
@@ -272,6 +273,121 @@ class FusionSocraticDSL:
             "scene": self.scene.to_dict() if isinstance(self.scene, SceneDSL) else self.scene,
             "error": self.error,
         }
+
+    def to_spec_dict(self) -> dict[str, Any]:
+        """issue #19 P0: 转换为 spec DSL v3.0 JSON Schema 合规结构。
+
+        spec (architecture/k12-train-model-autumation-1009.md §417-432) 要求根级
+        required: ["meta", "parameters", "entities", "pipeline"], additionalProperties=False。
+        fusion-core SOCRATIC_DSL_V3_SCHEMA 与此一致 (core#26)。
+
+        字段映射:
+          meta:         内部 meta + backfill id/grade/topic/visual_type/fallback_type
+          parameters:   global_variables → {label, value, unit} (value 强制 float)
+          entities:     scene.entities → {id, type, label, properties}
+          pipeline:     steps → {step, title, formula, eval, result_unit, visual_state}
+        """
+        meta_out = self._spec_meta()
+        params_out = self._spec_parameters()
+        entities_out = self._spec_entities()
+        pipeline_out = self._spec_pipeline()
+        return {
+            "meta": meta_out,
+            "parameters": params_out,
+            "entities": entities_out,
+            "pipeline": pipeline_out,
+        }
+
+    def _spec_meta(self) -> dict[str, Any]:
+        m = self.meta if isinstance(self.meta, dict) else {}
+        vt = str(m.get("visual_type", VisualType.FLOW_CARD.value))
+        if vt not in VISUAL_TYPES:
+            vt = VisualType.FLOW_CARD.value
+        fb = str(m.get("fallback_type", FallbackType.TAPE_DIAGRAM.value))
+        if fb not in FALLBACK_TYPES:
+            fb = FallbackType.TAPE_DIAGRAM.value
+        grade_raw = m.get("grade", "5")
+        try:
+            grade_num = float(grade_raw)
+        except (TypeError, ValueError):
+            grade_num = 5.0
+        return {
+            "id": str(m.get("knowledge_node_id", m.get("id", ""))),
+            "grade": grade_num,
+            "topic": str(m.get("title", m.get("topic", ""))),
+            "visual_type": vt,
+            "fallback_type": fb,
+        }
+
+    def _spec_parameters(self) -> dict[str, dict[str, Any]]:
+        gvars = self.global_variables if isinstance(self.global_variables, dict) else {}
+        out: dict[str, dict[str, Any]] = {}
+        for key, val in gvars.items():
+            if not isinstance(val, dict):
+                val = {"value": val}
+            try:
+                v = float(val.get("value", 0) or 0)
+            except (TypeError, ValueError):
+                v = 0.0
+            out[str(key)] = {
+                "label": str(val.get("label", str(key))),
+                "value": v,
+                "unit": str(val.get("unit", "")),
+            }
+        return out
+
+    def _spec_entities(self) -> list[dict[str, Any]]:
+        scene_entities = []
+        if isinstance(self.scene, SceneDSL):
+            scene_entities = self.scene.entities if isinstance(self.scene.entities, list) else []
+        elif isinstance(self.scene, dict):
+            scene_entities = self.scene.get("entities", []) if isinstance(self.scene.get("entities"), list) else []
+        out: list[dict[str, Any]] = []
+        for ent in scene_entities:
+            if not isinstance(ent, dict):
+                continue
+            eid = str(ent.get("id", ""))
+            if not eid:
+                continue
+            out.append({
+                "id": eid,
+                "type": str(ent.get("type", "moving_object")),
+                "label": str(ent.get("label", eid)),
+                "properties": {k: v for k, v in ent.items() if k not in ("id", "type", "label")},
+            })
+        return out
+
+    def _spec_pipeline(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for i, step in enumerate(self.steps):
+            vs = step.visual_state if isinstance(step.visual_state, VisualState) else VisualState()
+            cp = step.checkpoint if isinstance(step.checkpoint, Checkpoint) else None
+            formula = ""
+            eval_expr = ""
+            result_unit = ""
+            if cp:
+                formula = str(cp.expected_expression or "")
+                eval_expr = str(cp.expected_expression or "")
+                result_unit = str(getattr(cp, "result_unit", "") or "")
+            if not result_unit:
+                for gv in self.global_variables.values():
+                    if isinstance(gv, dict) and gv.get("unit"):
+                        result_unit = str(gv["unit"])
+                        break
+            pr = vs.progress_range if isinstance(vs.progress_range, (list, tuple)) and len(vs.progress_range) == 2 else (0.0, 1.0)
+            out.append({
+                "step": i + 1,
+                "title": str(step.step_title or step.step_id),
+                "formula": formula,
+                "eval": eval_expr,
+                "result_unit": result_unit,
+                "visual_state": {
+                    "progress_range": [float(pr[0]), float(pr[1])],
+                    "active_entities": [str(e) for e in vs.active_entities],
+                    "action": str(vs.action or ""),
+                },
+            })
+        return out
 
 
 @dataclass

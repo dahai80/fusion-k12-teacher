@@ -2311,7 +2311,11 @@ async def course_lesson_script(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """按 5E 生成学科苏格拉底课稿 DSL (UC-M1)。"""
+    """按 5E 生成学科苏格拉底课稿 DSL (UC-M1)。
+
+    issue #19 P0: 返回 spec DSL v3.0 合规结构 (fusion-core SOCRATIC_DSL_V3_SCHEMA),
+    供下游 artifacts-engine/trainer/bench 消费。to_dict() 保留内部教学脚本格式。
+    """
     mod = _get_subject_module(subject)
     tutor = mod.socratic_tutor()
     if tutor is None:
@@ -2321,7 +2325,7 @@ async def course_lesson_script(
         prerequisites=req.prerequisites or None, misconceptions=req.misconceptions or None,
         layer=req.layer,
     )
-    return dsl.to_dict()
+    return dsl.to_spec_dict()
 
 
 class CourseCheckpointRequest(BaseModel):
@@ -2782,7 +2786,9 @@ async def ws_socratic_dsl(websocket: WebSocket):
             misconceptions=payload.get("misconceptions") or None,
             layer=str(payload.get("layer", "B")) or "B",
         )
-        await websocket.send_json({"event": "dsl_complete", "data": {"dsl": dsl.to_dict(), "thinking": thinking_text}})
+        # issue #19 P0: 输出 spec DSL v3.0 合规结构 (fusion-core SOCRATIC_DSL_V3_SCHEMA)
+        # to_dict() 保留内部教学脚本格式, to_spec_dict() 转 spec 合约供下游消费
+        await websocket.send_json({"event": "dsl_complete", "data": {"dsl": dsl.to_spec_dict(), "thinking": thinking_text}})
         await websocket.send_json({"event": "finish", "data": {}})
     except Exception as exc:
         logger.warning("ws_socratic_dsl 异常: %s", exc)

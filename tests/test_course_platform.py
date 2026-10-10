@@ -254,3 +254,162 @@ def test_inline_prompts_prefixed_with_bnup():
     assert _SCRIPT_PROMPT.startswith(BNUP_SYSTEM_PROMPT)
     assert _GENERIC_PROMPT.startswith(BNUP_SYSTEM_PROMPT)
     assert _EXTRACT_PROMPT.startswith(BNUP_SYSTEM_PROMPT)
+
+
+# ── issue #19 P0: spec DSL v3.0 schema 合规 (to_spec_dict) ─────────────
+
+def _build_full_dsl() -> FusionSocraticDSL:
+    """构造带全局变量/步骤/场景的 FusionSocraticDSL, 供 to_spec_dict 测试。"""
+    cp = Checkpoint(
+        id="cp1", type=CheckpointType.EXPRESSION,
+        prompt="车长+桥长=总路程?", expected_expression="(800+200)/20",
+    )
+    vs = VisualState(
+        visual_type="track_timeline", action="train_run",
+        progress_range=(0.0, 0.5), active_entities=["train", "bridge"],
+    )
+    step = TeachingStep(
+        step_id="s1", step_title="观察火车过桥", speech_narration="...",
+        phase="Engage", checkpoint=cp, visual_state=vs,
+    )
+    scene = SceneDSL(
+        subject="math", template_type="train_crossing_bridge",
+        entities=[
+            {"id": "train", "type": "moving_object", "label": "火车", "length": 200},
+            {"id": "bridge", "type": "static_structure", "label": "大桥", "length": 800},
+        ],
+        verified=True,
+    )
+    return FusionSocraticDSL(
+        subject="math",
+        meta={"title": "火车过桥", "grade": "5", "visual_type": "track_timeline",
+              "fallback_type": "tape_diagram", "knowledge_node_id": "node-5-01"},
+        global_variables={
+            "L_train": {"label": "车长", "unit": "m", "value": 200},
+            "L_bridge": {"label": "桥长", "unit": "m", "value": 800},
+            "v_train": {"label": "速度", "unit": "m/s", "value": 20},
+            "t": {"label": "时间", "unit": "s", "value": 50},
+        },
+        steps=[step],
+        scene=scene,
+    )
+
+
+def test_to_spec_dict_root_keys():
+    """issue #19 P0: to_spec_dict 输出 spec DSL v3.0 四根键。"""
+    dsl = _build_full_dsl()
+    spec = dsl.to_spec_dict()
+    assert set(spec.keys()) == {"meta", "parameters", "entities", "pipeline"}
+
+
+def test_to_spec_dict_meta_fields():
+    """issue #19 P0: meta 包含 id/grade/topic/visual_type/fallback_type。"""
+    dsl = _build_full_dsl()
+    meta = dsl.to_spec_dict()["meta"]
+    assert meta["id"] == "node-5-01"
+    assert meta["grade"] == 5.0
+    assert meta["topic"] == "火车过桥"
+    assert meta["visual_type"] == "track_timeline"
+    assert meta["fallback_type"] == "tape_diagram"
+
+
+def test_to_spec_dict_parameters_from_global_variables():
+    """issue #19 P0: global_variables → parameters, value 强制 float。"""
+    dsl = _build_full_dsl()
+    params = dsl.to_spec_dict()["parameters"]
+    assert "L_train" in params
+    assert params["L_train"]["label"] == "车长"
+    assert params["L_train"]["value"] == 200.0
+    assert isinstance(params["L_train"]["value"], float)
+    assert params["L_train"]["unit"] == "m"
+    assert params["t"]["value"] == 50.0
+
+
+def test_to_spec_dict_entities_from_scene():
+    """issue #19 P0: scene.entities → 根级 entities 数组。"""
+    dsl = _build_full_dsl()
+    entities = dsl.to_spec_dict()["entities"]
+    assert len(entities) == 2
+    ent = entities[0]
+    assert ent["id"] == "train"
+    assert ent["type"] == "moving_object"
+    assert ent["label"] == "火车"
+    assert ent["properties"]["length"] == 200
+
+
+def test_to_spec_dict_pipeline_from_steps():
+    """issue #19 P0: steps → pipeline, 含 step/title/formula/eval/result_unit/visual_state。"""
+    dsl = _build_full_dsl()
+    pipeline = dsl.to_spec_dict()["pipeline"]
+    assert len(pipeline) == 1
+    p = pipeline[0]
+    assert p["step"] == 1
+    assert p["title"] == "观察火车过桥"
+    assert p["formula"] == "(800+200)/20"
+    assert p["eval"] == "(800+200)/20"
+    assert "visual_state" in p
+    assert p["visual_state"]["progress_range"] == [0.0, 0.5]
+    assert p["visual_state"]["active_entities"] == ["train", "bridge"]
+    assert p["visual_state"]["action"] == "train_run"
+
+
+def test_to_spec_dict_empty_dsl():
+    """issue #19 P0: 空 DSL 不崩, 产出合法空结构。"""
+    dsl = FusionSocraticDSL(subject="math")
+    spec = dsl.to_spec_dict()
+    assert spec["meta"]["visual_type"] == "flow_card"
+    assert spec["meta"]["fallback_type"] == "tape_diagram"
+    assert spec["meta"]["grade"] == 5.0
+    assert spec["parameters"] == {}
+    assert spec["entities"] == []
+    assert spec["pipeline"] == []
+
+
+def test_to_spec_dict_invalid_visual_type_falls_back():
+    """issue #19 P0: visual_type 不在白名单 → flow_card 兜底。"""
+    dsl = FusionSocraticDSL(
+        subject="math",
+        meta={"visual_type": "bogus", "fallback_type": "bogus_fb"},
+    )
+    meta = dsl.to_spec_dict()["meta"]
+    assert meta["visual_type"] == "flow_card"
+    assert meta["fallback_type"] == "tape_diagram"
+
+
+def test_to_spec_dict_passes_jsonschema():
+    """issue #19 P0: to_spec_dict 输出通过 spec DSL v3.0 JSON Schema 校验。
+
+    fusion-core SOCRATIC_DSL_V3_SCHEMA 内联 (venv 3.11 无法安装 fusion-core 3.12)。
+    """
+    try:
+        import jsonschema
+    except ImportError:
+        pytest.skip("jsonschema not installed")
+
+    schema = {
+        "type": "object",
+        "required": ["meta", "parameters", "entities", "pipeline"],
+        "additionalProperties": False,
+        "properties": {
+            "meta": {
+                "type": "object",
+                "required": ["id", "grade", "topic", "visual_type", "fallback_type"],
+                "additionalProperties": False,
+                "properties": {
+                    "id": {"type": "string"},
+                    "grade": {"type": "number"},
+                    "topic": {"type": "string"},
+                    "visual_type": {"type": "string"},
+                    "fallback_type": {"type": "string"},
+                },
+            },
+            "parameters": {"type": "object"},
+            "entities": {"type": "array"},
+            "pipeline": {"type": "array"},
+        },
+    }
+    dsl = _build_full_dsl()
+    spec = dsl.to_spec_dict()
+    validator = jsonschema.Draft202012Validator(schema)
+    errors = list(validator.iter_errors(spec))
+    assert errors == [], f"spec DSL v3.0 schema 校验失败: {errors}"

@@ -118,9 +118,22 @@ class TestCourseLessonScript:
         })
         assert r.status_code == 200
         data = r.json()
-        assert data["subject"] == "math"
-        assert len(data["steps"]) >= 1
-        assert data["steps"][0]["checkpoint"] is not None
+        # issue #19 P0: 返回 spec DSL v3.0 合规结构
+        assert "meta" in data
+        assert "parameters" in data
+        assert "entities" in data
+        assert "pipeline" in data
+        assert len(data["pipeline"]) >= 1
+        step = data["pipeline"][0]
+        assert "step" in step
+        assert "title" in step
+        assert "formula" in step
+        assert "eval" in step
+        assert "result_unit" in step
+        assert "visual_state" in step
+        assert "progress_range" in step["visual_state"]
+        assert "active_entities" in step["visual_state"]
+        assert "action" in step["visual_state"]
 
 
 class TestCourseCheckpoint:
