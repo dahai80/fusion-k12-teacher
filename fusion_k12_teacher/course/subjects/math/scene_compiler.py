@@ -490,7 +490,7 @@ class MathSceneCompiler(SceneCompilerBase):
         return self._build_direct_dsl(
             problem, knowledge_node_id,
             answer=original, answer_unit="",
-            steps=steps, visual_kind="flow",
+            steps=steps, visual_kind="flow_card",
             focus="原来的数", knowns={"old_avg": old_avg, "new_avg": new_avg,
                                       "new_value": new_val, "count": count},
             misconception="平均数不能直接相减×次数 — 必须经总分桥接; "
@@ -519,7 +519,7 @@ class MathSceneCompiler(SceneCompilerBase):
         return self._build_direct_dsl(
             problem, knowledge_node_id,
             answer=larger, answer_unit="",
-            steps=steps, visual_kind="bar_model",
+            steps=steps, visual_kind="tape_diagram",
             focus="原来多少 (给出方)",
             knowns={"total": total, "moved": moved},
             misconception="移动 m 后相等 → 原差是 2m 不是 m; 和差公式: 大数=(和+差)/2",

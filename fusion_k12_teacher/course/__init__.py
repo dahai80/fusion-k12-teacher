@@ -23,10 +23,13 @@ from .base import (
 )
 from .mastery import MasteryRecord, MasteryTracker
 from .models import (
+    FALLBACK_TYPES,
+    VISUAL_TYPES,
     AnimationSegment,
     Checkpoint,
     CheckpointType,
     CoursePackage,
+    FallbackType,
     FusionSocraticDSL,
     GraphNode,
     JudgeResult,
@@ -37,14 +40,19 @@ from .models import (
     SceneEntity,
     TeachingStep,
     VerifyResult,
+    VisualState,
+    VisualType,
 )
 from .registry import SubjectNotFoundError, SubjectRegistry
 
 __all__ = [
+    "FALLBACK_TYPES",
+    "VISUAL_TYPES",
     "AnimationSegment",
     "Checkpoint",
     "CheckpointType",
     "CoursePackage",
+    "FallbackType",
     "FusionSocraticDSL",
     "GraphNode",
     "JudgeResult",
@@ -64,4 +72,6 @@ __all__ = [
     "TeachingStep",
     "VerifierBase",
     "VerifyResult",
+    "VisualState",
+    "VisualType",
 ]

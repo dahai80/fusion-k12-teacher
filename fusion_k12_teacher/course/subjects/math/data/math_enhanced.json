@@ -1,82 +1,2589 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "subject": "math",
-  "description": "知识图谱增强层: 叠加 formula/spatial/visual_engine/misconceptions/cognitive_level + CROSS/EXEMPLIFIES 边。节点 id 复用 standards, 不新增节点。",
+  "description": "知识图谱增强层 v2.0 (issue #21): 104 微知识点, 12学期覆盖, visual_type 8基元路由 + semester + ≥2 misconceptions/节点。",
   "nodes": [
     {
       "id": "math-g3-na-03",
       "title": "多位数乘一位数",
       "node_type": "Concept",
-      "stage": "小学",
+      "stage": "Primary",
       "strand": "数与代数",
       "grade": "3",
+      "semester": "3-1",
       "cognitive_level": "apply",
       "formula": "S = v * t (整数版, 行程问题基础)",
-      "spatial": {"axis": "x", "unit": "m"},
-      "visual_engine": "pixi_timeline",
-      "misconceptions": ["forget_train_length"],
+      "spatial": {
+        "axis": "x",
+        "unit": "m"
+      },
+      "visual_type": "track_timeline",
+      "misconceptions": [
+        "forget_train_length",
+        "乘法口诀回忆失败"
+      ],
       "description": "行程问题路程公式的整数运算基础, 火车过桥前置技能。",
-      "edges": {"exemplifies": ["tb-ex-01", "tb-pr-01"], "cross": ["math-g5-na-01"]}
+      "edges": {
+        "exemplifies": [
+          "tb-ex-01",
+          "tb-pr-01"
+        ],
+        "cross": [
+          "math-g5-na-01"
+        ]
+      }
     },
     {
       "id": "math-g5-na-01",
       "title": "小数乘法",
       "node_type": "Concept",
-      "stage": "小学",
+      "stage": "Primary",
       "strand": "数与代数",
       "grade": "5",
+      "semester": "5-1",
       "cognitive_level": "apply",
       "formula": "S_total = L_bridge + L_train; t = S_total / v_train",
-      "spatial": {"axis": "x", "unit": "m", "entities": ["bridge", "train"]},
-      "visual_engine": "pixi_train_bridge",
-      "misconceptions": ["forget_train_length", "confuse_pass_vs_on"],
+      "spatial": {
+        "axis": "x",
+        "unit": "m",
+        "entities": [
+          "bridge",
+          "train"
+        ]
+      },
+      "visual_type": "track_timeline",
+      "misconceptions": [
+        "forget_train_length",
+        "confuse_pass_vs_on"
+      ],
       "description": "火车完全过桥核心公式: 路程=桥长+车长, 时间=路程/速度。",
-      "edges": {"exemplifies": ["tb-ex-01", "tb-pr-01", "tb-pr-02"], "cross": ["math-g5-na-02", "math-g6-na-03"]}
+      "edges": {
+        "exemplifies": [
+          "tb-ex-01",
+          "tb-pr-01",
+          "tb-pr-02"
+        ],
+        "cross": [
+          "math-g5-na-02",
+          "math-g6-na-03"
+        ]
+      }
     },
     {
       "id": "math-g5-na-02",
       "title": "小数除法",
       "node_type": "Concept",
-      "stage": "小学",
+      "stage": "Primary",
       "strand": "数与代数",
       "grade": "5",
+      "semester": "5-2",
       "cognitive_level": "apply",
-      "formula": "S_on = L_bridge - L_train; t = S_on / v_train (隐蔽条件: 减车长)",
-      "spatial": {"axis": "x", "unit": "m", "entities": ["bridge", "train"]},
-      "visual_engine": "pixi_train_on_bridge",
-      "misconceptions": ["confuse_pass_vs_on"],
+      "formula": "S_on = L_bridge - L_train; t = S_on / v_train",
+      "spatial": {
+        "axis": "x",
+        "unit": "m",
+        "entities": [
+          "bridge",
+          "train"
+        ]
+      },
+      "visual_type": "track_timeline",
+      "misconceptions": [
+        "confuse_pass_vs_on",
+        "hidden_condition_missed"
+      ],
       "description": "完全在桥上: 路程=桥长-车长, 隐蔽条件识别训练。",
-      "edges": {"exemplifies": ["tb-ex-02"], "cross": ["math-g5-na-01"]}
+      "edges": {
+        "exemplifies": [
+          "tb-ex-02"
+        ],
+        "cross": [
+          "math-g5-na-01"
+        ]
+      }
     },
     {
       "id": "math-g5-na-03",
       "title": "简易方程",
       "node_type": "Concept",
-      "stage": "小学",
+      "stage": "Primary",
       "strand": "数与代数",
       "grade": "5",
+      "semester": "5-1",
       "cognitive_level": "analyze",
-      "formula": "2*x = v_sound*t_echo + v_train*t_echo (回声双过程方程)",
-      "spatial": {"axis": "x", "unit": "m", "entities": ["train", "sound_wave", "wall"]},
-      "visual_engine": "pixi_echo",
-      "misconceptions": ["ignore_train_motion_in_echo"],
+      "formula": "2*x = v_sound*t_echo + v_train*t_echo",
+      "spatial": {
+        "axis": "x",
+        "unit": "m",
+        "entities": [
+          "train",
+          "sound_wave",
+          "wall"
+        ]
+      },
+      "visual_type": "track_timeline",
+      "misconceptions": [
+        "ignore_train_motion_in_echo",
+        "方程两边不等价"
+      ],
       "description": "回声问题列方程: 声波往返 + 火车前行联立, 2x=S声+S车。",
-      "edges": {"exemplifies": ["tb-ex-05", "tb-pr-02"], "cross": ["math-g5-na-01"]}
+      "edges": {
+        "exemplifies": [
+          "tb-ex-05",
+          "tb-pr-02"
+        ],
+        "cross": [
+          "math-g5-na-01"
+        ]
+      }
     },
     {
       "id": "math-g6-na-03",
       "title": "比和比例",
       "node_type": "Concept",
-      "stage": "小学",
+      "stage": "Primary",
       "strand": "数与代数",
       "grade": "6",
+      "semester": "6-1",
       "cognitive_level": "analyze",
       "formula": "v_relative = v1 +/- v2; t = (L1 + L2) / v_relative",
-      "spatial": {"axis": "x", "unit": "m", "entities": ["train_a", "train_b"]},
-      "visual_engine": "pixi_two_trains",
-      "misconceptions": ["single_train_length_for_meet"],
+      "spatial": {
+        "axis": "x",
+        "unit": "m",
+        "entities": [
+          "train_a",
+          "train_b"
+        ]
+      },
+      "visual_type": "track_timeline",
+      "misconceptions": [
+        "single_train_length_for_meet",
+        "relative_speed_direction_error"
+      ],
       "description": "相对运动: 相向错车 v和, 同向超车 v差; 路程恒为两车长之和。",
-      "edges": {"exemplifies": ["tb-ex-03", "tb-ex-04a", "tb-ex-04b", "tb-pr-03"], "cross": ["math-g5-na-01"]}
+      "edges": {
+        "exemplifies": [
+          "tb-ex-03",
+          "tb-ex-04a",
+          "tb-ex-04b",
+          "tb-pr-03"
+        ],
+        "cross": [
+          "math-g5-na-01"
+        ]
+      }
+    },
+    {
+      "id": "math-g1-na-01a",
+      "title": "1-10的认识与书写",
+      "grade": "1",
+      "semester": "1-1",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "remember",
+      "formula": "",
+      "misconceptions": [
+        "数字书写方向混淆",
+        "0的概念理解偏差"
+      ],
+      "description": "1-10基数与序数含义, 正确书写数字。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-na-01b",
+      "title": "10以内数的分与合",
+      "grade": "1",
+      "semester": "1-1",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "understand",
+      "formula": "",
+      "misconceptions": [
+        "数的分解遗漏组合",
+        "分合方向混淆"
+      ],
+      "description": "10以内数的组成与分解, 为加减法奠基。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-01"
+        ],
+        "cross": [
+          "math-g1-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-na-02a",
+      "title": "10以内加法",
+      "grade": "1",
+      "semester": "1-1",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "apply",
+      "formula": "a + b = c (c ≤ 10)",
+      "misconceptions": [
+        "加法交换律未建立",
+        "数数遗漏起始"
+      ],
+      "description": "10以内加法运算, 接数法与凑十法初步。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-na-02b",
+      "title": "10以内减法",
+      "grade": "1",
+      "semester": "1-2",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "apply",
+      "formula": "a - b = c (a ≥ b)",
+      "misconceptions": [
+        "减法是加法逆运算未理解",
+        "倒数遗漏"
+      ],
+      "description": "10以内减法运算, 想加算减策略。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-02"
+        ],
+        "cross": [
+          "math-g1-na-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-gm-01a",
+      "title": "立体图形初步认识",
+      "grade": "1",
+      "semester": "1-1",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "remember",
+      "formula": "",
+      "misconceptions": [
+        "球与圆柱混淆",
+        "正方体与长方体不区分"
+      ],
+      "description": "认识长方体、正方体、圆柱、球。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-gm-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-gm-02a",
+      "title": "上下左右前后",
+      "grade": "1",
+      "semester": "1-2",
+      "strand": "图形与几何",
+      "visual_type": "flow_card",
+      "cognitive_level": "remember",
+      "formula": "",
+      "misconceptions": [
+        "左右方向以自我为中心不转换",
+        "上下相对性忽略"
+      ],
+      "description": "空间方位的基本认识。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-gm-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-na-01c",
+      "title": "11-20的认识",
+      "grade": "1",
+      "semester": "1-2",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "understand",
+      "formula": "10 + n (n=1..10)",
+      "misconceptions": [
+        "十位与个位混淆",
+        "20是2个十理解偏差"
+      ],
+      "description": "11-20各数的认识, 十进制初步。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-01"
+        ],
+        "cross": [
+          "math-g2-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-na-02c",
+      "title": "20以内进位加法",
+      "grade": "1",
+      "semester": "1-2",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "apply",
+      "formula": "凑十法: 9+5 = 9+1+4 = 14",
+      "misconceptions": [
+        "凑十法步骤遗漏",
+        "进位忘记加1"
+      ],
+      "description": "20以内进位加法, 凑十法核心策略。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-na-02d",
+      "title": "20以内退位减法",
+      "grade": "1",
+      "semester": "1-2",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "apply",
+      "formula": "破十法: 13-5 = 10-5+3 = 8",
+      "misconceptions": [
+        "破十法方向反",
+        "退位后忘记加剩余"
+      ],
+      "description": "20以内退位减法, 破十法与想加算减。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-na-02"
+        ],
+        "cross": [
+          "math-g1-na-02c"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g1-sp-01a",
+      "title": "按不同标准分类",
+      "grade": "1",
+      "semester": "1-2",
+      "strand": "统计与概率",
+      "visual_type": "data_chart",
+      "cognitive_level": "understand",
+      "formula": "",
+      "misconceptions": [
+        "分类标准不统一",
+        "遗漏类别"
+      ],
+      "description": "按形状、颜色、用途等不同标准分类整理。",
+      "edges": {
+        "exemplifies": [
+          "math-g1-sp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-01a",
+      "title": "100以内数的数法",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "understand",
+      "formula": "",
+      "misconceptions": [
+        "数到整十数跳跃",
+        "99到100进位错误"
+      ],
+      "description": "100以内数数, 十个十个地数。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-01b",
+      "title": "数位与数值",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "百位×100 + 十位×10 + 个位×1",
+      "misconceptions": [
+        "数位顺序颠倒",
+        "位值制理解偏差"
+      ],
+      "description": "百位、十位、个位的位值含义。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-02a",
+      "title": "100以内不进位加法",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "逐位相加不进位",
+      "misconceptions": [
+        "对齐数位错误",
+        "漏加某位"
+      ],
+      "description": "100以内不进位加法竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-02b",
+      "title": "100以内进位加法",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "满十进一",
+      "misconceptions": [
+        "进位标记遗漏",
+        "连续进位丢进位"
+      ],
+      "description": "100以内进位加法, 满十进一。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-02"
+        ],
+        "cross": [
+          "math-g2-na-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-03a",
+      "title": "乘法的初步认识",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "understand",
+      "formula": "a × b = a + a + ... + a (b次)",
+      "misconceptions": [
+        "乘数与被乘数混淆",
+        "乘法意义理解偏差"
+      ],
+      "description": "乘法是同数连加的简便运算。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-03b",
+      "title": "2-6乘法口诀",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "remember",
+      "formula": "2×1=2 ... 6×9=54",
+      "misconceptions": [
+        "口诀记忆遗漏",
+        "积大小顺序混淆"
+      ],
+      "description": "2-6的乘法口诀表。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-03"
+        ],
+        "cross": [
+          "math-g2-na-03a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-gm-01a",
+      "title": "角的辨认",
+      "grade": "2",
+      "semester": "2-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "remember",
+      "formula": "",
+      "misconceptions": [
+        "角的大小与边长混淆",
+        "直角判断无参照"
+      ],
+      "description": "认识角、直角、锐角、钝角。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-gm-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-02c",
+      "title": "100以内不退位减法",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "逐位相减不退位",
+      "misconceptions": [
+        "数位对齐错误",
+        "大减小方向反"
+      ],
+      "description": "100以内不退位减法竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-02d",
+      "title": "100以内退位减法",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "不够减退一当十",
+      "misconceptions": [
+        "退位标记遗漏",
+        "连续退位计算错"
+      ],
+      "description": "100以内退位减法, 退一当十。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-02"
+        ],
+        "cross": [
+          "math-g2-na-02c"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-04a",
+      "title": "除法的初步认识",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "understand",
+      "formula": "a ÷ b = c (平均分)",
+      "misconceptions": [
+        "包含除与等分除混淆",
+        "除法意义理解偏差"
+      ],
+      "description": "除法是平均分的运算。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-04"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-04b",
+      "title": "用乘法口诀求商",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "a × b = c → c ÷ b = a",
+      "misconceptions": [
+        "口诀回忆失败",
+        "乘除逆运算未建立"
+      ],
+      "description": "利用乘法口诀求商。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-04"
+        ],
+        "cross": [
+          "math-g2-na-04a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-05a",
+      "title": "时分的认识",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "数与代数",
+      "visual_type": "track_timeline",
+      "cognitive_level": "understand",
+      "formula": "1时=60分",
+      "misconceptions": [
+        "时针与分针读数混淆",
+        "整时半时判断错"
+      ],
+      "description": "认识时、分及其关系。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-05"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-na-05b",
+      "title": "秒的认识与时间计算",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "数与代数",
+      "visual_type": "track_timeline",
+      "cognitive_level": "apply",
+      "formula": "1分=60秒",
+      "misconceptions": [
+        "秒针读数遗漏",
+        "时间单位换算错"
+      ],
+      "description": "认识秒, 时间单位换算。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-na-05"
+        ],
+        "cross": [
+          "math-g2-na-05a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g2-sp-01a",
+      "title": "简单数据记录方法",
+      "grade": "2",
+      "semester": "2-2",
+      "strand": "统计与概率",
+      "visual_type": "data_chart",
+      "cognitive_level": "understand",
+      "formula": "",
+      "misconceptions": [
+        "记录方法不统一",
+        "数据遗漏"
+      ],
+      "description": "画正字、画符号等数据记录方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g2-sp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-01a",
+      "title": "千以内数的认识",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "千位×1000 + 百位×100 + ...",
+      "misconceptions": [
+        "千位概念未建立",
+        "中间零末尾零读法错"
+      ],
+      "description": "千以内数的读写与组成。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-01b",
+      "title": "万以内数的认识",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "万位×10000 + ...",
+      "misconceptions": [
+        "万位概念偏差",
+        "大数读法中间零规则错"
+      ],
+      "description": "万以内数的读写与位值。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-01"
+        ],
+        "cross": [
+          "math-g3-na-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-03a",
+      "title": "口算乘法",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "整十整百乘一位数",
+      "misconceptions": [
+        "末尾零个数遗漏",
+        "口算策略未形成"
+      ],
+      "description": "整十、整百数乘一位数口算。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-03b",
+      "title": "笔算乘法(多位数×一位数)",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "逐位相乘, 满几十进几",
+      "misconceptions": [
+        "进位遗漏",
+        "连续进位累积错误"
+      ],
+      "description": "多位数乘一位数竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-03"
+        ],
+        "cross": [
+          "math-g3-na-03a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-05a",
+      "title": "分数的初步认识(几分之一)",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "understand",
+      "formula": "1/n (平均分成n份取1份)",
+      "misconceptions": [
+        "不平均分也用分数",
+        "分母分子含义混淆"
+      ],
+      "description": "认识几分之一。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-05"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-05b",
+      "title": "分数的简单计算",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "1/n + 1/n = 2/n (同分母)",
+      "misconceptions": [
+        "分母相加",
+        "异分母直接加减"
+      ],
+      "description": "同分母分数加减法。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-05"
+        ],
+        "cross": [
+          "math-g3-na-05a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-gm-01a",
+      "title": "长方形周长",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "C = 2(a + b)",
+      "misconceptions": [
+        "长宽混淆",
+        "周长与面积概念混淆"
+      ],
+      "description": "长方形周长计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-gm-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-gm-01b",
+      "title": "正方形周长",
+      "grade": "3",
+      "semester": "3-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "C = 4a",
+      "misconceptions": [
+        "边数遗漏",
+        "周长与边长混淆"
+      ],
+      "description": "正方形周长计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-gm-01"
+        ],
+        "cross": [
+          "math-g3-gm-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-gm-02a",
+      "title": "面积概念与面积单位",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "understand",
+      "formula": "1cm², 1dm², 1m²",
+      "misconceptions": [
+        "面积与周长混淆",
+        "面积单位大小感知偏差"
+      ],
+      "description": "面积概念与常用面积单位。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-gm-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-02a",
+      "title": "万以内加法笔算",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "竖式, 满十进一",
+      "misconceptions": [
+        "连续进位遗漏",
+        "数位对齐错"
+      ],
+      "description": "万以内加法竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-02b",
+      "title": "万以内减法笔算",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "竖式, 退一当十",
+      "misconceptions": [
+        "连续退位错误",
+        "跨零退位处理错"
+      ],
+      "description": "万以内减法竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-02"
+        ],
+        "cross": [
+          "math-g3-na-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-04a",
+      "title": "有余数除法的概念",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "array_grid",
+      "cognitive_level": "understand",
+      "formula": "a ÷ b = q ... r (r < b)",
+      "misconceptions": [
+        "余数大于除数",
+        "余数与商混淆"
+      ],
+      "description": "有余数除法的意义。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-04"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-04b",
+      "title": "余数与除数的关系",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "0 ≤ r < b",
+      "misconceptions": [
+        "余数等于除数",
+        "余数范围理解偏差"
+      ],
+      "description": "余数必须小于除数。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-04"
+        ],
+        "cross": [
+          "math-g3-na-04a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-06a",
+      "title": "小数的读写",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "整数部分.小数部分",
+      "misconceptions": [
+        "小数点位置错",
+        "小数读法混淆"
+      ],
+      "description": "一位小数、两位小数的读写。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-06"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-na-06b",
+      "title": "小数大小比较",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "逐位比较",
+      "misconceptions": [
+        "小数位数多则大",
+        "整数部分比较方法套用错"
+      ],
+      "description": "小数大小比较方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-na-06"
+        ],
+        "cross": [
+          "math-g3-na-06a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g3-sp-01a",
+      "title": "条形统计图绘制",
+      "grade": "3",
+      "semester": "3-2",
+      "strand": "统计与概率",
+      "visual_type": "data_chart",
+      "cognitive_level": "apply",
+      "formula": "",
+      "misconceptions": [
+        "刻度不均匀",
+        "条形宽度不一致"
+      ],
+      "description": "简单条形统计图绘制与读取。",
+      "edges": {
+        "exemplifies": [
+          "math-g3-sp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-01a",
+      "title": "亿以内数的认识",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "万级 + 个级",
+      "misconceptions": [
+        "数级概念混淆",
+        "大数读法零处理错"
+      ],
+      "description": "亿以内数的读写与数级。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-01b",
+      "title": "数的改写与省略",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "改写=精确, 省略=四舍五入",
+      "misconceptions": [
+        "改写与省略混淆",
+        "近似数精度理解偏差"
+      ],
+      "description": "用万、亿作单位改写与省略。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-01"
+        ],
+        "cross": [
+          "math-g4-na-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-04a",
+      "title": "加法交换律与结合律",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "a+b=b+a; (a+b)+c=a+(b+c)",
+      "misconceptions": [
+        "运算律名称混淆",
+        "简便计算选择不当"
+      ],
+      "description": "加法运算律及简便计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-04"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-04b",
+      "title": "乘法交换律结合律分配律",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "analyze",
+      "formula": "a×b=b×a; (a×b)×c=a×(b×c); a×(b+c)=a×b+a×c",
+      "misconceptions": [
+        "分配律展开遗漏项",
+        "结合律与分配律混淆"
+      ],
+      "description": "乘法运算律及简便计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-04"
+        ],
+        "cross": [
+          "math-g4-na-04a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-gm-01a",
+      "title": "角的度量(量角器)",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "1° = 1/360 周角",
+      "misconceptions": [
+        "量角器中心点未对齐",
+        "内外刻度读反"
+      ],
+      "description": "用量角器量角与画角。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-gm-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-gm-02a",
+      "title": "三角形内角和",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "analyze",
+      "formula": "∠1+∠2+∠3 = 180°",
+      "misconceptions": [
+        "内角和随大小变化",
+        "撕拼验证操作错"
+      ],
+      "description": "三角形内角和180度。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-gm-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-gm-02b",
+      "title": "三角形分类",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "understand",
+      "formula": "按角分: 锐角/直角/钝角",
+      "misconceptions": [
+        "等腰等边分类交叉混淆",
+        "直角三角形定义偏差"
+      ],
+      "description": "三角形按角和按边分类。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-gm-02"
+        ],
+        "cross": [
+          "math-g4-gm-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-gm-03a",
+      "title": "平行四边形性质",
+      "grade": "4",
+      "semester": "4-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "understand",
+      "formula": "对边平行且相等",
+      "misconceptions": [
+        "平行四边形与长方形关系混淆",
+        "对角线性质误用"
+      ],
+      "description": "平行四边形的特征与性质。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-gm-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-02a",
+      "title": "三位数乘两位数笔算",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "部分积相加",
+      "misconceptions": [
+        "部分积对位错",
+        "进位累积错误"
+      ],
+      "description": "三位数乘两位数竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-03a",
+      "title": "除数是两位数的除法",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "试商→调商→乘减→落",
+      "misconceptions": [
+        "试商偏大偏小",
+        "余数大于除数"
+      ],
+      "description": "除数是两位数的除法竖式。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-05a",
+      "title": "分数的意义(单位1)",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "understand",
+      "formula": "m/n = 把单位1平均分n份取m份",
+      "misconceptions": [
+        "单位1理解偏差",
+        "分子分母意义混淆"
+      ],
+      "description": "分数的意义与单位1。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-05"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-05b",
+      "title": "真分数与假分数",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "understand",
+      "formula": "真分数: m<n; 假分数: m≥n",
+      "misconceptions": [
+        "假分数不是分数",
+        "带分数与假分数转换错"
+      ],
+      "description": "真分数、假分数、带分数。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-05"
+        ],
+        "cross": [
+          "math-g4-na-05a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-05c",
+      "title": "分数基本性质",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "analyze",
+      "formula": "a/b = (a×k)/(b×k) = (a÷k)/(b÷k)",
+      "misconceptions": [
+        "分子分母不同时变化",
+        "乘除混淆"
+      ],
+      "description": "分数的分子分母同乘同除不变。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-05"
+        ],
+        "cross": [
+          "math-g4-na-05b"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-06a",
+      "title": "小数的意义",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "understand",
+      "formula": "0.1 = 1/10, 0.01 = 1/100",
+      "misconceptions": [
+        "小数与分数关系未建立",
+        "小数位数含义混淆"
+      ],
+      "description": "小数的意义与计数单位。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-06"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-na-06b",
+      "title": "小数性质与大小比较",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "末尾添0去0大小不变",
+      "misconceptions": [
+        "中间添去0",
+        "比较从高位开始遗漏"
+      ],
+      "description": "小数的基本性质与比较。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-na-06"
+        ],
+        "cross": [
+          "math-g4-na-06a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g4-sp-01a",
+      "title": "折线统计图绘制与分析",
+      "grade": "4",
+      "semester": "4-2",
+      "strand": "统计与概率",
+      "visual_type": "data_chart",
+      "cognitive_level": "apply",
+      "formula": "",
+      "misconceptions": [
+        "描点连线遗漏",
+        "趋势分析偏差"
+      ],
+      "description": "折线统计图绘制与趋势分析。",
+      "edges": {
+        "exemplifies": [
+          "math-g4-sp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-01a",
+      "title": "小数乘整数",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "先按整数乘, 再点小数点",
+      "misconceptions": [
+        "小数点位数错",
+        "积末尾零处理不当"
+      ],
+      "description": "小数乘整数计算方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-01b",
+      "title": "小数乘小数",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "积的小数位数=各因数小数位数之和",
+      "misconceptions": [
+        "位数和计算错",
+        "点小数点后未化简"
+      ],
+      "description": "小数乘小数计算方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-01"
+        ],
+        "cross": [
+          "math-g5-na-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-03a",
+      "title": "用字母表示数",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "用x, a等表示未知量",
+      "misconceptions": [
+        "字母含义混淆",
+        "代数式书写不规范"
+      ],
+      "description": "用字母表示数与数量关系。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-03b",
+      "title": "解简易方程",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "analyze",
+      "formula": "等式性质: a±b同加减, a×b同乘除",
+      "misconceptions": [
+        "等式性质运用错",
+        "移项不变号"
+      ],
+      "description": "利用等式性质解方程。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-03"
+        ],
+        "cross": [
+          "math-g5-na-03a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-04a",
+      "title": "因数与倍数概念",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "a÷b=c → b和c是a的因数",
+      "misconceptions": [
+        "因数倍数互逆关系混淆",
+        "1是因数理解偏差"
+      ],
+      "description": "因数与倍数的意义。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-04"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-04b",
+      "title": "质数与合数",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "understand",
+      "formula": "质数: 2个因数; 合数: 3+个因数",
+      "misconceptions": [
+        "1是质数",
+        "质数合数分类混淆"
+      ],
+      "description": "质数、合数的概念与判断。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-04"
+        ],
+        "cross": [
+          "math-g5-na-04a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-04c",
+      "title": "最大公因数与最小公倍数",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "GCD, LCM",
+      "misconceptions": [
+        "短除法操作错",
+        "GCD与LCM混淆"
+      ],
+      "description": "最大公因数与最小公倍数求法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-04"
+        ],
+        "cross": [
+          "math-g5-na-04b"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-gm-01a",
+      "title": "平行四边形面积",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "S = a × h (底×高)",
+      "misconceptions": [
+        "用邻边相乘",
+        "高与边混淆"
+      ],
+      "description": "平行四边形面积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-gm-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-gm-01b",
+      "title": "三角形面积",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "S = a × h ÷ 2",
+      "misconceptions": [
+        "忘记除以2",
+        "底高不对应"
+      ],
+      "description": "三角形面积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-gm-01"
+        ],
+        "cross": [
+          "math-g5-gm-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-gm-01c",
+      "title": "梯形面积",
+      "grade": "5",
+      "semester": "5-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "S = (a + b) × h ÷ 2",
+      "misconceptions": [
+        "上下底相加遗漏",
+        "忘记除以2"
+      ],
+      "description": "梯形面积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-gm-01"
+        ],
+        "cross": [
+          "math-g5-gm-01b"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-02a",
+      "title": "小数除以整数",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "按整数除, 商的小数点对齐",
+      "misconceptions": [
+        "小数点位置错",
+        "余数补零遗漏"
+      ],
+      "description": "小数除以整数计算方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-02b",
+      "title": "小数除以小数",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "化除数为整数再除",
+      "misconceptions": [
+        "转化时被除数未同步扩大",
+        "商不变性质运用错"
+      ],
+      "description": "小数除以小数计算方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-02"
+        ],
+        "cross": [
+          "math-g5-na-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-05a",
+      "title": "同分母分数加减法",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "a/c ± b/c = (a±b)/c",
+      "misconceptions": [
+        "分母相加",
+        "结果未化简"
+      ],
+      "description": "同分母分数加减法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-05"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-05b",
+      "title": "异分母分数加减法",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "analyze",
+      "formula": "通分 → 同分母加减",
+      "misconceptions": [
+        "通分方法错",
+        "公分母选取不当"
+      ],
+      "description": "异分母分数加减法, 通分。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-05"
+        ],
+        "cross": [
+          "math-g5-na-05a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-06a",
+      "title": "分数乘法",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "a/b × c/d = (a×c)/(b×d)",
+      "misconceptions": [
+        "分子分母交叉相乘",
+        "约分遗漏"
+      ],
+      "description": "分数乘分数计算方法。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-06"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-na-06b",
+      "title": "分数除法",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "analyze",
+      "formula": "a/b ÷ c/d = a/b × d/c",
+      "misconceptions": [
+        "除以变乘以遗漏翻转",
+        "被除数除数颠倒"
+      ],
+      "description": "分数除法, 颠倒相乘。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-na-06"
+        ],
+        "cross": [
+          "math-g5-na-06a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-gm-02a",
+      "title": "长方体表面积",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "apply",
+      "formula": "S = 2(ab+ah+bh)",
+      "misconceptions": [
+        "面数遗漏",
+        "相对面面积相等理解偏差"
+      ],
+      "description": "长方体表面积计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-gm-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-gm-02b",
+      "title": "长方体体积",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "apply",
+      "formula": "V = a × b × h",
+      "misconceptions": [
+        "表面积与体积混淆",
+        "单位用平方不用立方"
+      ],
+      "description": "长方体体积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-gm-02"
+        ],
+        "cross": [
+          "math-g5-gm-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-gm-02c",
+      "title": "体积单位与换算",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "understand",
+      "formula": "1m³=1000dm³, 1dm³=1000cm³",
+      "misconceptions": [
+        "面积与体积单位换算混用",
+        "进率1000与100混淆"
+      ],
+      "description": "体积单位及进率换算。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-gm-02"
+        ],
+        "cross": [
+          "math-g5-gm-02b"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g5-sp-01a",
+      "title": "可能性的大小",
+      "grade": "5",
+      "semester": "5-2",
+      "strand": "统计与概率",
+      "visual_type": "bucket_divider",
+      "cognitive_level": "understand",
+      "formula": "P = 事件/全部",
+      "misconceptions": [
+        "可能性大小与数量混淆",
+        "等可能性理解偏差"
+      ],
+      "description": "可能性的大小与公平性。",
+      "edges": {
+        "exemplifies": [
+          "math-g5-sp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-01a",
+      "title": "分数乘整数",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "a/b × c = (a×c)/b",
+      "misconceptions": [
+        "整数与分子相乘",
+        "约分遗漏"
+      ],
+      "description": "分数乘整数计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-01b",
+      "title": "分数乘分数",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "a/b × c/d = ac/bd",
+      "misconceptions": [
+        "交叉相乘",
+        "先乘后约分效率低"
+      ],
+      "description": "分数乘分数计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-01"
+        ],
+        "cross": [
+          "math-g6-na-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-02a",
+      "title": "分数除以整数",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "a/b ÷ c = a/(b×c)",
+      "misconceptions": [
+        "除以变乘以翻转遗漏",
+        "整数未化分数"
+      ],
+      "description": "分数除以整数计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-02b",
+      "title": "分数除以分数",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "analyze",
+      "formula": "a/b ÷ c/d = a/b × d/c",
+      "misconceptions": [
+        "被除数翻转",
+        "约分遗漏"
+      ],
+      "description": "分数除以分数计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-02"
+        ],
+        "cross": [
+          "math-g6-na-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-03a",
+      "title": "比的意义与性质",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "understand",
+      "formula": "a:b = a/b (b≠0)",
+      "misconceptions": [
+        "比与除法关系混淆",
+        "比值计算错"
+      ],
+      "description": "比的意义与基本性质。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-03b",
+      "title": "按比分配",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "apply",
+      "formula": "总量 × (部分比/总比)",
+      "misconceptions": [
+        "分配比例理解偏差",
+        "总量与部分关系错"
+      ],
+      "description": "按比分配问题。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-03"
+        ],
+        "cross": [
+          "math-g6-na-03a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-03c",
+      "title": "比例的意义与基本性质",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "analyze",
+      "formula": "a/b = c/d → ad = bc (内项积=外项积)",
+      "misconceptions": [
+        "内外项判断错",
+        "交叉相乘方向反"
+      ],
+      "description": "比例的概念与基本性质。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-03"
+        ],
+        "cross": [
+          "math-g6-na-03a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-03d",
+      "title": "正比例与反比例",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "数与代数",
+      "visual_type": "track_timeline",
+      "cognitive_level": "analyze",
+      "formula": "正比: y/x=k; 反比: xy=k",
+      "misconceptions": [
+        "正反比例判断依据错",
+        "比值与乘积混淆"
+      ],
+      "description": "正比例与反比例的判断。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-03"
+        ],
+        "cross": [
+          "math-g6-na-03c"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-01a",
+      "title": "圆的认识与周长",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "C = 2πr = πd",
+      "misconceptions": [
+        "π取值不当",
+        "直径与半径混淆"
+      ],
+      "description": "圆的特征与周长计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-01b",
+      "title": "圆的面积",
+      "grade": "6",
+      "semester": "6-1",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "analyze",
+      "formula": "S = πr²",
+      "misconceptions": [
+        "半径平方算成直径平方",
+        "周长与面积公式混淆"
+      ],
+      "description": "圆面积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-01"
+        ],
+        "cross": [
+          "math-g6-gm-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-04a",
+      "title": "百分数的意义",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "understand",
+      "formula": "百分数 = 后项为100的比",
+      "misconceptions": [
+        "百分数与分数完全等同",
+        "百分数有单位"
+      ],
+      "description": "百分数的意义与读写。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-04"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-04b",
+      "title": "百分数与小数分数互化",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "数与代数",
+      "visual_type": "flow_card",
+      "cognitive_level": "apply",
+      "formula": "小数→百分数: ×100+%; 百分数→小数: ÷100",
+      "misconceptions": [
+        "互化方向反",
+        "小数点移动位数错"
+      ],
+      "description": "百分数、小数、分数互化。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-04"
+        ],
+        "cross": [
+          "math-g6-na-04a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-04c",
+      "title": "百分数应用题",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "数与代数",
+      "visual_type": "tape_diagram",
+      "cognitive_level": "analyze",
+      "formula": "部分 = 总量 × 百分率",
+      "misconceptions": [
+        "单位1确定错",
+        "增长率基准理解偏差"
+      ],
+      "description": "百分数应用题(打折、利率、增减)。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-04"
+        ],
+        "cross": [
+          "math-g6-na-04b"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-na-05a",
+      "title": "负数的初步认识",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "数与代数",
+      "visual_type": "track_timeline",
+      "cognitive_level": "understand",
+      "formula": "0以上正数, 0以下负数",
+      "misconceptions": [
+        "0是正数",
+        "负数大小比较方向反"
+      ],
+      "description": "负数的意义与读写。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-na-05"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-02a",
+      "title": "圆柱的表面积",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "apply",
+      "formula": "S = 2πr² + 2πrh",
+      "misconceptions": [
+        "侧面积公式错",
+        "底面积只算一个"
+      ],
+      "description": "圆柱表面积计算。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-02"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-02b",
+      "title": "圆柱的体积",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "analyze",
+      "formula": "V = πr²h",
+      "misconceptions": [
+        "底面积与侧面积混淆",
+        "高与半径混淆"
+      ],
+      "description": "圆柱体积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-02"
+        ],
+        "cross": [
+          "math-g6-gm-02a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-02c",
+      "title": "圆锥的体积",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "图形与几何",
+      "visual_type": "isometric_3d",
+      "cognitive_level": "analyze",
+      "formula": "V = πr²h ÷ 3",
+      "misconceptions": [
+        "忘记除以3",
+        "圆柱圆锥关系理解偏差"
+      ],
+      "description": "圆锥体积公式推导与应用。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-02"
+        ],
+        "cross": [
+          "math-g6-gm-02b"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-03a",
+      "title": "图形的平移与旋转",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "understand",
+      "formula": "平移: 方向+距离; 旋转: 中心+方向+角度",
+      "misconceptions": [
+        "平移距离数错",
+        "旋转中心偏移"
+      ],
+      "description": "图形的平移与旋转变换。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-03"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-gm-03b",
+      "title": "图形的放大与缩小",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "图形与几何",
+      "visual_type": "geometry_2d",
+      "cognitive_level": "apply",
+      "formula": "对应边比 = 放大/缩小比",
+      "misconceptions": [
+        "面积比与边长比混淆",
+        "只缩一边"
+      ],
+      "description": "按比放大与缩小图形。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-gm-03"
+        ],
+        "cross": [
+          "math-g6-gm-03a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-sp-01a",
+      "title": "扇形统计图分析",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "统计与概率",
+      "visual_type": "data_chart",
+      "cognitive_level": "apply",
+      "formula": "扇形圆心角 = 百分比 × 360°",
+      "misconceptions": [
+        "百分比与圆心角换算错",
+        "总量反推遗漏"
+      ],
+      "description": "扇形统计图绘制与分析。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-sp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-cp-01a",
+      "title": "数学探究: 鸡兔同笼",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "综合与实践",
+      "visual_type": "bucket_divider",
+      "cognitive_level": "analyze",
+      "formula": "假设全鸡: 兔=(脚数-2×头数)÷2",
+      "misconceptions": [
+        "假设法方向错",
+        "方程法设未知数不当"
+      ],
+      "description": "鸡兔同笼问题与假设法。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-cp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-cp-01b",
+      "title": "数学探究: 抽屉原理",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "综合与实践",
+      "visual_type": "bucket_divider",
+      "cognitive_level": "analyze",
+      "formula": "n+1个物体放n个抽屉→至少1屉2个",
+      "misconceptions": [
+        "抽屉数确定错",
+        "最不利原则理解偏差"
+      ],
+      "description": "抽屉原理与最不利原则。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-cp-01"
+        ],
+        "cross": [
+          "math-g6-cp-01a"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
+    },
+    {
+      "id": "math-g6-cp-01c",
+      "title": "数学探究: 植树问题",
+      "grade": "6",
+      "semester": "6-2",
+      "strand": "综合与实践",
+      "visual_type": "track_timeline",
+      "cognitive_level": "analyze",
+      "formula": "两端栽: 棵数=段数+1; 一端: =段数; 两端不栽: =段数-1",
+      "misconceptions": [
+        "端点类型判断错",
+        "段数与棵数关系混淆"
+      ],
+      "description": "植树问题三模型。",
+      "edges": {
+        "exemplifies": [
+          "math-g6-cp-01"
+        ]
+      },
+      "node_type": "Concept",
+      "stage": "Primary",
+      "spatial": {}
     }
   ]
 }

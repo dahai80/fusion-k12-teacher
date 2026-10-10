@@ -110,6 +110,8 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
             logger.warning("math_knowledge_graph: 增强 JSON 解析失败 %s: %s", p, exc)
             return
         for item in data.get("nodes", []):
+            # issue #21: 优先读 visual_type, 兼容旧 visual_engine 字段
+            vt = str(item.get("visual_type", "") or item.get("visual_engine", ""))
             node = GraphNode(
                 id=str(item.get("id", "")),
                 title=str(item.get("title", "")),
@@ -117,8 +119,9 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
                 stage=str(item.get("stage", "")),
                 strand=str(item.get("strand", "")),
                 grade=str(item.get("grade", "")),
+                semester=str(item.get("semester", "")),
                 spatial=item.get("spatial", {}),
-                visual_engine=str(item.get("visual_engine", "")),
+                visual_type=vt,
                 formula=str(item.get("formula", "")),
                 misconceptions=list(item.get("misconceptions", [])),
                 cognitive_level=str(item.get("cognitive_level", "")),

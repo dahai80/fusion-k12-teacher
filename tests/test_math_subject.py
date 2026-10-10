@@ -292,7 +292,8 @@ class TestMathKnowledgeGraph:
         self.kg.load(standards_query=self.q)
 
     def test_loaded_nodes(self):
-        assert self.kg.node_count() == 52
+        # issue #21: 52 standards + 104 enhanced = 156 nodes
+        assert self.kg.node_count() >= 150
         assert self.kg.edge_count() > 0
 
     def test_is_dag(self):
@@ -315,6 +316,50 @@ class TestMathKnowledgeGraph:
             n = self.kg.get_node(nodes[0].id)
             assert n is not None
             assert n.id == nodes[0].id
+
+    # ── issue #21: 150 节点覆盖性测试 ──
+
+    def test_all_enhanced_nodes_have_visual_type(self):
+        from fusion_k12_teacher.course.models import VISUAL_TYPES
+        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        assert len(enhanced) >= 100
+        for n in enhanced:
+            assert n.visual_type in VISUAL_TYPES, f"{n.id} visual_type={n.visual_type} not in 8 primitives"
+
+    def test_all_enhanced_nodes_have_semester(self):
+        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        semesters = {n.semester for n in enhanced}
+        assert len(semesters) == 12, f"expected 12 semesters, got {len(semesters)}"
+
+    def test_all_enhanced_nodes_have_2plus_misconceptions(self):
+        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        for n in enhanced:
+            assert len(n.misconceptions) >= 2, f"{n.id} has <2 misconceptions"
+
+    def test_semester_distribution(self):
+        from collections import Counter
+        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        sems = Counter(n.semester for n in enhanced)
+        for s in sorted(sems):
+            assert sems[s] >= 3, f"semester {s} has only {sems[s]} nodes (<3)"
+
+    def test_visual_type_routing_by_grade(self):
+        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        g1_2 = [n for n in enhanced if n.grade in ("1", "2")]
+        g3_4 = [n for n in enhanced if n.grade in ("3", "4")]
+        g5_6 = [n for n in enhanced if n.grade in ("5", "6")]
+        assert len(g1_2) > 0
+        assert len(g3_4) > 0
+        assert len(g5_6) > 0
+        # 低年级应有 array_grid (计数)
+        assert any(n.visual_type == "array_grid" for n in g1_2)
+        # 高年级应有 tape_diagram (和差倍比)
+        assert any(n.visual_type == "tape_diagram" for n in g5_6)
+
+    def test_graphnode_visual_engine_alias(self):
+        n = self.kg.get_node("math-g5-na-01")
+        if n:
+            assert n.visual_engine == n.visual_type
 
 
 class TestSceneCompilerMock:
@@ -358,3 +403,67 @@ class TestSocraticTutorMock:
         assert len(dsl.steps) == 1
         assert dsl.steps[0].checkpoint is not None
         assert dsl.steps[0].phase == "Engage"
+
+
+# ── issue #19: v3.0 generic_pipeline sanitize + socratic_tutor meta ──
+
+class TestV3VisualSanitize:
+    def test_sanitize_valid_v3_kind(self):
+        from fusion_k12_teacher.course.subjects.math.generic_pipeline import _sanitize_visual
+        out = _sanitize_visual({"kind": "tape_diagram", "title": "和差问题"})
+        assert out["kind"] == "tape_diagram"
+        assert out["title"] == "和差问题"
+
+    def test_sanitize_legacy_kind_mapped(self):
+        from fusion_k12_teacher.course.subjects.math.generic_pipeline import _sanitize_visual
+        assert _sanitize_visual({"kind": "number_line"})["kind"] == "track_timeline"
+        assert _sanitize_visual({"kind": "bar_model"})["kind"] == "tape_diagram"
+        assert _sanitize_visual({"kind": "flow"})["kind"] == "flow_card"
+        assert _sanitize_visual({"kind": "grid"})["kind"] == "array_grid"
+        assert _sanitize_visual({"kind": "timeline"})["kind"] == "track_timeline"
+
+    def test_sanitize_unknown_kind_fallback_flow_card(self):
+        from fusion_k12_teacher.course.subjects.math.generic_pipeline import _sanitize_visual
+        assert _sanitize_visual({"kind": "bogus"})["kind"] == "flow_card"
+
+    def test_sanitize_non_dict_defaults(self):
+        from fusion_k12_teacher.course.subjects.math.generic_pipeline import _sanitize_visual
+        assert _sanitize_visual(None)["kind"] == "flow_card"
+        assert _sanitize_visual("not_dict")["kind"] == "flow_card"
+
+    def test_visual_kinds_8_primitives(self):
+        from fusion_k12_teacher.course.subjects.math.generic_pipeline import _VISUAL_KINDS
+        assert len(_VISUAL_KINDS) == 8
+        assert "array_grid" in _VISUAL_KINDS
+        assert "flow_card" in _VISUAL_KINDS
+
+
+class TestSocraticTutorV3Meta:
+    @pytest.fixture
+    def tutor(self, monkeypatch):
+        from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
+        from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
+
+        class MockMLX:
+            async def chat(self, messages, temperature=0.3, max_tokens=4096):
+                return '''{"meta": {"visual_type": "track_timeline", "fallback_type": "tape_diagram"}, "global_variables": {"L_train": {"label": "车长", "unit": "m", "value": 200}}, "steps": [{"step_id": "step1", "step_title": "观察", "phase": "Engage", "speech_narration": "火车过桥", "animation": {"start_ratio": 0.0, "end_ratio": 0.3, "camera_focus_entity": "train_head"}, "visual_state": {"visual_type": "track_timeline", "action": "进入:列车驶入", "progress_range": [0.0, 0.3], "active_entities": ["train_head"]}, "checkpoint": {"id": "cp1", "type": "multiple_choice", "prompt": "路程?", "options": [{"id": "a", "label": "桥长+车长", "is_correct": true, "feedback": "对"}], "hints": ["提示"], "on_error_action": "rewind", "difficulty_layer": "B"}}]}'''
+
+        return MathSocraticTutor(MockMLX(), MathSympyVerifier())
+
+    @pytest.mark.asyncio
+    async def test_dsl_version_v3(self, tutor):
+        dsl = await tutor.generate_lesson_script("火车过桥", grade="5")
+        assert dsl.version == "3.0.0"
+
+    @pytest.mark.asyncio
+    async def test_meta_has_visual_type(self, tutor):
+        dsl = await tutor.generate_lesson_script("火车过桥", grade="5")
+        assert dsl.meta["visual_type"] == "track_timeline"
+        assert dsl.meta["fallback_type"] == "tape_diagram"
+
+    @pytest.mark.asyncio
+    async def test_step_has_visual_state(self, tutor):
+        dsl = await tutor.generate_lesson_script("火车过桥", grade="5")
+        assert dsl.steps[0].visual_state.visual_type == "track_timeline"
+        assert dsl.steps[0].visual_state.action == "进入:列车驶入"
+        assert dsl.steps[0].visual_state.active_entities == ["train_head"]

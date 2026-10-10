@@ -34,6 +34,9 @@ def _env_model() -> str:
 _PREFERRED_CHAT_MODELS = (
     "Qwen3.5-9B-4bit", "Qwen3.5-9B", "Qwen3.5-4B", "Qwen3-4B",
     "Qwen3.5-4B-bf16", "Qwen3.5-4B-4bit", "Qwen3-0.6B",
+    # 本地 mlx 库实测存在的 chat 模型 (Llama-3.2-1B) — 无更强模型时兜底,
+    # 精确单横线名: 双横线变体 (--Llama) 在 mlx 实体未注册, 选中即 404 空流
+    "mlx-community-Llama-3.2-1B-Instruct-4bit",
 )
 _NON_CHAT_KEYWORDS = (
     "dit", "vae", "text_encoder", "transformer", "embed", "bge",
@@ -103,7 +106,9 @@ class MLXClient:
         self._max_retries = int(os.environ.get("FUSION_MLX_MAX_RETRIES", "2"))
         self._models_cache_ttl = float(os.environ.get("FUSION_MLX_MODELS_TTL", "30"))
         if _HAS_FUSION_CORE and _FusionMLXClient is not None:
-            self._inner = _FusionMLXClient(base_url=self.base_url)
+            # fusion_core 构造默认 timeout=120s 硬编码, 不读 env — 4B 模型长推理
+            # (4096 token 讲稿) 必超时 → k12 的 FUSION_MLX_READ_TIMEOUT 透传下去
+            self._inner = _FusionMLXClient(base_url=self.base_url, timeout=self._read_timeout)
         # R8: httpx client eager 构造 — 原 httpx_client property 惰性 init 无锁,
         # 多协程首调同时触发 double-build, 短暂泄漏一个连接池实例。__init__ 构造免竞态。
         self._httpx_client = self._build_httpx_client()
@@ -155,18 +160,20 @@ class MLXClient:
         messages: list[dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        model: str = "",
     ) -> str:
         """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx。
 
         统一重试预算覆盖 fusion-core + httpx 双路径的瞬态错误；
         模型 404 时失效缓存并强制重新选择。
+        model: 覆盖默认模型 (如图片提问临时切 VLM: Qwen2.5-VL-7B)。
         """
         self._ensure_locks()
         if not self.model:
             self.model = await self._auto_select_model()
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
-            used_model = self.model or _env_model()
+            used_model = model or self.model or _env_model()
             try:
                 # P1-19: 全局并发信号量限流 — 超并发请求排队等待, 不雪崩本地推理
                 # 硬超时兜底 — fusion_core 连接卡死时 ReadTimeout 可能不触发, 防 sem 永久持有
@@ -312,8 +319,23 @@ class MLXClient:
         }
         if voice:
             payload["voice"] = voice
+        # TTS 直连: gateway 可能把 /audio/speech 路由到不可用的 Cloud backend
+        # (实测 503 "Cloud backend not available"), 用独立 env 让 TTS 绕过 gateway
+        # 直连 fusion-mlx。未设置时维持原 gateway 路径。
+        tts_url = os.environ.get("FUSION_MLX_TTS_URL", "").strip()
+        if tts_url:
+            client = self.httpx_client
+            url = tts_url.rstrip("/") + "/audio/speech"
+        else:
+            client = self.httpx_client
+            url = "/audio/speech"
         try:
-            resp = await self.httpx_client.post("/audio/speech", json=payload, headers=self._auth_headers())
+            # 直连 mlx 时用 TTS 专属 key (mlx 的 api_key ≠ gateway key, 带错 401)
+            headers = self._auth_headers()
+            tts_key = os.environ.get("FUSION_MLX_TTS_KEY", "").strip()
+            if tts_url and tts_key:
+                headers = {"Authorization": f"Bearer {tts_key}"}
+            resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code >= 400:
                 logger.error("TTS HTTP %d: %s", resp.status_code, resp.text[:200])
                 raise RuntimeError(f"TTS HTTP {resp.status_code}")
@@ -357,23 +379,35 @@ class MLXClient:
 
     async def chat_stream(
         self, messages: list[dict[str, str]], *, temperature: float = 0.7, max_tokens: int = 4096,
+        enable_thinking: bool | None = None,
     ) -> Any:
         """fusion-mlx /v1/chat/completions stream — SSE token 流。返回 httpx.Response (流式)。
 
         P1-19: 流式不纳入 chat 信号量 — _answer 流式答疑中 TTS 须与 LLM 流并发 (同 sem 死锁)。
         流式推理单 DH 会话内串行 (fsm 保证), 跨会话并发由 chat() 信号量间接限流。
+        issue #20: enable_thinking 参数 — None 走 _think_kwargs() (env 控制),
+        True/False 显式覆盖 (两阶段 CoT pipeline 用)。
         """
         self._ensure_locks()
         if not self.model:
             self.model = await self._auto_select_model()
+        # 模型名优先 env: auto-select 可能从列表选中双横线变体(mlx-community--X),
+        # mlx 实体只注册单横线名 → stream 404 → 空流(答疑0字)。env 是实测可用的名字。
+        if enable_thinking is None:
+            think_kwargs = self._think_kwargs()
+        elif enable_thinking:
+            think_kwargs = {}
+        else:
+            think_kwargs = {"enable_thinking": False}
         payload = {
-            "model": self.model or _env_model(),
+            "model": _env_model() or self.model or _env_model(),
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": True,
-            "chat_template_kwargs": self._think_kwargs(),
+            "chat_template_kwargs": think_kwargs,
         }
+        logger.info("chat_stream: model=%s thinking=%s", payload["model"], think_kwargs)
         return self.httpx_client.stream(
             "POST", "/chat/completions", json=payload, headers=self._auth_headers(),
         )

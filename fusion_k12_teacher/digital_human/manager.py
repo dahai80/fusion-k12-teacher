@@ -127,6 +127,8 @@ class DigitalHumanManager:
         code: str = "", student_id: str = "",
         layer: str = "B",
         lesson_plan: dict[str, Any] | None = None,
+        mode: str = "topic",
+        knowledge_node_id: str = "",
     ) -> DigitalHumanSession:
         # 闸门带超时 — 避调用方忘 finish 时 create_session 永久阻塞 (issue: gate 耗尽)
         # 超时则快失败, 调用方收 503 而非挂死
@@ -146,6 +148,7 @@ class DigitalHumanManager:
                 code=code, student_id=student_id,
                 content=content, asr=self._asr, llm=self._llm, tts=self._tts,
                 avatar=avatar, session_manager=self.session_manager, layer=layer,
+                mode=mode, knowledge_node_id=knowledge_node_id,
             )
             async with self._lock:
                 self._sessions[session_id] = sess

@@ -64,7 +64,9 @@ export const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const auth = useAuthStore()
   if (!auth.isLoggedIn && !to.meta.public) {
-    next('/login')
+    // 未登录访问受保护页 → 登录页带 reason=auth, 页面据此显示"请先登录"提示
+    // (原静默重定向让用户误以为菜单"点击没反应")
+    next({ path: '/login', query: { reason: 'auth', from: to.fullPath } })
   } else if (auth.isLoggedIn && to.path === '/login') {
     next('/dashboard')
   } else {

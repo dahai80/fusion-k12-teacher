@@ -5,13 +5,20 @@ from __future__ import annotations
 import pytest
 
 from fusion_k12_teacher.course import (
+    FALLBACK_TYPES,
+    VISUAL_TYPES,
     Checkpoint,
     CheckpointType,
+    FallbackType,
+    FusionSocraticDSL,
     MasteryTracker,
     OnErrorAction,
     SceneDSL,
     SubjectNotFoundError,
     SubjectRegistry,
+    TeachingStep,
+    VisualState,
+    VisualType,
 )
 from fusion_k12_teacher.course.subjects.math import MathSubject
 
@@ -81,3 +88,86 @@ def test_mastery_tracker_weak_nodes():
     for _ in range(6):
         t.record("s2", "node_weak", False)
     assert "node_weak" in t.weak_nodes("s2")
+
+
+# ── issue #19: DSL v3.0 测试 ──────────────────────────────────────────
+
+def test_visual_type_enum_8_primitives():
+    assert len(VISUAL_TYPES) == 8
+    assert VisualType.ARRAY_GRID.value == "array_grid"
+    assert VisualType.TAPE_DIAGRAM.value == "tape_diagram"
+    assert VisualType.GEOMETRY_2D.value == "geometry_2d"
+    assert VisualType.ISOMETRIC_3D.value == "isometric_3d"
+    assert VisualType.TRACK_TIMELINE.value == "track_timeline"
+    assert VisualType.BUCKET_DIVIDER.value == "bucket_divider"
+    assert VisualType.DATA_CHART.value == "data_chart"
+    assert VisualType.FLOW_CARD.value == "flow_card"
+
+
+def test_fallback_type_enum_2_values():
+    assert len(FALLBACK_TYPES) == 2
+    assert FallbackType.TAPE_DIAGRAM.value == "tape_diagram"
+    assert FallbackType.FLOW_CARD.value == "flow_card"
+
+
+def test_fusion_socratic_dsl_version_v3():
+    dsl = FusionSocraticDSL(subject="math")
+    assert dsl.version == "3.0.0"
+    d = dsl.to_dict()
+    assert d["version"] == "3.0.0"
+    assert "scene" in d
+    assert "steps" in d
+
+
+def test_fusion_socratic_dsl_meta_visual_type():
+    dsl = FusionSocraticDSL(
+        subject="math",
+        meta={"title": "过桥问题", "visual_type": "track_timeline",
+              "fallback_type": "tape_diagram"},
+    )
+    assert dsl.meta["visual_type"] == "track_timeline"
+    assert dsl.meta["fallback_type"] == "tape_diagram"
+
+
+def test_visual_state_from_dict_valid():
+    vs = VisualState.from_dict({
+        "visual_type": "array_grid",
+        "action": "进入:展示3行4列阵列",
+        "progress_range": [0.0, 0.5],
+        "active_entities": ["cell_1", "cell_2"],
+        "latex_state": "3 \\times 4 = 12",
+    })
+    assert vs.visual_type == "array_grid"
+    assert vs.action == "进入:展示3行4列阵列"
+    assert vs.progress_range == (0.0, 0.5)
+    assert vs.active_entities == ["cell_1", "cell_2"]
+
+
+def test_visual_state_from_dict_invalid_type_fallback():
+    vs = VisualState.from_dict({"visual_type": "bogus_viz"})
+    assert vs.visual_type == "flow_card"
+
+
+def test_visual_state_from_dict_bad_progress_range():
+    vs = VisualState.from_dict({"progress_range": "not_a_list"})
+    assert vs.progress_range == (0.0, 1.0)
+
+
+def test_teaching_step_has_visual_state():
+    step = TeachingStep(step_id="s1", step_title="引入", speech_narration="...")
+    assert step.visual_state is not None
+    assert step.visual_state.visual_type == ""
+    d = step.to_dict()
+    assert "visual_state" in d
+
+
+def test_teaching_step_with_visual_state_round_trip():
+    step = TeachingStep(
+        step_id="s1", step_title="探索", speech_narration="看图数一数",
+        visual_state=VisualState(visual_type="array_grid", action="圈画",
+                                 progress_range=(0.1, 0.4),
+                                 active_entities=["row1"]),
+    )
+    d = step.to_dict()
+    assert d["visual_state"]["visual_type"] == "array_grid"
+    assert d["visual_state"]["action"] == "圈画"

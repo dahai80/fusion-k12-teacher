@@ -2506,6 +2506,9 @@ class ClassroomAnswerRequest(BaseModel):
     expected_answer: _StrAny = ""
     question_type: str = "open"  # open|numeric|multiple_choice|expression
     grade: str = "5"
+    # multiple_choice 判题用: LLM 生成的 answer 可能是字母("A")而 options 是
+    # 完整选项文本 — 前端把选项列表带上, 判题端做字母↔文本双向映射。
+    options: list[str] = Field(default_factory=list)
 
 
 class ClassroomSessionRequest(BaseModel):
@@ -2626,7 +2629,20 @@ async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, st
     """判分分发: numeric/multiple_choice 用本地逻辑, open/expression 委托 AssessmentEngine。"""
     qtype = req.question_type
     if qtype == "multiple_choice":
-        correct = req.student_answer.strip().upper() == str(req.expected_answer).strip().upper()
+        expected = str(req.expected_answer).strip().upper()
+        student = req.student_answer.strip()
+        # 选项映射: answer 是字母("A")而 student 提交选项文本(或反之)时双向归一。
+        # LLM 出题两种形态都出现: options=["A","B"] 或 options=["3个5相加",...]+answer="A"
+        if req.options and len(student) != 1:
+            letters = "ABCDEFGH"
+            for i, opt in enumerate(req.options[: len(letters)]):
+                if student == opt.strip():
+                    student = letters[i]
+                    break
+        elif req.options and len(expected) == 1:
+            # expected 是字母而 student 是字母 — 已全等; student 是选项文本的情形上面已归一
+            pass
+        correct = student.upper() == expected
         return correct, "对!" if correct else f"应为 {req.expected_answer}", "multiple_choice"
     if qtype == "numeric":
         try:
@@ -2690,10 +2706,22 @@ async def classroom_list_sessions(
 
 
 # WebSocket: 苏格拉底课稿流式生成 (PRD §12.2, 5 事件协议)
-# GBNF Logits Masker 替代: 两阶段 prompt (<thinking>/<dsl>) + 后置 Pydantic 校验
+# issue #20: 两阶段 CoT pipeline — enable_thinking 流式推理 → 结构化 DSL
 @app.websocket("/ws/socratic-dsl")
 async def ws_socratic_dsl(websocket: WebSocket):
-    """流式推送课稿生成: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error。"""
+    """流式推送课稿生成: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error。
+
+    issue #20: FUSION_K12_COT_ENABLED=true 时走真两阶段 — 流式推送 thinking tokens,
+    否则走占位提示 (向后兼容)。
+    """
+    from ._prompt import build_prompt
+    from .course.cot_pipeline import (
+        COT_THINKING_PROMPT,
+        cot_enabled,
+        extract_thinking,
+        stream_thinking,
+    )
+
     await websocket.accept()
     try:
         payload = await websocket.receive_json()
@@ -2704,7 +2732,7 @@ async def ws_socratic_dsl(websocket: WebSocket):
             await websocket.send_json({"event": "error", "data": {"message": "topic 必填"}})
             await websocket.close()
             return
-        await websocket.send_json({"event": "start", "data": {"stage": "thinking"}})
+        await websocket.send_json({"event": "start", "data": {"stage": "thinking", "cot_enabled": cot_enabled()}})
         if subject_registry is None:
             await websocket.send_json({"event": "error", "data": {"message": "registry not ready"}})
             await websocket.close()
@@ -2720,8 +2748,32 @@ async def ws_socratic_dsl(websocket: WebSocket):
             await websocket.send_json({"event": "error", "data": {"message": f"学科 {subject} 未实现课稿"}})
             await websocket.close()
             return
-        # thinking 阶段占位 (真两阶段推理待上游 GBNF; 此处先推思考提示)
-        await websocket.send_json({"event": "stream_chunk", "data": {"stage": "thinking", "text": "正在分析知识点与教学路径..."}})
+
+        thinking_text = ""
+        if cot_enabled() and mlx_client is not None:
+            # 阶段 1: 真两阶段 CoT — 流式推送 thinking tokens
+            thinking_prompt = build_prompt(
+                COT_THINKING_PROMPT,
+                topic=topic, grade=grade,
+                node_id=str(payload.get("knowledge_node_id", "")),
+                prerequisites=str(payload.get("prerequisites") or ""),
+                misconceptions=str(payload.get("misconceptions") or ""),
+            )
+            thinking_msgs = [{"role": "user", "content": thinking_prompt}]
+
+            async def on_chunk(token: str) -> None:
+                await websocket.send_json({"event": "stream_chunk", "data": {"stage": "thinking", "text": token}})
+
+            thinking_text = await stream_thinking(
+                mlx_client, thinking_msgs, on_chunk=on_chunk,
+                temperature=0.5, max_tokens=2048,
+            )
+            thinking_text, _ = extract_thinking(thinking_text)
+            logger.info("ws_socratic_dsl: CoT thinking %d chars", len(thinking_text))
+        else:
+            # 向后兼容: 占位提示
+            await websocket.send_json({"event": "stream_chunk", "data": {"stage": "thinking", "text": "正在分析知识点与教学路径..."}})
+
         await websocket.send_json({"event": "stage_change", "data": {"new_stage": "dsl"}})
         dsl = await tutor.generate_lesson_script(
             topic=topic, grade=grade,
@@ -2730,7 +2782,7 @@ async def ws_socratic_dsl(websocket: WebSocket):
             misconceptions=payload.get("misconceptions") or None,
             layer=str(payload.get("layer", "B")) or "B",
         )
-        await websocket.send_json({"event": "dsl_complete", "data": {"dsl": dsl.to_dict(), "thinking": ""}})
+        await websocket.send_json({"event": "dsl_complete", "data": {"dsl": dsl.to_dict(), "thinking": thinking_text}})
         await websocket.send_json({"event": "finish", "data": {}})
     except Exception as exc:
         logger.warning("ws_socratic_dsl 异常: %s", exc)
@@ -2750,7 +2802,11 @@ async def ws_socratic_dsl(websocket: WebSocket):
 
 @app.post("/api/digital-human/session")
 async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """创建数字人会话 — 加载讲稿, prewarm 插件, 返回 session_id + 页面清单。"""
+    """创建数字人会话 — 加载讲稿, prewarm 插件, 返回 session_id + 页面清单。
+
+    mode: topic=自由主题(默认) | course=按教案讲(class_id 必填, 复用课堂包 script_pages)
+        | expand=举一反三(class_id 可选, 图谱上下文+扩展讲解) | qa=纯问答(直接提问)
+    """
     if digital_human_manager is None:
         raise HTTPException(503, "digital_human_manager 未初始化")
     subject = str(req.get("subject", "math"))
@@ -2759,18 +2815,41 @@ async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: No
     code = str(req.get("code", ""))
     student_id = str(req.get("student_id", ""))
     layer = str(req.get("layer", "B"))
+    mode = str(req.get("mode", "topic"))
+    class_id = str(req.get("class_id", ""))
+    knowledge_node_id = str(req.get("knowledge_node_id", ""))
     lesson_plan = req.get("lesson_plan") or None
     # 复用已有 script — 若 req 带 script (pages), 注入 lesson_plan 避 DH 重生成讲稿
     script_pages = req.get("script", {}).get("pages") if isinstance(req.get("script"), dict) else None
+    # course/expand 模式: 从课堂包取元数据 — course 直接复用 script_pages (零 LLM);
+    # expand 只取 topic/subject/grade, 讲稿走图谱上下文+扩展生成
+    if mode in ("course", "expand") and class_id:
+        try:
+            pack = packager.get_by_id(class_id) or packager.get_by_code(class_id)
+            script_obj = getattr(pack, "script", None) if pack is not None else None
+            pages = script_obj.get("pages", []) if isinstance(script_obj, dict) else []
+            if pages and mode == "course" and not script_pages:
+                script_pages = pages
+            # 两种模式都从包补元数据 (expand 也需要 topic)
+            if pack is not None:
+                topic = topic or str(getattr(pack, "topic", "") or "")
+                subject = subject if req.get("subject") else str(getattr(pack, "subject", subject) or subject)
+                grade = grade if req.get("grade") else str(getattr(pack, "grade", grade) or grade)
+            if mode == "course" and not pages:
+                logger.warning("dh course mode: 课堂包 %s 无讲稿页 (pages=%s)", class_id, len(pages))
+        except Exception as exc:
+            logger.warning("dh %s mode: 课堂包 %s 加载失败, 走常规生成: %s", mode, class_id, exc)
     if script_pages and lesson_plan is None:
         lesson_plan = {}
     if script_pages:
         lesson_plan["script_pages"] = script_pages
-    if not topic:
+    # mode=qa: 纯问答 — topic 允许为空 (进来就问)
+    if not topic and mode != "qa":
         raise HTTPException(400, "topic 必填")
     try:
         sess = await digital_human_manager.create_session(
-            subject, topic, grade, code=code, student_id=student_id, layer=layer, lesson_plan=lesson_plan,
+            subject, topic, grade, code=code, student_id=student_id, layer=layer,
+            lesson_plan=lesson_plan, mode=mode, knowledge_node_id=knowledge_node_id,
         )
     except Exception as exc:
         logger.error("dh_create_session 失败: %s", exc, exc_info=True)
@@ -2778,6 +2857,7 @@ async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: No
     return {
         "session_id": sess.session_id, "page_count": sess.page_count,
         "pages": sess.page_manifest(), "subject": sess.subject, "topic": sess.topic,
+        "mode": mode,
         "tts_available": sess.tts.available if sess.tts else False,
         "avatar_available": sess.avatar.available,
         "llm_available": sess.llm.available if sess.llm else False,
@@ -2834,13 +2914,14 @@ async def dh_raise_hand(req: dict, _: str = Depends(require_api_key), _r: None =
         raise HTTPException(503, "digital_human_manager 未初始化")
     session_id = str(req.get("session_id", ""))
     text = str(req.get("text", ""))
+    image_b64 = str(req.get("image_b64", "")).strip()
     sess = digital_human_manager.get(session_id)
     if sess is None:
         raise HTTPException(404, "会话不存在")
-    if not text:
-        raise HTTPException(400, "text 必填")
+    if not text and not image_b64:
+        raise HTTPException(400, "text 或 image_b64 必填其一")
     try:
-        res = await sess.raise_hand(text)
+        res = await sess.raise_hand(text, image_b64=image_b64)
     except Exception as exc:
         logger.error("dh_raise_hand 失败: %s", exc, exc_info=True)
         raise HTTPException(500, str(exc))
@@ -2902,7 +2983,8 @@ async def ws_digital_human(websocket: WebSocket, session_id: str):
                         await websocket.send_bytes(sess._last_audio)
                 elif action == "raise_hand":
                     text = str(data.get("text", ""))
-                    res = await sess.raise_hand(text)
+                    image_b64 = str(data.get("image_b64", "")).strip()
+                    res = await sess.raise_hand(text, image_b64=image_b64)
                     await websocket.send_json({"event": "qa_done", "data": res})
                     if res.get("has_audio") and sess._last_audio:
                         await websocket.send_bytes(sess._last_audio)

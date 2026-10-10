@@ -186,13 +186,13 @@ export function useDigitalHuman() {
         }
     }
 
-    async function raiseHand(text: string) {
-        if (!session.value || !text.trim()) return
+    async function raiseHand(text: string, imageB64: string = '') {
+        if (!session.value) return
         busy.value = true
         agentState.value = 'ai_thinking'
         pendingBinaryIsAudio = false
-        if (!sendWs('raise_hand', { text })) {
-            try { lastQa.value = await digitalHumanApi.raiseHand({ session_id: session.value.session_id, text }) }
+        if (!sendWs('raise_hand', { text, image_b64: imageB64 })) {
+            try { lastQa.value = await digitalHumanApi.raiseHand({ session_id: session.value.session_id, text, image_b64: imageB64 }) }
             catch (e: any) { errorMsg.value = e?.message || String(e) }
             finally { busy.value = false; agentState.value = 'idle' }
         }
