@@ -161,12 +161,14 @@ class MLXClient:
         temperature: float = 0.7,
         max_tokens: int = 4096,
         model: str = "",
+        grammar: str | None = None,
     ) -> str:
         """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx。
 
         统一重试预算覆盖 fusion-core + httpx 双路径的瞬态错误；
         模型 404 时失效缓存并强制重新选择。
         model: 覆盖默认模型 (如图片提问临时切 VLM: Qwen2.5-VL-7B)。
+        grammar: issue #20 GBNF 语法, 经 gateway#184 透传约束输出格式。
         """
         self._ensure_locks()
         if not self.model:
@@ -175,13 +177,11 @@ class MLXClient:
         for attempt in range(self._max_retries + 1):
             used_model = model or self.model or _env_model()
             try:
-                # P1-19: 全局并发信号量限流 — 超并发请求排队等待, 不雪崩本地推理
-                # 硬超时兜底 — fusion_core 连接卡死时 ReadTimeout 可能不触发, 防 sem 永久持有
                 sem = _llm_sem()
                 await asyncio.wait_for(sem.acquire(), timeout=self._read_timeout + 30)
                 try:
                     return await asyncio.wait_for(
-                        self._dispatch_chat(messages, used_model, temperature, max_tokens),
+                        self._dispatch_chat(messages, used_model, temperature, max_tokens, grammar),
                         timeout=self._read_timeout + 30,
                     )
                 finally:
@@ -211,6 +211,7 @@ class MLXClient:
         model: str,
         temperature: float,
         max_tokens: int,
+        grammar: str | None = None,
     ) -> str:
         import time as _time
         _t0 = _time.monotonic()
@@ -219,12 +220,15 @@ class MLXClient:
         try:
             if _HAS_FUSION_CORE and self._inner is not None:
                 try:
+                    extra_kwargs: dict[str, Any] = {"chat_template_kwargs": think_kwargs}
+                    if grammar:
+                        extra_kwargs["grammar"] = grammar
                     r = await self._inner.chat_text(
                         model=model,
                         messages=messages,
                         temperature=temperature,
                         max_tokens=max_tokens,
-                        chat_template_kwargs=think_kwargs,
+                        **extra_kwargs,
                     )
                     _ok = True
                     return r
@@ -232,7 +236,7 @@ class MLXClient:
                     raise
                 except Exception as e:
                     logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
-            r = await self._chat_httpx(messages, model, temperature, max_tokens, think_kwargs)
+            r = await self._chat_httpx(messages, model, temperature, max_tokens, think_kwargs, grammar)
             _ok = True
             return r
         finally:
@@ -250,6 +254,7 @@ class MLXClient:
         temperature: float,
         max_tokens: int,
         think_kwargs: dict | None = None,
+        grammar: str | None = None,
     ) -> str:
         payload = {
             "model": model or _env_model(),
@@ -259,6 +264,8 @@ class MLXClient:
         }
         if think_kwargs:
             payload["chat_template_kwargs"] = think_kwargs
+        if grammar:
+            payload["grammar"] = grammar
         resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
             raise _ModelNotFound(f"模型未加载: {model}")

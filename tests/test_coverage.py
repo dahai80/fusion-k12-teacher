@@ -16,7 +16,7 @@ from fusion_k12_teacher.subjects import SubjectExercise, SubjectExpert
 def _capturing_mock(response_text: str):
     captured: list[str] = []
 
-    async def chat(messages, temperature=0.7, max_tokens=4096):
+    async def chat(messages, temperature=0.7, max_tokens=4096, **kwargs):
         # 取 user 消息内容拼成完整 prompt 文本
         parts = [m.get("content", "") for m in messages if m.get("role") == "user"]
         system = [m.get("content", "") for m in messages if m.get("role") == "system"]

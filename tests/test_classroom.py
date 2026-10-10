@@ -13,7 +13,7 @@ MOCK_SCRIPT_JSON = '''{"pages": [{"page_index": 0, "title": "导入", "narration
 
 
 def _mock_chat(response_text):
-    async def chat(self, messages, temperature=0.7, max_tokens=4096):
+    async def chat(self, messages, temperature=0.7, max_tokens=4096, **kwargs):
         return response_text
     return chat
 

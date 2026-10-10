@@ -159,6 +159,75 @@ class TestDslGbnfGrammar:
         )
         assert mock_httpx.last_payload.get("grammar") == "root ::= test"
 
+    @pytest.mark.asyncio
+    async def test_chat_non_stream_passes_grammar(self, monkeypatch):
+        """issue #20 gap 2: chat() (non-stream) 也应透传 grammar 到 payload。"""
+        from fusion_k12_teacher.ai_client import MLXClient
+
+        class MockResp:
+            status_code = 200
+            def json(self):
+                return {"choices": [{"message": {"content": '{"steps":[]}'}}]}
+            def raise_for_status(self):
+                pass
+
+        class MockHttpx:
+            def __init__(self):
+                self.last_payload = None
+            async def post(self, url, json=None, headers=None):
+                self.last_payload = json
+                return MockResp()
+
+        mock_httpx = MockHttpx()
+        client = MLXClient()
+        client._httpx_client = mock_httpx
+        client._inner = None
+        client.model = "test-model"
+        await client.chat(
+            [{"role": "user", "content": "test"}],
+            grammar="root ::= test",
+        )
+        assert mock_httpx.last_payload.get("grammar") == "root ::= test"
+
+    @pytest.mark.asyncio
+    async def test_socratic_tutor_passes_grammar_when_cot_enabled(self, monkeypatch):
+        """issue #20 gap 2: socratic_tutor 在 CoT 开启时应传 grammar=DSL_GBNF_GRAMMAR。"""
+        monkeypatch.setenv("FUSION_K12_COT_ENABLED", "true")
+        from fusion_k12_teacher.course.cot_pipeline import DSL_GBNF_GRAMMAR
+        from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
+        from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
+
+        captured_grammar = []
+
+        class MockMLX:
+            async def chat(self, messages, temperature=0.7, max_tokens=4096, **kwargs):
+                captured_grammar.append(kwargs.get("grammar"))
+                return '{"meta":{"visual_type":"flow_card","fallback_type":"flow_card"},"steps":[]}'
+
+        tutor = MathSocraticTutor(MockMLX(), MathSympyVerifier())
+        await tutor.generate_lesson_script(topic="测试", grade="5")
+        assert len(captured_grammar) > 0
+        assert captured_grammar[0] == DSL_GBNF_GRAMMAR
+
+    @pytest.mark.asyncio
+    async def test_socratic_tutor_no_grammar_when_cot_disabled(self, monkeypatch):
+        """issue #20: CoT 关闭时 grammar=None, 不影响原有行为。"""
+        monkeypatch.delenv("FUSION_K12_COT_ENABLED", raising=False)
+        from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
+        from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
+
+        captured_grammar = []
+
+        class MockMLX:
+            async def chat(self, messages, temperature=0.7, max_tokens=4096, **kwargs):
+                captured_grammar.append(kwargs.get("grammar"))
+                return '{"meta":{"visual_type":"flow_card","fallback_type":"flow_card"},"steps":[]}'
+
+        tutor = MathSocraticTutor(MockMLX(), MathSympyVerifier())
+        await tutor.generate_lesson_script(topic="测试", grade="5")
+        assert len(captured_grammar) > 0
+        assert captured_grammar[0] is None
+
 
 class TestCotPrompts:
     def test_thinking_prompt_has_placeholders(self):
