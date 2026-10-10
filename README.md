@@ -345,26 +345,35 @@ A subject-agnostic course platform. The platform depends only on the `SubjectMod
 ```
 course/
 ├── base.py          # SubjectModule protocol + KG/Verifier/SceneCompiler/Tutor ABCs
-├── models.py        # FusionSocratic DSL 2.1, Scene DSL 2.0, Checkpoint, GraphNode
+├── models.py        # FusionSocratic DSL v3.0, Scene DSL, Checkpoint, GraphNode, VisualState
 ├── registry.py      # SubjectRegistry: discover + init + fail-fast isolation
 ├── mastery.py       # Confidence heuristic tracker (DKT replacement, N≥5 cold-start)
+├── cot_pipeline.py  # Two-stage CoT: <thinking> streaming → <dsl> structured output (#20)
+├── prompts/
+│   └── bnup_socratic.py  # Centralized BNUP prompt registry: 8-primitive routing + CoT format (#22)
 └── subjects/
-    └── math/        # First subject: train-bridge problem family
+    └── math/        # First subject: BNUP K-12 math, 12 semesters
         ├── sympy_verifier.py    # SymPy SSoT, 6 scenario handlers, 1.5s timeout
-        ├── knowledge_graph.py   # networkx DAG, 52 nodes, Tarjan SCC validation
+        ├── knowledge_graph.py   # networkx DAG, 156 nodes (52 standards + 104 enhanced), Tarjan SCC
         ├── scene_compiler.py    # 3-stage: LLM extract → SymPy overwrite → render
-        ├── socratic_tutor.py    # 5E lesson script generation
+        ├── socratic_tutor.py    # 5E lesson script, v3.0 visual_type routing
         ├── problem_bank.py      # Triple-tagged problem loader
         └── data/
             ├── train_bridge_bank.json   # 9 problems (5 examples + 3 exercises), A/B/C layers
-            └── math_enhanced.json       # Formula/spatial/misconception enrichment (CROSS/EXEMPLIFIES edges)
+            └── math_enhanced.json       # 104 micro-knowledge-points, 12 semesters, visual_type + ≥2 misconceptions/node
 ```
+
+**v2.1.0 enhancements** (issues #19-#22):
+- **DSL v3.0** (#19): 8 visual primitives (array_grid/tape_diagram/geometry_2d/isometric_3d/track_timeline/bucket_divider/data_chart/flow_card) + 2-level fallback chain + per-step VisualState.
+- **Two-stage CoT** (#20): `FUSION_K12_COT_ENABLED=true` enables real `<thinking>` streaming via WebSocket, then structured DSL generation. Tag isolation replaces GBNF (upstream-deferred).
+- **150-node KG** (#21): 156 nodes across 12 semesters (grades 1-6 × 2), every node has visual_type + semester + ≥2 misconceptions. Tarjan DAG validation.
+- **BNUP prompt registry** (#22): Centralized `course/prompts/bnup_socratic.py` with 8-rule visual routing, system prompt, CoT format. Auto-routes visual_type by topic keywords.
 
 **Key design decisions** (PRD-aligned, upstream-deferred):
 - **SymPy symbolic engine** as numerical Single Source of Truth — overrides LLM-extracted values (PRD §6 rigor).
 - **networkx DAG** replaces Neo4j (offline pure Python; Neo4j upstream issue).
 - **Confidence heuristic** replaces DKT Transformer (Wilson lower bound, N≥5 cold-start; real DKT upstream).
-- **Structured-output prompting + Pydantic + SymPy** replaces GBNF Logits Masker (GBNF upstream issue).
+- **Structured-output prompting + Pydantic + SymPy + tag extraction** replaces GBNF Logits Masker (GBNF upstream issue).
 - **Train-bridge 5 problem types** with formula handlers: 完全过桥 / 完全在桥上 / 相对运动 / 错车超车 / 回声.
 
 Install math extras: `pip install -e ".[math]"` (adds `sympy`, `networkx`).
