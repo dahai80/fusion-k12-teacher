@@ -102,8 +102,14 @@ class MathSocraticTutor(SocraticTutorBase):
             topic=topic_s, grade=grade, node_id=knowledge_node_id or "未指定",
             prerequisites=pre, misconceptions=misc, layer=layer,
         )
+        # issue #20 gap 2: CoT 模式下用 GBNF grammar 约束 stage-2 DSL 输出为合法 JSON
+        from ...cot_pipeline import DSL_GBNF_GRAMMAR, cot_enabled
+        grammar = DSL_GBNF_GRAMMAR if cot_enabled() else None
         try:
-            raw = await self.mlx.chat([{"role": "user", "content": prompt}], temperature=0.3, max_tokens=4096)
+            raw = await self.mlx.chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.3, max_tokens=4096, grammar=grammar,
+            )
         except Exception as exc:
             logger.warning("socratic_tutor: LLM 生成失败 %s", exc)
             rethrow_if_fatal(exc)
@@ -124,7 +130,7 @@ class MathSocraticTutor(SocraticTutorBase):
             try:
                 raw2 = await self.mlx.chat(
                     [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
-                    temperature=0.2, max_tokens=4096,
+                    temperature=0.2, max_tokens=4096, grammar=grammar,
                 )
                 data = parse_json(raw2)
                 if not data or not isinstance(data, dict):

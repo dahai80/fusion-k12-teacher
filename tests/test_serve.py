@@ -15,7 +15,7 @@ MOCK_WORKSHEET = '{"title": "分数练习", "instructions": "认真答题", "sec
 
 
 def _mock_chat(response_text):
-    async def chat(messages, temperature=0.7, max_tokens=4096):
+    async def chat(messages, temperature=0.7, max_tokens=4096, **kwargs):
         return response_text
     return chat
 
@@ -127,7 +127,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "2.1.0"
+        assert data["version"] == "2.1.1"
 
 
 class TestCurriculumPlan:

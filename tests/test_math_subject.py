@@ -396,7 +396,7 @@ class TestSceneCompilerMock:
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 
         class MockMLX:
-            async def chat(self, messages, temperature=0.3, max_tokens=1024):
+            async def chat(self, messages, temperature=0.3, max_tokens=1024, **kwargs):
                 return '''{"scenario": "train_crossing_bridge", "entities": {"bridge": {"length": 800, "label": "大桥"}, "train": {"length": 200, "speed": 20, "label": "火车"}}, "key_milestones": [{"time_ratio": 0.0, "label": "车头上桥", "event": "start"}], "question_focus": "calculate_total_time", "misconception_hint": "忘记加车长"}'''
 
         return MathSceneCompiler(MockMLX(), MathSympyVerifier())
@@ -418,7 +418,7 @@ class TestSocraticTutorMock:
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 
         class MockMLX:
-            async def chat(self, messages, temperature=0.3, max_tokens=4096):
+            async def chat(self, messages, temperature=0.3, max_tokens=4096, **kwargs):
                 return '''{"global_variables": {"L_train": {"label": "车长", "unit": "m", "value": 200, "is_unknown": false}}, "steps": [{"step_id": "step1", "step_title": "观察", "phase": "Engage", "speech_narration": "我们来看火车过桥", "landmarks": [{"timeOffsetMs": 0, "progressRatio": 0.0, "latexHighlightVar": "L_train"}], "animation": {"start_ratio": 0.0, "end_ratio": 0.3, "camera_focus_entity": "train_head", "highlight_entities": ["train_head"]}, "checkpoint": {"id": "cp1", "type": "multiple_choice", "prompt": "路程关系?", "options": [{"id": "a", "label": "桥长+车长", "is_correct": true, "feedback": "对"}], "hints": ["提示"], "on_error_action": "rewind", "difficulty_layer": "B"}}]}'''
 
         return MathSocraticTutor(MockMLX(), MathSympyVerifier())
@@ -472,7 +472,7 @@ class TestSocraticTutorV3Meta:
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 
         class MockMLX:
-            async def chat(self, messages, temperature=0.3, max_tokens=4096):
+            async def chat(self, messages, temperature=0.3, max_tokens=4096, **kwargs):
                 return '''{"meta": {"visual_type": "track_timeline", "fallback_type": "tape_diagram"}, "global_variables": {"L_train": {"label": "车长", "unit": "m", "value": 200}}, "steps": [{"step_id": "step1", "step_title": "观察", "phase": "Engage", "speech_narration": "火车过桥", "animation": {"start_ratio": 0.0, "end_ratio": 0.3, "camera_focus_entity": "train_head"}, "visual_state": {"visual_type": "track_timeline", "action": "进入:列车驶入", "progress_range": [0.0, 0.3], "active_entities": ["train_head"]}, "checkpoint": {"id": "cp1", "type": "multiple_choice", "prompt": "路程?", "options": [{"id": "a", "label": "桥长+车长", "is_correct": true, "feedback": "对"}], "hints": ["提示"], "on_error_action": "rewind", "difficulty_layer": "B"}}]}'''
 
         return MathSocraticTutor(MockMLX(), MathSympyVerifier())
