@@ -246,10 +246,16 @@ Full endpoint list: see [README.md](README.md#12-http-api-servepy)
 
 学科无关的课程平台。平台只依赖 `SubjectModule` 协议 — 数学内容在 `course/subjects/math/`, 后续物理/化学/英语/语文接入零平台改动。
 
+**v2.1.0 增强** (issue #19-#22):
+- **DSL v3.0** (#19): 8 可视化基元 (array_grid/tape_diagram/geometry_2d/isometric_3d/track_timeline/bucket_divider/data_chart/flow_card) + 二级兜底链 + 步骤级 VisualState
+- **两阶段 CoT** (#20): `FUSION_K12_COT_ENABLED=true` 开启真 `<thinking>` 流式推理 → 结构化 DSL, 标签隔离替代 GBNF (上游延期)
+- **150 节点知识图谱** (#21): 156 节点覆盖 12 学期 (1-6年级 × 2), 每节点含 visual_type + semester + ≥2 易错点, Tarjan DAG 校验通过
+- **BNUP prompt 注册表** (#22): 集中 `course/prompts/bnup_socratic.py`, 8 规则可视化路由 + 系统指令 + CoT 格式, 按题型关键词自动路由
+
 - **SymPy 符号引擎**作数值 SSoT, 覆盖 LLM 提取值 (PRD §6 严谨性)
-- **networkx DAG** 替代 Neo4j (离线纯 Python, 52 节点, Tarjan SCC 校验)
+- **networkx DAG** 替代 Neo4j (离线纯 Python, 156 节点, Tarjan SCC 校验)
 - **置信度启发式**替代 DKT Transformer (Wilson 下界, N≥5 冷启动)
-- **结构化 prompt + Pydantic + SymPy** 替代 GBNF Logits Masker
+- **结构化 prompt + Pydantic + SymPy + 标签提取** 替代 GBNF Logits Masker
 - **火车过桥 5 题型**: 完全过桥 / 完全在桥上 / 相对运动 / 错车超车 / 回声
 - **首发题库**: 9 题 (5 例 + 3 练习), 按「知识点 + 认知层级 + 错因」三元组打标, A/B/C 分层
 
