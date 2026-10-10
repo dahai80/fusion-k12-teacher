@@ -363,17 +363,17 @@ course/
             └── math_enhanced.json       # 104 micro-knowledge-points, 12 semesters, visual_type + ≥2 misconceptions/node
 ```
 
-**v2.1.0 enhancements** (issues #19-#22):
-- **DSL v3.0** (#19): 8 visual primitives (array_grid/tape_diagram/geometry_2d/isometric_3d/track_timeline/bucket_divider/data_chart/flow_card) + 2-level fallback chain + per-step VisualState.
-- **Two-stage CoT** (#20): `FUSION_K12_COT_ENABLED=true` enables real `<thinking>` streaming via WebSocket, then structured DSL generation. Tag isolation replaces GBNF (upstream-deferred).
-- **150-node KG** (#21): 156 nodes across 12 semesters (grades 1-6 × 2), every node has visual_type + semester + ≥2 misconceptions. Tarjan DAG validation.
-- **BNUP prompt registry** (#22): Centralized `course/prompts/bnup_socratic.py` with 8-rule visual routing, system prompt, CoT format. Auto-routes visual_type by topic keywords.
+**v2.1.0→v2.1.1 enhancements** (issues #19-#22):
+- **DSL v3.0** (#19): 8 visual primitives (array_grid/tape_diagram/geometry_2d/isometric_3d/track_timeline/bucket_divider/data_chart/flow_card) + 2-level fallback chain + per-step VisualState. SceneDSL merged as typed sub-contract of FusionSocraticDSL (unified v3.0 contract).
+- **Two-stage CoT** (#20): `FUSION_K12_COT_ENABLED=true` enables real `<thinking>` streaming via WebSocket, then structured DSL generation. `<dsl>` tag extraction (`extract_dsl`) + GBNF grammar passthrough via `chat_stream(grammar=)` (gateway#184).
+- **150-node KG** (#21): 156 nodes across 12 semesters (grades 1-6 × 2), every node has visual_type + semester + ≥2 misconceptions. Standards-only nodes backfilled with auto-derived visual_type/semester/misconceptions. Tarjan DAG validation.
+- **BNUP prompt registry** (#22): Centralized `course/prompts/bnup_socratic.py` with 8-rule visual routing, system prompt, CoT format. Referenced at all 8 prompt call sites (socratic_tutor, generic_pipeline, scene_compiler, cot_pipeline, curriculum/engine, assessment/grader, subjects/expert, digital_human/memory).
 
 **Key design decisions** (PRD-aligned, upstream-deferred):
 - **SymPy symbolic engine** as numerical Single Source of Truth — overrides LLM-extracted values (PRD §6 rigor).
 - **networkx DAG** replaces Neo4j (offline pure Python; Neo4j upstream issue).
 - **Confidence heuristic** replaces DKT Transformer (Wilson lower bound, N≥5 cold-start; real DKT upstream).
-- **Structured-output prompting + Pydantic + SymPy + tag extraction** replaces GBNF Logits Masker (GBNF upstream issue).
+- **Structured-output prompting + Pydantic + SymPy + tag extraction + GBNF grammar** replaces GBNF Logits Masker (gateway#184 now supports grammar passthrough).
 - **Train-bridge 5 problem types** with formula handlers: 完全过桥 / 完全在桥上 / 相对运动 / 错车超车 / 回声.
 
 Install math extras: `pip install -e ".[math]"` (adds `sympy`, `networkx`).

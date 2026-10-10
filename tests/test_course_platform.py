@@ -69,6 +69,32 @@ def test_scene_dsl_to_dict():
     assert d["verified"] is True
 
 
+def test_scene_dsl_version_v3():
+    dsl = SceneDSL()
+    assert dsl.version == "3.0.0"
+
+
+def test_fusion_socratic_dsl_scene_is_typed_sceneDSL():
+    """issue #19 AC: scene 字段为 SceneDSL 类型 (统一 v3.0 合约)。"""
+    dsl = FusionSocraticDSL(subject="math")
+    assert isinstance(dsl.scene, SceneDSL)
+    d = dsl.to_dict()
+    assert isinstance(d["scene"], dict)
+    assert d["scene"]["version"] == "3.0.0"
+
+
+def test_fusion_socratic_dsl_scene_populated():
+    dsl = FusionSocraticDSL(
+        subject="math",
+        scene=SceneDSL(subject="math", template_type="track_timeline",
+                       entities=[{"id": "train"}], verified=True),
+    )
+    d = dsl.to_dict()
+    assert d["scene"]["template_type"] == "track_timeline"
+    assert d["scene"]["entities"] == [{"id": "train"}]
+    assert d["scene"]["verified"] is True
+
+
 def test_mastery_tracker_cold_start_threshold():
     t = MasteryTracker()
     for _ in range(4):
@@ -171,3 +197,60 @@ def test_teaching_step_with_visual_state_round_trip():
     d = step.to_dict()
     assert d["visual_state"]["visual_type"] == "array_grid"
     assert d["visual_state"]["action"] == "圈画"
+
+
+# ── issue #22 gap: BNUP prompt registry referenced at all 8 call sites ──
+
+def test_bnup_system_prompt_imported_at_8_sites():
+    """issue #22: BNUP_SYSTEM_PROMPT 应被 8 个 prompt 站点 import, 非仅定义。"""
+    import importlib
+
+    sites = [
+        "fusion_k12_teacher.course.subjects.math.socratic_tutor",
+        "fusion_k12_teacher.course.subjects.math.generic_pipeline",
+        "fusion_k12_teacher.course.subjects.math.scene_compiler",
+        "fusion_k12_teacher.course.cot_pipeline",
+        "fusion_k12_teacher.curriculum.engine",
+        "fusion_k12_teacher.assessment.grader",
+        "fusion_k12_teacher.subjects.expert",
+        "fusion_k12_teacher.digital_human.memory",
+    ]
+    for site in sites:
+        mod = importlib.import_module(site)
+        assert hasattr(mod, "BNUP_SYSTEM_PROMPT"), \
+            f"{site} does not import BNUP_SYSTEM_PROMPT (issue #22 gap)"
+
+
+def test_bnup_visual_routing_prompt_imported_at_math_sites():
+    """issue #22: BNUP_VISUAL_ROUTING_PROMPT 应被数学 prompt 站点 import。"""
+    import importlib
+
+    sites = [
+        "fusion_k12_teacher.course.subjects.math.socratic_tutor",
+        "fusion_k12_teacher.course.subjects.math.generic_pipeline",
+        "fusion_k12_teacher.course.subjects.math.scene_compiler",
+        "fusion_k12_teacher.curriculum.engine",
+        "fusion_k12_teacher.subjects.expert",
+    ]
+    for site in sites:
+        mod = importlib.import_module(site)
+        assert hasattr(mod, "BNUP_VISUAL_ROUTING_PROMPT"), \
+            f"{site} does not import BNUP_VISUAL_ROUTING_PROMPT (issue #22 gap)"
+
+
+def test_bnup_cot_format_prompt_imported_at_cot_pipeline():
+    """issue #22: BNUP_COT_FORMAT_PROMPT 应被 cot_pipeline import。"""
+    from fusion_k12_teacher.course.cot_pipeline import BNUP_COT_FORMAT_PROMPT
+    assert "两阶段" in BNUP_COT_FORMAT_PROMPT or "CoT" in BNUP_COT_FORMAT_PROMPT
+
+
+def test_inline_prompts_prefixed_with_bnup():
+    """issue #22: inline prompt 常量应以 BNUP_SYSTEM_PROMPT 前缀拼接。"""
+    from fusion_k12_teacher.course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT
+    from fusion_k12_teacher.course.subjects.math.generic_pipeline import _GENERIC_PROMPT
+    from fusion_k12_teacher.course.subjects.math.scene_compiler import _EXTRACT_PROMPT
+    from fusion_k12_teacher.course.subjects.math.socratic_tutor import _SCRIPT_PROMPT
+
+    assert _SCRIPT_PROMPT.startswith(BNUP_SYSTEM_PROMPT)
+    assert _GENERIC_PROMPT.startswith(BNUP_SYSTEM_PROMPT)
+    assert _EXTRACT_PROMPT.startswith(BNUP_SYSTEM_PROMPT)

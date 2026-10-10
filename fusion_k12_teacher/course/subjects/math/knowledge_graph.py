@@ -18,6 +18,7 @@ from typing import Any
 from ....standards.query import StandardsQuery
 from ...base import KnowledgeGraphBase
 from ...models import GraphNode
+from ...prompts.bnup_socratic import route_visual_type
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
         self._nx = nx
         self._digraph: nx.DiGraph = nx.DiGraph()
         self._nodes: dict[str, GraphNode] = {}
+        self._enhanced_ids: set[str] = set()
         self._loaded = False
 
     @property
@@ -76,13 +78,23 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
             nid = str(kp.get("id", ""))
             if not nid:
                 continue
+            title = str(kp.get("topic") or kp.get("description", ""))[:80]
+            grade = str(kp.get("grade", ""))
+            # issue #21 gap: backfill visual_type/semester/misconceptions for standards-only nodes
+            # so they are not skipped by tests/queries that filter on these fields.
+            visual_type = route_visual_type(title)
+            semester = self._semester_for_grade(grade)
+            misconceptions = self._default_misconceptions(title)
             node = GraphNode(
                 id=nid,
-                title=str(kp.get("topic") or kp.get("description", ""))[:80],
+                title=title,
                 node_type="Concept",
-                stage=self._stage_for_grade(str(kp.get("grade", ""))),
+                stage=self._stage_for_grade(grade),
                 strand=str(kp.get("strand", "")),
-                grade=str(kp.get("grade", "")),
+                grade=grade,
+                semester=semester,
+                visual_type=visual_type,
+                misconceptions=misconceptions,
                 description=str(kp.get("description", "")),
                 curriculum_code=str(kp.get("curriculum_code", "")),
                 cognitive_level=str(kp.get("difficulty_level", "")),
@@ -110,6 +122,9 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
             logger.warning("math_knowledge_graph: 增强 JSON 解析失败 %s: %s", p, exc)
             return
         for item in data.get("nodes", []):
+            nid = str(item.get("id", ""))
+            if nid:
+                self._enhanced_ids.add(nid)
             # issue #21: 优先读 visual_type, 兼容旧 visual_engine 字段
             vt = str(item.get("visual_type", "") or item.get("visual_engine", ""))
             node = GraphNode(
@@ -235,6 +250,35 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
         if g <= 9:
             return "Junior"
         return "Senior"
+
+    @staticmethod
+    def _semester_for_grade(grade: str) -> str:
+        """issue #21: 标准节点无学期信息, 按 grade 推导默认学期。"""
+        if not grade:
+            return ""
+        return f"{grade}-上"
+
+    @staticmethod
+    def _default_misconceptions(title: str) -> list[str]:
+        """issue #21: 标准节点无易错点, 按 title 关键词推导常见易错点。"""
+        if not title:
+            return ["概念混淆"]
+        misc: list[str] = []
+        if any(k in title for k in ("加", "减", "和", "差")):
+            misc.append("进退位混淆")
+        if any(k in title for k in ("乘", "除", "积", "商")):
+            misc.append("乘除运算方向颠倒")
+        if any(k in title for k in ("分数", "小数", "百分")):
+            misc.append("单位换算错误")
+        if any(k in title for k in ("面积", "周长", "体积")):
+            misc.append("公式选用混淆")
+        if any(k in title for k in ("方程", "未知数", "等式")):
+            misc.append("等式性质误用")
+        if any(k in title for k in ("统计", "图表", "平均")):
+            misc.append("数据读取偏差")
+        if not misc:
+            misc.append(f"{title[:20]}常见易错点")
+        return misc
 
     def node_count(self) -> int:
         return len(self._nodes)

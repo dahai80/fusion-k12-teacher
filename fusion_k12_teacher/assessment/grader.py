@@ -10,6 +10,7 @@ from typing import Any
 
 from .._parse import parse_json
 from ..ai_client import MLXClient
+from ..course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
@@ -158,7 +159,7 @@ class AssessmentEngine:
         err_msg = ""
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": "你是一位数学老师，严格但友好地批改数学作业。满分10分。"},
+                {"role": "system", "content": BNUP_SYSTEM_PROMPT + "\n你是一位数学老师，严格但友好地批改数学作业。满分10分。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.2)
             data = self._parse_json(response)

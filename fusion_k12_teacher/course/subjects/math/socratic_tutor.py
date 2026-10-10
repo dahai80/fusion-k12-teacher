@@ -25,16 +25,21 @@ from ...models import (
     FusionSocraticDSL,
     JudgeResult,
     Landmark,
+    SceneDSL,
     TeachingStep,
     VisualState,
     VisualType,
 )
-from ...prompts.bnup_socratic import route_visual_type
+from ...prompts.bnup_socratic import (
+    BNUP_SYSTEM_PROMPT,
+    BNUP_VISUAL_ROUTING_PROMPT,
+    route_visual_type,
+)
 from .sympy_verifier import MathSympyVerifier
 
 logger = logging.getLogger(__name__)
 
-_SCRIPT_PROMPT = """你是 K12 数学苏格拉底课稿生成器。按 5E 教学法生成分步课稿 DSL。
+_SCRIPT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是 K12 数学苏格拉底课稿生成器。按 5E 教学法生成分步课稿 DSL。
 
 课题: {topic} (年级 {grade})
 知识点节点: {node_id}
@@ -106,6 +111,13 @@ class MathSocraticTutor(SocraticTutorBase):
 
         data = parse_json(raw)
         if not data or not isinstance(data, dict):
+            # issue #20 gap 1: 尝试 <dsl> 标签提取 (CoT 模式下模型可能输出 <dsl>...</dsl>)
+            from ...cot_pipeline import extract_dsl
+            dsl_text = extract_dsl(raw)
+            if dsl_text:
+                data = parse_json(dsl_text)
+                logger.info("socratic_tutor: extract_dsl 成功 (%d chars)", len(dsl_text))
+        if not data or not isinstance(data, dict):
             # 小模型常见失败: 输出被截断/夹带非 JSON 前后缀 — 重试一次再降级,
             # 避免一次抖动直接打空讲稿 (上层回退兜底)
             logger.warning("socratic_tutor: 首次输出非 JSON (len=%d), 重试一次", len(raw or ""))
@@ -115,6 +127,10 @@ class MathSocraticTutor(SocraticTutorBase):
                     temperature=0.2, max_tokens=4096,
                 )
                 data = parse_json(raw2)
+                if not data or not isinstance(data, dict):
+                    dsl_text2 = extract_dsl(raw2)
+                    if dsl_text2:
+                        data = parse_json(dsl_text2)
             except Exception as exc:
                 logger.warning("socratic_tutor: 重试失败 %s", exc)
                 rethrow_if_fatal(exc)
@@ -191,11 +207,20 @@ class MathSocraticTutor(SocraticTutorBase):
             ))
         meta = {"title": title, "knowledge_node_id": node_id,
                 "visual_type": visual_type, "fallback_type": fallback_type}
+        scene = SceneDSL(
+            subject="math",
+            template_type=str(scene_raw.get("template_type", "")),
+            meta={k: str(v) for k, v in scene_raw.get("meta", {}).items()} if isinstance(scene_raw.get("meta"), dict) else {},
+            entities=scene_raw.get("entities", []) if isinstance(scene_raw.get("entities"), list) else [],
+            canvas_config=scene_raw.get("canvas_config", {}) if isinstance(scene_raw.get("canvas_config"), dict) else {},
+            timeline=scene_raw.get("timeline", {}) if isinstance(scene_raw.get("timeline"), dict) else {},
+            pedagogy=scene_raw.get("pedagogy", {}) if isinstance(scene_raw.get("pedagogy"), dict) else {},
+        )
         logger.info("socratic_tutor: v3.0 visual_type=%s fallback=%s steps=%d", visual_type, fallback_type, len(steps))
         return FusionSocraticDSL(
             subject="math",
             meta=meta,
             global_variables={str(k): dict(v) if isinstance(v, dict) else {"value": v} for k, v in global_vars.items()},
             steps=steps,
-            scene=scene_raw,
+            scene=scene,
         )

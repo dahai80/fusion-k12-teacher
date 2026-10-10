@@ -21,6 +21,7 @@ from ....errors import rethrow_if_fatal
 from ....safety.filter import sanitize_input
 from ...base import SceneCompilerBase
 from ...models import Milestone, SceneDSL, SceneEntity, VerifyResult
+from ...prompts.bnup_socratic import BNUP_SYSTEM_PROMPT, BNUP_VISUAL_ROUTING_PROMPT
 from . import generic_pipeline
 from .sympy_verifier import UNKNOWN_VARS, MathSympyVerifier
 
@@ -41,7 +42,7 @@ _KNOWN_SCENARIOS = (
     "chase_meet", "plant_interval", "tank_water",
 )
 
-_EXTRACT_PROMPT = """你是数学应用题结构化提取器。从题目文本提取参数, 严格输出 JSON。
+_EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是数学应用题结构化提取器。从题目文本提取参数, 严格输出 JSON。
 
 已知场景类型: {scenarios}
 
