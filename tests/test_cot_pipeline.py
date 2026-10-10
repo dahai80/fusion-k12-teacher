@@ -8,6 +8,7 @@ from fusion_k12_teacher.course.cot_pipeline import (
     COT_DSL_PROMPT,
     COT_THINKING_PROMPT,
     cot_enabled,
+    extract_dsl,
     extract_thinking,
 )
 
@@ -70,6 +71,93 @@ class TestExtractThinking:
         assert "第二段" in thinking
         assert "中间" in content
         assert "结尾" in content
+
+
+# ── issue #20 gap 1: extract_dsl 测试 ──────────────────────────────
+
+class TestExtractDsl:
+    def test_dsl_tag_pair(self):
+        raw = '<thinking>分析</thinking><dsl>{"steps":[]}</dsl>'
+        dsl = extract_dsl(raw)
+        assert dsl is not None
+        assert '"steps"' in dsl
+
+    def test_dsl_tag_only(self):
+        raw = '<dsl>{"meta":{"visual_type":"track_timeline"}}</dsl>'
+        dsl = extract_dsl(raw)
+        assert dsl is not None
+        assert "track_timeline" in dsl
+
+    def test_dsl_open_no_close(self):
+        raw = '<dsl>{"steps": [{"step_id": "s1"}]'
+        dsl = extract_dsl(raw)
+        assert dsl is not None
+        assert "s1" in dsl
+
+    def test_no_dsl_tag_fallback_json(self):
+        raw = '{"meta":{"visual_type":"flow_card"},"steps":[]}'
+        dsl = extract_dsl(raw)
+        assert dsl is not None
+        assert "flow_card" in dsl
+
+    def test_no_dsl_no_json(self):
+        raw = '纯文字描述, 没有 JSON'
+        dsl = extract_dsl(raw)
+        assert dsl is None
+
+    def test_empty_input(self):
+        assert extract_dsl("") is None
+        assert extract_dsl(None) is None
+
+    def test_multiple_dsl_tags_last_wins(self):
+        raw = '<dsl>{"v":1}</dsl>中间<dsl>{"v":2}</dsl>'
+        dsl = extract_dsl(raw)
+        assert dsl is not None
+        assert '"v":2' in dsl or '"v": 2' in dsl
+
+
+# ── issue #20 gap 2: GBNF grammar 测试 ─────────────────────────────
+
+class TestDslGbnfGrammar:
+    def test_grammar_non_empty(self):
+        from fusion_k12_teacher.course.cot_pipeline import DSL_GBNF_GRAMMAR
+        assert len(DSL_GBNF_GRAMMAR) > 50
+        assert "root" in DSL_GBNF_GRAMMAR
+        assert "steps" in DSL_GBNF_GRAMMAR
+        assert "meta" in DSL_GBNF_GRAMMAR
+
+    def test_grammar_has_string_rule(self):
+        from fusion_k12_teacher.course.cot_pipeline import DSL_GBNF_GRAMMAR
+        assert "string" in DSL_GBNF_GRAMMAR
+        assert "number" in DSL_GBNF_GRAMMAR
+
+    @pytest.mark.asyncio
+    async def test_chat_stream_passes_grammar(self):
+        """issue #20 gap 2: chat_stream 应将 grammar 透传到 payload。"""
+        from fusion_k12_teacher.ai_client import MLXClient
+
+        class MockStream:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                pass
+            async def aiter_lines(self):
+                yield 'data: [DONE]'
+
+        class MockHttpx:
+            def stream(self, method, url, **kwargs):
+                self.last_payload = kwargs.get("json", {})
+                return MockStream()
+
+        mock_httpx = MockHttpx()
+        client = MLXClient()
+        client._httpx_client = mock_httpx
+        client.model = "test-model"
+        await client.chat_stream(
+            [{"role": "user", "content": "test"}],
+            grammar="root ::= test",
+        )
+        assert mock_httpx.last_payload.get("grammar") == "root ::= test"
 
 
 class TestCotPrompts:

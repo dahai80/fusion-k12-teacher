@@ -380,6 +380,7 @@ class MLXClient:
     async def chat_stream(
         self, messages: list[dict[str, str]], *, temperature: float = 0.7, max_tokens: int = 4096,
         enable_thinking: bool | None = None,
+        grammar: str | None = None,
     ) -> Any:
         """fusion-mlx /v1/chat/completions stream — SSE token 流。返回 httpx.Response (流式)。
 
@@ -387,6 +388,8 @@ class MLXClient:
         流式推理单 DH 会话内串行 (fsm 保证), 跨会话并发由 chat() 信号量间接限流。
         issue #20: enable_thinking 参数 — None 走 _think_kwargs() (env 控制),
         True/False 显式覆盖 (两阶段 CoT pipeline 用)。
+        issue #20 gap 2: grammar 参数 — GBNF 语法透传 (gateway#184 已支持),
+        约束 stage-2 DSL 输出为合法 JSON, 消除 parse 失败。
         """
         self._ensure_locks()
         if not self.model:
@@ -407,7 +410,9 @@ class MLXClient:
             "stream": True,
             "chat_template_kwargs": think_kwargs,
         }
-        logger.info("chat_stream: model=%s thinking=%s", payload["model"], think_kwargs)
+        if grammar:
+            payload["grammar"] = grammar
+        logger.info("chat_stream: model=%s thinking=%s grammar=%s", payload["model"], think_kwargs, bool(grammar))
         return self.httpx_client.stream(
             "POST", "/chat/completions", json=payload, headers=self._auth_headers(),
         )

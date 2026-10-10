@@ -321,30 +321,30 @@ class TestMathKnowledgeGraph:
 
     def test_all_enhanced_nodes_have_visual_type(self):
         from fusion_k12_teacher.course.models import VISUAL_TYPES
-        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        enhanced = [n for n in self.kg._nodes.values() if n.id in self.kg._enhanced_ids]
         assert len(enhanced) >= 100
         for n in enhanced:
             assert n.visual_type in VISUAL_TYPES, f"{n.id} visual_type={n.visual_type} not in 8 primitives"
 
     def test_all_enhanced_nodes_have_semester(self):
-        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        enhanced = [n for n in self.kg._nodes.values() if n.id in self.kg._enhanced_ids]
         semesters = {n.semester for n in enhanced}
         assert len(semesters) == 12, f"expected 12 semesters, got {len(semesters)}"
 
     def test_all_enhanced_nodes_have_2plus_misconceptions(self):
-        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        enhanced = [n for n in self.kg._nodes.values() if n.id in self.kg._enhanced_ids]
         for n in enhanced:
             assert len(n.misconceptions) >= 2, f"{n.id} has <2 misconceptions"
 
     def test_semester_distribution(self):
         from collections import Counter
-        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        enhanced = [n for n in self.kg._nodes.values() if n.id in self.kg._enhanced_ids]
         sems = Counter(n.semester for n in enhanced)
         for s in sorted(sems):
             assert sems[s] >= 3, f"semester {s} has only {sems[s]} nodes (<3)"
 
     def test_visual_type_routing_by_grade(self):
-        enhanced = [n for n in self.kg._nodes.values() if n.semester]
+        enhanced = [n for n in self.kg._nodes.values() if n.id in self.kg._enhanced_ids]
         g1_2 = [n for n in enhanced if n.grade in ("1", "2")]
         g3_4 = [n for n in enhanced if n.grade in ("3", "4")]
         g5_6 = [n for n in enhanced if n.grade in ("5", "6")]
@@ -360,6 +360,33 @@ class TestMathKnowledgeGraph:
         n = self.kg.get_node("math-g5-na-01")
         if n:
             assert n.visual_engine == n.visual_type
+
+    # ── issue #21 gap: standards-only nodes backfill ──
+
+    def test_standards_nodes_have_visual_type(self):
+        """issue #21: 47 standards-only nodes 应有 visual_type (非空)。"""
+        standards = [n for n in self.kg._nodes.values()
+                     if n.id not in self.kg._enhanced_ids]
+        assert len(standards) > 0, "no standards nodes loaded"
+        from fusion_k12_teacher.course.models import VISUAL_TYPES
+        for n in standards:
+            assert n.visual_type in VISUAL_TYPES, \
+                f"standards node {n.id} visual_type={n.visual_type} not in 8 primitives"
+
+    def test_standards_nodes_have_semester(self):
+        """issue #21: standards-only nodes 应有 semester (非空)。"""
+        standards = [n for n in self.kg._nodes.values()
+                     if n.id not in self.kg._enhanced_ids]
+        for n in standards:
+            assert n.semester, f"standards node {n.id} has empty semester"
+
+    def test_standards_nodes_have_misconceptions(self):
+        """issue #21: standards-only nodes 应有 misconceptions (≥1)。"""
+        standards = [n for n in self.kg._nodes.values()
+                     if n.id not in self.kg._enhanced_ids]
+        for n in standards:
+            assert len(n.misconceptions) >= 1, \
+                f"standards node {n.id} has 0 misconceptions"
 
 
 class TestSceneCompilerMock:

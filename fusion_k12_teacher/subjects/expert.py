@@ -8,6 +8,7 @@ from typing import Any
 
 from .._parse import parse_json
 from ..ai_client import MLXClient
+from ..course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT, BNUP_VISUAL_ROUTING_PROMPT
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
@@ -74,7 +75,7 @@ class SubjectExpert:
        返回JSON: {{"simple_explanation": "简单解释", "example": "生活例子", "visualization": "可视化建议", "common_misconceptions": ["常见误解"], "extension": "拓展知识"}}"""
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": f"你是一位{grade}年级{subject}教师，用学生能理解的语言解释概念。"},
+                {"role": "system", "content": (BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT) if subject == "数学" else f"你是一位{grade}年级{subject}教师，用学生能理解的语言解释概念。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             data = self._parse_json(response)
@@ -99,7 +100,7 @@ class SubjectExpert:
         err_msg = "解析失败"
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": "你是一位经验丰富的学科教师，设计高质量的练习题。"},
+                {"role": "system", "content": (BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT) if subject == "数学" else "你是一位经验丰富的学科教师，设计高质量的练习题。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.4)
             data = self._parse_json(response)

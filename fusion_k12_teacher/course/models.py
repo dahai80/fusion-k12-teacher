@@ -189,33 +189,6 @@ class TeachingStep:
 
 
 @dataclass
-class FusionSocraticDSL:
-    """苏格拉底课稿 DSL v3.0 — 学科中立 (issue #19)。
-
-    v3.0 变更:
-    - meta 新增 visual_type (8 基元路由) + fallback_type (2 兜底)
-    - step.visual_state 携带步骤级可视化动作
-    - scene 字段统一 SceneDSL 合约 (废弃独立 SceneDSL 实例)
-    """
-    version: str = "3.0.0"
-    subject: str = ""
-    meta: dict[str, str] = field(default_factory=dict)
-    global_variables: dict[str, dict[str, Any]] = field(default_factory=dict)
-    steps: list[TeachingStep] = field(default_factory=list)
-    scene: dict[str, Any] = field(default_factory=dict)
-    error: str = ""
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "version": self.version, "subject": self.subject, "meta": self.meta,
-            "global_variables": self.global_variables,
-            "steps": [s.to_dict() for s in self.steps],
-            "scene": self.scene,
-            "error": self.error,
-        }
-
-
-@dataclass
 class SceneEntity:
     id: str
     type: str = "moving_object"  # moving_object | static_structure | reference_line | curve
@@ -247,8 +220,13 @@ class Milestone:
 
 @dataclass
 class SceneDSL:
-    """场景动画 DSL — 学科中立 (PRD §12.3 schema 抽象)。"""
-    version: str = "2.0.0"
+    """场景动画 DSL — 学科中立 (PRD §12.3 schema 抽象)。
+
+    issue #19 v3.0: 作为 FusionSocraticDSL.scene 的类型化子合约,
+    不再是独立平级模型。scene_compiler 仍可返回 SceneDSL (向后兼容),
+    但 FusionSocraticDSL.scene 字段持有 SceneDSL 实例实现统一合约。
+    """
+    version: str = "3.0.0"
     subject: str = ""
     template_type: str = ""
     meta: dict[str, str] = field(default_factory=dict)
@@ -266,6 +244,33 @@ class SceneDSL:
             "meta": self.meta, "entities": self.entities, "canvas_config": self.canvas_config,
             "timeline": self.timeline, "pedagogy": self.pedagogy,
             "verified": self.verified, "error": self.error, "fallback": self.fallback,
+        }
+
+
+@dataclass
+class FusionSocraticDSL:
+    """苏格拉底课稿 DSL v3.0 — 学科中立 (issue #19)。
+
+    v3.0 变更:
+    - meta 新增 visual_type (8 基元路由) + fallback_type (2 兜底)
+    - step.visual_state 携带步骤级可视化动作
+    - scene 字段为 SceneDSL 类型 (统一 v3.0 合约, 不再是 plain dict)
+    """
+    version: str = "3.0.0"
+    subject: str = ""
+    meta: dict[str, str] = field(default_factory=dict)
+    global_variables: dict[str, dict[str, Any]] = field(default_factory=dict)
+    steps: list[TeachingStep] = field(default_factory=list)
+    scene: SceneDSL = field(default_factory=SceneDSL)
+    error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version, "subject": self.subject, "meta": self.meta,
+            "global_variables": self.global_variables,
+            "steps": [s.to_dict() for s in self.steps],
+            "scene": self.scene.to_dict() if isinstance(self.scene, SceneDSL) else self.scene,
+            "error": self.error,
         }
 
 

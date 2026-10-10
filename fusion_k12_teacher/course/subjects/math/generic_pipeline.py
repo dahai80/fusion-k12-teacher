@@ -14,7 +14,11 @@ import ast
 import logging
 from typing import Any
 
-from ...prompts.bnup_socratic import route_visual_type
+from ...prompts.bnup_socratic import (
+    BNUP_SYSTEM_PROMPT,
+    BNUP_VISUAL_ROUTING_PROMPT,
+    route_visual_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +37,7 @@ _VISUAL_KINDS = (
     "track_timeline", "bucket_divider", "data_chart", "flow_card",
 )
 
-_GENERIC_PROMPT = """你是数学应用题求解器。把题目转化为「已知量 + 方程组」, 严格输出 JSON。
+_GENERIC_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是数学应用题求解器。把题目转化为「已知量 + 方程组」, 严格输出 JSON。
 
 规则:
 1. 提取所有数值已知量, 每个给短英文名 (如 speed, distance, price)。

@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from ..course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -54,6 +56,11 @@ class RollingWindowMemory:
             self.course_context = course_context
         if level:
             self.level = level
+
+    def enable_bnup_mode(self) -> None:
+        """issue #22: 切换到 BNUP 数学苏格拉底教学模式 (使用 BNUP_SYSTEM_PROMPT)。"""
+        self.base_prompt = BNUP_SYSTEM_PROMPT
+        logger.info("memory[%s]: BNUP mode enabled", self.session_id)
 
     def add(self, role: str, text: str, *, sticky: bool = False) -> None:
         self._msgs.append(_Msg(role=role, content=text, sticky=sticky))

@@ -11,6 +11,7 @@ from typing import Any
 from .._parse import parse_json
 from .._prompt import build_prompt
 from ..ai_client import MLXClient
+from ..course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT, BNUP_VISUAL_ROUTING_PROMPT
 from ..errors import rethrow_if_fatal
 from ..safety.filter import ContentFilter, sanitize_input
 
@@ -149,7 +150,7 @@ class CurriculumEngine:
         )
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": "你是一位专业K-12教师，生成符合课程标准的结构化教案。"},
+                {"role": "system", "content": (BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT) if subject_s == "数学" else "你是一位专业K-12教师，生成符合课程标准的结构化教案。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             data = self._parse_json(response)
@@ -201,7 +202,7 @@ class CurriculumEngine:
 返回JSON格式，每道题包含：question, type, options(选择题), answer, points, difficulty(easy/medium/hard)"""
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": "你是一位专业K-12教师，生成适合学生年龄段的测验题目。"},
+                {"role": "system", "content": (BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT) if subject_s == "数学" else "你是一位专业K-12教师，生成适合学生年龄段的测验题目。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             questions = self._parse_json(response)
@@ -251,7 +252,7 @@ class CurriculumEngine:
 请返回JSON格式，包含每周的教学主题、学习目标、主要活动和评估方式。"""
         try:
             response = await self.mlx.chat([
-                {"role": "system", "content": "你是一位课程设计专家，设计完整的单元教学计划。"},
+                {"role": "system", "content": (BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT) if subject_s == "数学" else "你是一位课程设计专家，设计完整的单元教学计划。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             data = self._parse_json(response)
