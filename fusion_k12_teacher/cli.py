@@ -961,6 +961,172 @@ def rotate_salt(salt_file, show_versions):
     click.echo("   旧版本已归档, 历史脱敏 ID 仍可解析 (反向回查用旧版本 salt)")
 
 
+# ── BNUP 评估 harness (issues #23 #24) ──
+
+@cli.group()
+def eval():
+    """BNUP 评估 harness — 四维指标/前后对比/SxS 裁判。"""
+
+
+@eval.command("bench")
+@click.option("--testset", "-t", default="", help="测试集路径 (默认内置 bnup_benchmark.json)")
+def eval_bench(testset):
+    """显示基准测试集统计。"""
+    import json as _json
+    from pathlib import Path as _P
+    path = testset or str(_P(__file__).parent / "eval" / "data" / "bnup_benchmark.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = _json.load(f)
+    except Exception as e:
+        click.echo(f"❌ 读取测试集失败: {e}")
+        return
+    dist = data.get("distribution", {})
+    click.echo(f"📊 BNUP 基准测试集: {data.get('total', 0)} 题")
+    click.echo(f"   域内 (in_domain):   {dist.get('in_domain', 0)} ({dist.get('in_domain_pct', 0)}%)")
+    click.echo(f"   域外 (ood):         {dist.get('ood', 0)} ({dist.get('ood_pct', 0)}%)")
+    click.echo(f"   对抗 (adversarial): {dist.get('adversarial', 0)} ({dist.get('adversarial_pct', 0)}%)")
+    items = data.get("items", [])
+    grades = {}
+    vts = {}
+    for it in items:
+        g = it.get("grade", 0)
+        grades[g] = grades.get(g, 0) + 1
+        vt = it.get("expected_visual_type", "")
+        vts[vt] = vts.get(vt, 0) + 1
+    click.echo(f"   年级分布: {dict(sorted(grades.items()))}")
+    click.echo(f"   可视化类型: {dict(sorted(vts.items(), key=lambda x: -x[1]))}")
+
+
+@eval.command("run")
+@click.option("--testset", "-t", required=True, help="测试集 JSON 路径")
+@click.option("--model", "-m", default="", help="模型名 (空=默认)")
+@click.option("--output", "-o", default="", help="输出报告 JSON 路径")
+@click.option("--system-prompt", "-s", default="", help="自定义 system prompt")
+@click.option("--max-samples", "-n", type=int, default=0, help="最大样本数 (0=全部)")
+@click.pass_context
+def eval_run(ctx, testset, model, output, system_prompt, max_samples):
+    """运行四维指标评估 harness。"""
+    import asyncio
+    import json as _json
+
+    from .course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT
+    from .eval.eval_harness import BNUPEvaluator
+
+    mlx = ctx.obj.get("mlx")
+    if mlx is None:
+        click.echo("❌ MLXClient 未初始化")
+        return
+    with open(testset, encoding="utf-8") as f:
+        data = _json.load(f)
+    items = data.get("items", data) if isinstance(data, dict) else data
+    if max_samples > 0:
+        items = items[:max_samples]
+    sys_prompt = system_prompt or BNUP_SYSTEM_PROMPT
+
+    async def _run():
+        evaluator = BNUPEvaluator()
+        for idx, item in enumerate(items):
+            prompt = item.get("question", "")
+            gt = float(item.get("ground_truth", 0))
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": prompt},
+            ]
+            try:
+                resp = await mlx.chat(messages, temperature=0.1, max_tokens=2048, model=model)
+            except Exception as e:
+                logger.error("inference failed [%s]: %s", item.get("id", ""), e)
+                resp = ""
+            evaluator.evaluate_sample(resp, gt, sample_id=item.get("id", f"s{idx+1}"))
+            if (idx + 1) % 10 == 0:
+                logger.info("eval progress: %d/%d", idx + 1, len(items))
+        return evaluator.report
+
+    report = asyncio.run(_run())
+    click.echo(report.summary_str())
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            _json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
+        click.echo(f"📄 报告已保存: {output}")
+
+
+@eval.command("compare")
+@click.option("--testset", "-t", required=True, help="测试集 JSON 路径")
+@click.option("--baseline", "-b", required=True, help="基座模型名")
+@click.option("--finetuned", "-f", required=True, help="增训模型名")
+@click.option("--output", "-o", default="", help="输出对比日志 JSON 路径")
+@click.option("--max-samples", "-n", type=int, default=0, help="最大样本数 (0=全部)")
+@click.pass_context
+def eval_compare(ctx, testset, baseline, finetuned, output, max_samples):
+    """前后对比 — baseline vs fine-tuned。"""
+    import asyncio
+
+    from .eval.compare_models import ModelComparator
+    mlx = ctx.obj.get("mlx")
+    if mlx is None:
+        click.echo("❌ MLXClient 未初始化")
+        return
+    if max_samples > 0:
+        import json as _json
+        import tempfile
+        with open(testset, encoding="utf-8") as f:
+            data = _json.load(f)
+        items = data.get("items", data) if isinstance(data, dict) else data
+        sliced = items[:max_samples]
+        if isinstance(data, dict):
+            data["items"] = sliced
+        else:
+            data = sliced
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
+        _json.dump(data, tmp, ensure_ascii=False)
+        tmp.close()
+        testset = tmp.name
+
+    comparator = ModelComparator(mlx, baseline, finetuned)
+    report = asyncio.run(comparator.run_comparison(testset, output_log=output))
+    click.echo(report.summary_str())
+
+
+@eval.command("sxs")
+@click.option("--testset", "-t", required=True, help="对比日志 JSON (compare 输出)")
+@click.option("--judge-model", "-j", default="", help="裁判模型名")
+@click.option("--output", "-o", default="", help="输出 SxS 报告 JSON 路径")
+@click.option("--max-samples", "-n", type=int, default=0, help="最大样本数 (0=全部)")
+@click.pass_context
+def eval_sxs(ctx, testset, judge_model, output, max_samples):
+    """SxS 双盲 LLM 裁判。"""
+    import asyncio
+    import json as _json
+
+    from .eval.sxs_judge import SxSJudge
+    mlx = ctx.obj.get("mlx")
+    if mlx is None:
+        click.echo("❌ MLXClient 未初始化")
+        return
+    with open(testset, encoding="utf-8") as f:
+        data = _json.load(f)
+    results = data.get("results_log", [])
+    pairs = []
+    for r in results:
+        pairs.append({
+            "id": r.get("id", ""),
+            "prompt": r.get("prompt", ""),
+            "output_a": r.get("baseline_output", ""),
+            "output_b": r.get("finetuned_output", ""),
+        })
+    if max_samples > 0:
+        pairs = pairs[:max_samples]
+
+    judge = SxSJudge(mlx, judge_model=judge_model)
+    agg = asyncio.run(judge.judge_batch(pairs))
+    click.echo(agg.summary_str())
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            _json.dump(agg.to_dict(), f, ensure_ascii=False, indent=2)
+        click.echo(f"📄 SxS 报告已保存: {output}")
+
+
 def main():
     cli()
 
