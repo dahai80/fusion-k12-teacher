@@ -219,12 +219,52 @@ def _start_config_hot_reload() -> None:
 
 
 def _stop_config_hot_reload() -> None:
-    """M3-T17: 停止配置轮询线程。"""
+    """停止配置轮询线程。"""
     try:
         from .config import get_config
         get_config().stop()
     except Exception as e:
         logger.warning("配置热更新停止失败: %s", e)
+
+
+# ── #28: mlx 健康探测看门狗 — 后台周期探针, 后端挂起时告警 (仅观测, 不自启重启) ──
+_mlx_watch_task: asyncio.Task | None = None
+
+
+async def _mlx_health_watchdog() -> None:
+    """周期探测 LLM 后端 (与 /api/health 同源: list_models)。down→WARNING, 恢复→INFO。
+
+    mlx 引擎在持续负载下反复挂起 (上游问题) — 此前唯一信号是生成请求开始超时,
+    运维无感知。看门狗保证挂起在 1 个探测周期内可见。
+    """
+    interval = float(os.environ.get("FUSION_K12_HEALTH_PROBE_INTERVAL", "60"))
+    logger.info("mlx 健康探测已启动 (间隔 %ds)", int(interval))
+    was_down = False
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            models = await mlx_client.list_models() if mlx_client is not None else None
+            # mlx 挂起时 gateway 常返回 200+空列表 (非 None) — 空列表同样视为 down
+            down = not models
+        except Exception:
+            down = True
+        if down and not was_down:
+            logger.warning("健康告警: LLM 后端不可达 — 答疑/讲稿/场景生成将失败, 请检查 fusion-mlx/gateway")
+        elif not down and was_down:
+            logger.info("健康告警解除: LLM 后端恢复")
+        was_down = down
+
+
+def _start_mlx_health_watchdog() -> None:
+    global _mlx_watch_task
+    _mlx_watch_task = asyncio.create_task(_mlx_health_watchdog())
+
+
+def _stop_mlx_health_watchdog() -> None:
+    global _mlx_watch_task
+    if _mlx_watch_task is not None:
+        _mlx_watch_task.cancel()
+        _mlx_watch_task = None
 
 
 def _drain_timeout() -> float:
@@ -525,6 +565,8 @@ async def lifespan(app: FastAPI):
             logger.warning("审计日志器注入 repo 失败 (仅内存): %s", e)
         # M3-T17: 配置热更新 — 启动轮询, 注册回调刷新引擎持有的可变配置。
         _start_config_hot_reload()
+        # #28: mlx 健康探测看门狗 — 后端挂起 1 个探测周期内日志告警
+        _start_mlx_health_watchdog()
         # M3-T19: 在途计数归零事件 (绑当前 loop) + SIGTERM 排水处理
         global _inflight_zero
         _inflight_zero = asyncio.Event()
@@ -566,6 +608,8 @@ async def lifespan(app: FastAPI):
     await _drain_inflight()
     # M3-T17: 停止配置轮询线程
     _stop_config_hot_reload()
+    # #28: 停 mlx 健康探测
+    _stop_mlx_health_watchdog()
     # M3-T14: 关闭前 flush 剩余审计事件
     try:
         from .audit import get_audit_logger
@@ -3030,4 +3074,3 @@ if _WEB_DIST.exists():
     logger.info("web_gui: 挂载 dist/ %s", _WEB_DIST)
 else:
     logger.debug("web_gui: dist/ 不存在, 跳过静态挂载 (开发模式用 vite dev)")
-

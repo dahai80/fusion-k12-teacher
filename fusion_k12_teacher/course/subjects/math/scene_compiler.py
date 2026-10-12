@@ -151,6 +151,18 @@ class MathSceneCompiler(SceneCompilerBase):
 
         extracted = parse_json(raw)
         if not extracted or not isinstance(extracted, dict):
+            # #28: 4B 模型常把 JSON 夹在文字里或首答截断 — 带"只输出 JSON"提示重试
+            # 一次再降级, 避免单次抖动直接丢动画
+            logger.info("scene_compiler: 首次提取非 JSON, 带约束重试一次")
+            try:
+                raw_nudge = await self.mlx.chat(
+                    [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
+                    temperature=0.0, max_tokens=1024,
+                )
+                extracted = parse_json(raw_nudge)
+            except Exception as exc_nudge:
+                logger.warning("scene_compiler: JSON 重试失败 %s", exc_nudge)
+        if not extracted or not isinstance(extracted, dict):
             generic = await self._compile_generic(problem, knowledge_node_id)
             if generic is not None:
                 return generic
@@ -551,6 +563,17 @@ class MathSceneCompiler(SceneCompilerBase):
                 return self._build_judgment_dsl(problem, knowledge_node_id, judgment, jres)
             logger.info("scene_compiler: 判断题判据求值失败, 继续按求解型解析")
         parsed = generic_pipeline.parse_generic_extraction(raw)
+        if parsed is None:
+            # #28: 首答结构不合规 (夹带文字/截断) — 带约束重试一次再降级
+            logger.info("scene_compiler: 通用路径提取结构不合规, 带约束重试一次")
+            try:
+                raw2 = await self.mlx.chat(
+                    [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
+                    temperature=0.0, max_tokens=1024,
+                )
+                parsed = generic_pipeline.parse_generic_extraction(raw2)
+            except Exception as exc_retry:
+                logger.warning("scene_compiler: 通用路径 JSON 重试失败 %s", exc_retry)
         if parsed is None:
             logger.info("scene_compiler: 通用路径提取结构不合规, 维持降级")
             return None

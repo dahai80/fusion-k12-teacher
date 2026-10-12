@@ -14,6 +14,39 @@ def loader():
     return tl
 
 
+class TestDataIntegrity:
+    """教材数据完整性 — 每课必须锚定知识点, 引用必须可在课标解析 (#29)。"""
+
+    def test_every_lesson_has_knowledge_point(self, loader):
+        # 数据文件里任何 lesson 的 knowledge_point_ids 为空 → 举一反三/图谱锚定静默降级
+        weak = []
+        for edition in loader.list_editions():
+            ed = edition["edition"]
+            for grade in loader.get_grades(ed, edition["subject"]):
+                for unit in loader.get_units(ed, edition["subject"], grade):
+                    for lesson in unit.lessons:
+                        if not lesson.knowledge_point_ids:
+                            weak.append(f"{ed}/g{grade} unit{unit.unit}-{lesson.lesson}《{lesson.title}》")
+        assert weak == [], f"以下课目缺少知识点锚定: {weak}"
+
+    def test_kp_refs_resolve_in_standards(self, loader):
+        # 引用的知识点 id 必须存在于课标 (math_g1-6.json) — 悬空引用 = 图谱联动失效
+        import json
+        from pathlib import Path
+        std_path = Path(__file__).parent.parent / "fusion_k12_teacher" / "standards" / "data" / "math_g1-6.json"
+        valid_ids = {kp["id"] for kp in json.loads(std_path.read_text(encoding="utf-8"))["knowledge_points"]}
+        dangling = []
+        for edition in loader.list_editions():
+            ed = edition["edition"]
+            for grade in loader.get_grades(ed, edition["subject"]):
+                for unit in loader.get_units(ed, edition["subject"], grade):
+                    for lesson in unit.lessons:
+                        for kp_id in lesson.knowledge_point_ids:
+                            if kp_id not in valid_ids:
+                                dangling.append(f"{ed}/g{grade} {kp_id}")
+        assert dangling == [], f"以下知识点引用悬空: {dangling}"
+
+
 class TestLoader:
     def test_loads_renjiao(self, loader):
         editions = loader.list_editions()
