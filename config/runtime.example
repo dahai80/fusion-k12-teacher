@@ -1,0 +1,18 @@
+# fusion-k12-teacher 运行时热更配置 (KEY=VALUE 格式, 与 .env 同构)
+# 用法: cp config/runtime.example config/runtime && .env 里设 FUSION_K12_CONFIG_FILE=config/runtime
+# 生效: FileProvider 按 mtime 轮询 (默认 5s, FUSION_K12_CONFIG_POLL 可调), 改完保存即生效, 无需重启 serve。
+# 仅白名单 key 可热更 (见 fusion_k12_teacher/config/provider.py HOT_RELOADABLE):
+#   FUSION_MLX_MODEL / FUSION_K12_RATE_LIMIT / FUSION_K12_SALT / FUSION_K12_LOG_LEVEL
+# 其余 (DB/端口/data_key 等) 启动注入, 改动需滚动重启。
+
+# 聊天模型 (经 gateway 转发至 mlx; 空 = gateway 默认)
+FUSION_MLX_MODEL=mlx-community/Qwen3.5-4B-MLX-4bit
+
+# 每 IP 滑动窗口限流: "N次/秒" (如 60/60 = 60 秒 60 次)。留空 = 关闭限流。
+FUSION_K12_RATE_LIMIT=60/60
+
+# 脱敏盐 (改盐后历史 name_map 不可逆查 — 轮换需配合迁移)
+FUSION_K12_SALT=
+
+# 日志级别 DEBUG/INFO/WARNING/ERROR
+FUSION_K12_LOG_LEVEL=INFO

@@ -101,3 +101,30 @@ cache:
 已知 (本工程对接侧已规避, 无需上游改动):
 - trace-id: 网关注入, k12 中间件透传 (M3-T13 已用 `X-Trace-Id` header)
 - 排水: k12 自管 (M3-T19), 不依赖网关摘流 (网关按 `/api/health` 健康检查自然剔除排水中实例)
+
+## Gateway API Key 轮换手册 (issue #27)
+
+`FUSION_MLX_API_KEY` 是 k12 → gateway 的调用凭据，属**预期定期轮换**项（明文存于 `.env`）。轮换步骤：
+
+1. **gateway 侧生成新 key**（保留旧 key 生效，双 key 并行）：
+   ```bash
+   # fusion-gateway admin 控制台或 channels 配置新增 key
+   ```
+2. **k12 侧更新**（本地部署）：
+   ```bash
+   # 编辑 .env: FUSION_MLX_API_KEY=<new-key>
+   ./start.sh stop && ./start.sh -d   # serve 重载 env
+   ```
+   集群部署（compose）：改 `deploy/.env` 后 `docker compose --env-file .env up -d --force-recreate k12`（滚动，排水保证不中断）。
+3. **验证**：
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:11432/v1/models \
+     -H "Authorization: Bearer <new-key>"   # 期望 200
+   curl -s http://127.0.0.1:11448/api/health | grep backend  # 期望 backend: ok
+   ```
+4. **回收旧 key**（确认所有实例已切换后，gateway 侧删除旧 key）。
+
+注意事项：
+- 旧 key 失效时 k12 报 `403 Model not allowed for this API key`（NonDegradableError，不降级）——见到该日志优先怀疑 key 轮换不同步。
+- 若启用配置热更（`FUSION_K12_CONFIG_FILE`），`FUSION_MLX_API_KEY` **不在热更白名单**（启动注入项），轮换必须重启 serve/滚动容器。
+- key 与 gateway 双向对齐，先加新、后删旧，避免出现鉴权真空窗口。

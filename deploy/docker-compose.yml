@@ -43,6 +43,9 @@ services:
       FUSION_K12_MODE: cluster
       FUSION_K12_PG_DSN: postgresql://${FUSION_K12_PG_USER:-k12}:${FUSION_K12_PG_PASSWORD:-change-me}@postgres:5432/${FUSION_K12_PG_DB:-k12}
       FUSION_K12_REDIS_URL: redis://redis:6379/0
+    volumes:
+      # 配置热更 (issue #27): 宿主机改 config/runtime 白名单 key, 容器内 mtime 轮询生效, 免重启
+      - ../config/runtime:/app/config/runtime:ro
     depends_on:
       postgres:
         condition: service_healthy
