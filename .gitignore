@@ -38,3 +38,9 @@ k12-prd-plan.md
 claude-k12-teacher-insight.md
 .env
 architecture/
+
+# local runtime instance config (hot-reload; template is committed)
+config/runtime
+
+# agent tooling
+.atomcode/

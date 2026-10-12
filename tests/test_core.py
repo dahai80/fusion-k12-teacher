@@ -20,7 +20,10 @@ class TestMLXClient:
         client = MLXClient(model="test-model")
         assert client.model == "test-model"
 
-    def test_default_model(self):
+    def test_default_model(self, monkeypatch):
+        # issue #26: 断言的是"无 env 时默认为空"前置条件 — live 模式下 _offline_llm
+        # fixture 不清 env, ambient FUSION_MLX_MODEL 会泄漏进来, 测试自己清掉
+        monkeypatch.delenv("FUSION_MLX_MODEL", raising=False)
         client = MLXClient()
         assert client.model == ""
 

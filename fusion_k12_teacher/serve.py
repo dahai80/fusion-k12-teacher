@@ -1095,10 +1095,9 @@ async def health():
             # list_models 是 async, 直接 await (自带缓存+锁); to_thread 会漏 await 返未决协程
             models = await mlx_client.list_models()
             backend = "ok" if models is not None else "down"
-            if models:
-                # issue #18: 显示有效模型 — env 已在 init 读取, auto-select 后也赋值;
-                # 仅首调前 (env 未设 + auto-select 未跑) 显示 (pending) 而非误导性 "auto"
-                model_id = mlx_client.model or "(pending)"
+            # issue 验收: 空 models 列表 (gateway 响应解析异常等) 也显示已配置模型 —
+            # 此前 model_id 落在 if models: 内, 空列表时 health 恒显 "" 误导运维
+            model_id = mlx_client.model or "(pending)"
         except Exception as e:
             logger.warning("health: fusion-mlx 探测失败: %s", e)
             backend = "down"
