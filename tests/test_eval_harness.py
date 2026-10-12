@@ -83,6 +83,32 @@ class TestEvalExpression:
         ev = BNUPEvaluator()
         assert ev.evaluate_eval_expression([], {}) == 0.0
 
+    def test_chinese_operators(self):
+        ev = BNUPEvaluator()
+        pipeline = [{"step": 1, "eval": "params.a×params.b"}]
+        params = {"a": {"value": 6}, "b": {"value": 7}}
+        assert ev.evaluate_eval_expression(pipeline, params) == 42.0
+
+    def test_chinese_divide_and_minus(self):
+        ev = BNUPEvaluator()
+        pipeline = [{"step": 1, "eval": "params.a÷params.b−params.c"}]
+        params = {"a": {"value": 100}, "b": {"value": 4}, "c": {"value": 5}}
+        assert ev.evaluate_eval_expression(pipeline, params) == 20.0
+
+    def test_grade_string_coercion(self):
+        ev = BNUPEvaluator()
+        out = (
+            '<thinking>x</thinking>\n<dsl>'
+            '{"meta":{"id":"q1","grade":"5","topic":"t","visual_type":"flow_card","fallback_type":"flow_card"},'
+            '"parameters":{"a":{"label":"a","value":3,"unit":"x"}},'
+            '"entities":[],'
+            '"pipeline":[{"step":1,"title":"s","formula":"a","eval":"params.a","result_unit":"x","visual_state":{"progress_range":[0.0,1.0],"active_entities":[],"action":"compute"}}]}'
+            '</dsl>'
+        )
+        res = ev.evaluate_sample(out, 3.0, "coerce-01")
+        assert res.schema_ok is True
+        assert res.math_ok is True
+
 
 class TestEvaluateSample:
     def test_all_pass(self):

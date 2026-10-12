@@ -109,11 +109,11 @@ class TestExtractDsl:
         assert extract_dsl("") is None
         assert extract_dsl(None) is None
 
-    def test_multiple_dsl_tags_last_wins(self):
+    def test_multiple_dsl_tags_first_wins(self):
         raw = '<dsl>{"v":1}</dsl>中间<dsl>{"v":2}</dsl>'
         dsl = extract_dsl(raw)
         assert dsl is not None
-        assert '"v":2' in dsl or '"v": 2' in dsl
+        assert '"v":1' in dsl or '"v": 1' in dsl
 
 
 # ── issue #20 gap 2: GBNF grammar 测试 ─────────────────────────────

@@ -77,8 +77,8 @@ def extract_dsl(raw: str) -> str | None:
         return None
     matches = _DSL_PATTERN.findall(raw)
     if matches:
-        dsl_text = matches[-1].strip()
-        logger.info("extract_dsl: found <dsl> tag, %d chars", len(dsl_text))
+        dsl_text = matches[0].strip()
+        logger.info("extract_dsl: found <dsl> tag (%d matches), %d chars", len(matches), len(dsl_text))
         return dsl_text
     open_match = _DSL_OPEN.search(raw)
     if open_match:

@@ -1,0 +1,167 @@
+INFO     fusion_core 可用，使用 FusionMLXClient
+INFO     loaded 28 items (model=mlx-community/Qwen3.5-4B-MLX-4bit concurrency=1)
+INFO     direct-mlx mode: base_url=http://localhost:11434/v1 key=fg-admin-key
+INFO     MLXClient init base_url=http://localhost:11434/v1 model=mlx-community/Qwen3.5-4B-MLX-4bit fusion_core=True max_concurrency=4
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=708 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [1/28] ind-ag-06 ❌ grade=1 cat=in_domain gt=40.0 computed=None tag=True json=True schema=True eval=False math=False 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=733 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [2/28] ind-ag-07 ❌ grade=1 cat=in_domain gt=54.0 computed=None tag=True json=True schema=True eval=False math=False 2.7s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=734 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [3/28] ind-ag-10 ❌ grade=1 cat=in_domain gt=21.0 computed=None tag=True json=False schema=False eval=False math=False 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=557 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [4/28] ind-ag-03 ✅ grade=2 cat=in_domain gt=9.0 computed=9.0 tag=True json=True schema=True eval=True math=True 2.3s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=695 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [5/28] ind-ag-11 ✅ grade=2 cat=in_domain gt=24.0 computed=24.0 tag=True json=True schema=True eval=True math=True 2.7s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=755 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [6/28] ind-ag-08 ❌ grade=2 cat=in_domain gt=32.0 computed=None tag=True json=True schema=True eval=False math=False 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=803 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [7/28] ind-td-08 ❌ grade=3 cat=in_domain gt=20.0 computed=13.333333333333334 tag=True json=True schema=True eval=True math=False 3.6s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=865 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [8/28] ind-td-12 ❌ grade=3 cat=in_domain gt=11.0 computed=None tag=True json=True schema=True eval=False math=False 3.7s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=700 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [9/28] ind-td-07 ❌ grade=3 cat=in_domain gt=11.0 computed=16.5 tag=True json=True schema=True eval=True math=False 3.1s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=776 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [10/28] ind-dc-02 ✅ grade=4 cat=in_domain gt=47.2 computed=47.2 tag=True json=True schema=True eval=True math=True 3.1s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=711 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [11/28] ind-g2d-05 ✅ grade=4 cat=in_domain gt=58.0 computed=58.0 tag=True json=True schema=True eval=True math=True 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=885 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [12/28] ind-td-06 ❌ grade=4 cat=in_domain gt=14.0 computed=None tag=True json=True schema=False eval=False math=False 3.8s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=541 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [13/28] ind-g6-approx-ex-01 ❌ grade=5 cat=in_domain gt=3.14 computed=None tag=True json=True schema=False eval=False math=False 2.6s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=629 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [14/28] ind-gu-cj-odd-ex-01 ✅ grade=5 cat=in_domain gt=0.0 computed=0.0 tag=True json=True schema=True eval=True math=True 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=850 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [15/28] ind-dc-10 ❌ grade=5 cat=in_domain gt=51.25 computed=None tag=True json=True schema=True eval=False math=False 3.6s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=534 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [16/28] ind-fc-01 ❌ grade=6 cat=in_domain gt=14.0 computed=None tag=True json=True schema=True eval=False math=False 2.4s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=919 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [17/28] ind-i3d-09 ❌ grade=6 cat=in_domain gt=603.19 computed=None tag=True json=True schema=True eval=False math=False 3.6s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=724 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [18/28] ind-bd-07 ✅ grade=6 cat=in_domain gt=1.0 computed=1.0 tag=True json=True schema=True eval=True math=True 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=778 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [19/28] ood-12 ❌ grade=4 cat=ood gt=693.31 computed=None tag=True json=True schema=True eval=False math=False 3.3s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=665 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [20/28] ood-29 ✅ grade=5 cat=ood gt=255.0 computed=255.0 tag=True json=True schema=True eval=True math=True 2.7s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=982 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [21/28] ood-calc-06 ✅ grade=1 cat=ood gt=95.0 computed=95.0 tag=True json=True schema=True eval=True math=True 3.2s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=785 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [22/28] ood-19 ❌ grade=6 cat=ood gt=46.75 computed=None tag=True json=True schema=True eval=False math=False 3.2s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=705 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [23/28] ood-17 ✅ grade=7 cat=ood gt=438.0 computed=438.0 tag=True json=True schema=True eval=True math=True 2.9s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=892 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [24/28] adv-19 ❌ grade=3 cat=adversarial gt=0.217 computed=None tag=True json=True schema=True eval=False math=False 4.1s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=2099 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [25/28] adv-3d-01 ❌ grade=6 cat=adversarial gt=301.59 computed=None tag=True json=True schema=True eval=False math=False 8.5s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=827 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [26/28] adv-train-22 ✅ grade=5 cat=adversarial gt=15.8 computed=15.8 tag=True json=True schema=True eval=True math=True 3.7s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=802 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [27/28] adv-train-05 ❌ grade=5 cat=adversarial gt=27.17 computed=27.166666666666668 tag=True json=True schema=True eval=True math=False 3.4s
+INFO     HTTP Request: POST http://localhost:11434/v1/chat/completions "HTTP/1.1 200 OK"
+INFO     extract_thinking: thinking=797 chars content=0 chars
+WARNING  extract_dsl: <dsl> open tag but no close, take rest
+INFO     [28/28] adv-train-12 ❌ grade=5 cat=adversarial gt=14.48 computed=14.482142857142858 tag=True json=True schema=True eval=True math=False 4.9s
+
+==================== BNUP 评估报告 ====================
+测试总样本数: 28
+指标名                          | 实际值    | PRD 目标  | 达标
+------------------------------------------------------------
+标签隔离率 (Tag Rate)               |  100.00% |    99.5% | ✅
+JSON 语法成功率 (JSON Rate)         |   96.43% |   100.0% | ❌
+Schema 合格率 (Schema Rate)       |   89.29% |    99.0% | ❌
+Eval 可执行率 (Eval Rate)          |   50.00% |   100.0% | ❌
+数学准确率 (Accuracy)               |   35.71% |    89.0% | ❌
+单位对齐率 (Unit Alignment)         |   89.29% |     0.0% | 
+里程碑覆盖度 (Milestone)             |   89.29% |     0.0% | 
+============================================================
+
+--- 按年级 ---
+  年级 1: 1/4 = 25.0%
+  年级 2: 2/3 = 66.7%
+  年级 3: 0/4 = 0.0%
+  年级 4: 2/4 = 50.0%
+  年级 5: 3/7 = 42.9%
+  年级 6: 1/5 = 20.0%
+  年级 7: 1/1 = 100.0%
+
+--- 按类别 ---
+  adversarial: 1/5 = 20.0%
+  in_domain: 6/18 = 33.3%
+  ood: 3/5 = 60.0%
+
+--- 按可视化类型 ---
+  track_timeline: 4/7 = 57.1%
+  array_grid: 2/6 = 33.3%
+  tape_diagram: 0/5 = 0.0%
+  flow_card: 1/4 = 25.0%
+  data_chart: 1/2 = 50.0%
+  isometric_3d: 0/2 = 0.0%
+  geometry_2d: 1/1 = 100.0%
+  bucket_divider: 1/1 = 100.0%
+
+失败题: 18/28
+  ind-ag-06 grade=1 topic=乘法阵列 gt=40.0 computed=None error=eval exec: '每排'
+  ind-ag-07 grade=1 topic=乘法阵列 gt=54.0 computed=None error=eval exec: 'cols'
+  ind-ag-10 grade=1 topic=乘法阵列 gt=21.0 computed=None error=json parse: Expecting ',' delimiter: line 1 column 470 (char 469)
+  ind-ag-08 grade=2 topic=乘法阵列 gt=32.0 computed=None error=eval exec: 'row_count'
+  ind-td-08 grade=3 topic=和差倍比 gt=20.0 computed=13.333333333333334 error=math mismatch: 13.333333333333334 != 20.0
+  ind-td-12 grade=3 topic=和差倍比 gt=11.0 computed=None error=eval exec: invalid syntax (<string>, line 1)
+  ind-td-07 grade=3 topic=和差倍比 gt=11.0 computed=16.5 error=math mismatch: 16.5 != 11.0
+  ind-td-06 grade=4 topic=和差倍比 gt=14.0 computed=None error=schema: 'entities' is a required property
+  ind-g6-approx-ex-01 grade=5 topic=火车过桥 gt=3.14 computed=None error=schema: None is not of type 'object'
+  ind-dc-10 grade=5 topic=平均数 gt=51.25 computed=None error=eval exec: 'T_bridge'
+
+完整结果: scripts/e2e_results/e2e_28final.json

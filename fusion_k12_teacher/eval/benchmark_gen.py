@@ -59,10 +59,15 @@ def _load_train_bridge() -> list[dict[str, Any]]:
     for p in problems:
         expected = p.get("expected", {})
         gt = 0.0
-        for v in expected.values():
-            if isinstance(v, (int, float)):
-                gt = float(v)
+        for pref in ("answer", "t", "total_time", "result", "final"):
+            if pref in expected and isinstance(expected[pref], (int, float)):
+                gt = float(expected[pref])
                 break
+        if gt == 0.0:
+            for v in reversed(list(expected.values())):
+                if isinstance(v, (int, float)):
+                    gt = float(v)
+                    break
         base_id = f"ind-{p['id']}"
         item_id = base_id
         suffix = 2

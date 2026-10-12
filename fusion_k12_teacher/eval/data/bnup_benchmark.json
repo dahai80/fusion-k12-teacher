@@ -14,7 +14,7 @@
     {
       "id": "ind-tb-ex-01",
       "question": "一列长200米的火车以20米每秒的速度通过800米大桥, 求通过时间。",
-      "ground_truth": 1000.0,
+      "ground_truth": 50.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -32,7 +32,7 @@
     {
       "id": "ind-tb-ex-02",
       "question": "一列长200米的火车以20米每秒的速度通过800米高架桥, 求完全在桥上的时间。",
-      "ground_truth": 600.0,
+      "ground_truth": 30.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -50,7 +50,7 @@
     {
       "id": "ind-tb-ex-03",
       "question": "一列长180米的火车以16米每秒的速度前行, 遇到以2米每秒同向行走的行人, 求火车通过行人的时间。",
-      "ground_truth": 18.0,
+      "ground_truth": 10.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -66,7 +66,7 @@
     {
       "id": "ind-tb-ex-04a",
       "question": "甲列车长150米以25米每秒行驶, 乙列车长250米以15米每秒行驶, 两车相向而行, 求错车时间。",
-      "ground_truth": 400.0,
+      "ground_truth": 10.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -85,7 +85,7 @@
     {
       "id": "ind-tb-ex-04b",
       "question": "甲列车长150米以25米每秒行驶, 乙列车长250米以15米每秒行驶, 两车同向而行 (甲在后追乙), 求超车时间。",
-      "ground_truth": 10.0,
+      "ground_truth": 40.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -122,7 +122,7 @@
     {
       "id": "ind-tb-pr-01",
       "question": "一列长150米的火车以15米每秒的速度通过1050米涵洞, 求通过时间。",
-      "ground_truth": 1200.0,
+      "ground_truth": 80.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -140,7 +140,7 @@
     {
       "id": "ind-tb-pr-02",
       "question": "一列火车通过400米桥需30秒, 以同一速度通过700米隧道需45秒, 求车速与车长。",
-      "ground_truth": 20.0,
+      "ground_truth": 200.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -160,7 +160,7 @@
     {
       "id": "ind-tb-pr-03",
       "question": "甲列车长200米以25米每秒, 乙列车长160米以15米每秒, 相向而行; 乙车乘客看甲车经过历时多久?",
-      "ground_truth": 40.0,
+      "ground_truth": 5.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -179,7 +179,7 @@
     {
       "id": "ind-g3-cut-ex-01",
       "question": "一根木头锯成3段, 每锯一次2分钟, 一共需要多少分钟? 错解: 3×2=6 正解: (3-1)×2=4 错因: 锯成3段只需锯2次, 非段数×次数",
-      "ground_truth": 2.0,
+      "ground_truth": 4.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -213,7 +213,7 @@
     {
       "id": "ind-g2-fence-ex-01",
       "question": "靠墙围长方形菜园, 长边10米靠墙, 三边篱笆共24米, 求菜园面积。错解: 24×10=240 正解: 宽=(24-10)/2=7, 面积=10×7=70 错因: 靠墙边不算周长",
-      "ground_truth": 7.0,
+      "ground_truth": 70.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -230,7 +230,7 @@
     {
       "id": "ind-g3-unitary-ex-01",
       "question": "3本笔记本6元, 买5本需要多少元? 错解: 6×5=30 正解: 6÷3×5=10 错因: 未先求单位量(每本2元)",
-      "ground_truth": 2.0,
+      "ground_truth": 10.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -248,7 +248,7 @@
     {
       "id": "ind-g3-chicken-ex-01",
       "question": "鸡兔同笼, 共10个头28条腿, 鸡兔各几只? 错解: 全鸡20腿差8, 忘记换算 正解: 兔=(28-2×10)/2=4, 鸡=6 错因: 假设全鸡后腿差须除以腿数差(4-2)",
-      "ground_truth": 4.0,
+      "ground_truth": 6.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -282,7 +282,7 @@
     {
       "id": "ind-g5-work-ex-01",
       "question": "一项工程甲单独6天完成, 乙单独12天完成, 两人合作几天完成? 错解: (6+12)/2=9 正解: 1/(1/6+1/12)=4 错因: 合作按效率相加, 非天数平均",
-      "ground_truth": 0.1667,
+      "ground_truth": 4.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -299,7 +299,7 @@
     {
       "id": "ind-g6-motion-ex-01",
       "question": "一辆汽车以20米每秒的速度行驶5秒, 行驶多少米? 错解: 20÷5=4 或 5×20混淆 正解: 20×5=100 错因: s=vt 三量须对应, 求路程=速度×时间",
-      "ground_truth": 100.0,
+      "ground_truth": 5.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -851,7 +851,7 @@
     {
       "id": "ind-g3-summult-ex-01",
       "question": "甲乙一共40, 甲是乙的4倍, 甲乙各多少? 错解: 40÷4=10 正解: 40÷(4+1)=8(乙), 甲=8×4=32 错因: 忽略乙自身1倍, 须除以倍数+1",
-      "ground_truth": 8.0,
+      "ground_truth": 32.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -1776,7 +1776,7 @@
     {
       "id": "ind-g5-cuboidcomb-ex-01",
       "question": "两个长6宽4高2长方体拼大长方体, 最大表面积? 错解: 拼最大面 正解: 拼最小面(4×2=8), 减面积最少, SA最大=2×88-2×8=160 错因: 拼接面越小总表面积越大",
-      "ground_truth": 160.0,
+      "ground_truth": 8.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",
@@ -1981,7 +1981,7 @@
     {
       "id": "ind-g6-interest-ex-01-2",
       "question": "存1000元年利率2%存两年单利利息? 错解: 1000×(1+2%)²复利 正解: 1000×2%×2=40元 错因: 小学只考单利非复利",
-      "ground_truth": 40.0,
+      "ground_truth": 1040.0,
       "category": "in_domain",
       "grade": 5,
       "topic": "火车过桥",

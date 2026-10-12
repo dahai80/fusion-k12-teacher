@@ -200,12 +200,21 @@ class BNUPEvaluator:
         dsl = extract_dsl(response_text)
         return {"thinking": thinking or None, "dsl": dsl}
 
+    _OP_MAP = str.maketrans({"×": "*", "÷": "/", "−": "-", "–": "-", "—": "-"})
+
+    @staticmethod
+    def _normalize_eval_expr(expr: str) -> str:
+        expr = expr.translate(BNUPEvaluator._OP_MAP)
+        expr = expr.replace("^", "**")
+        return expr
+
     def evaluate_eval_expression(
         self, pipeline: list[dict[str, Any]], parameters: dict[str, Any]
     ) -> float:
         """安全执行 pipeline eval 表达式 (PRD §453-471)。
 
         params.xxx → params_val['xxx'], results[n] → results_val[n]。
+        中文运算符 ×÷− 自动转 Python * / -。
         eval restricted globals: __builtins__=None。
         返回最后一个 step 的计算结果。
         """
@@ -216,6 +225,7 @@ class BNUPEvaluator:
             expr = str(step_item.get("eval", ""))
             if not expr:
                 continue
+            expr = self._normalize_eval_expr(expr)
             py_expr = _PARAM_SUB.sub(r"params_val['\1']", expr)
             py_expr = _RESULT_SUB.sub(r"results_val[\1]", py_expr)
             val = eval(
@@ -227,6 +237,27 @@ class BNUPEvaluator:
         if not results_val:
             return 0.0
         return results_val[max(results_val.keys())]
+
+    def _normalize_dsl_types(self, dsl_json: dict[str, Any]) -> None:
+        meta = dsl_json.get("meta", {})
+        if isinstance(meta, dict):
+            for k in ("grade",):
+                v = meta.get(k)
+                if isinstance(v, str):
+                    try:
+                        meta[k] = float(v) if "." in v else int(v)
+                    except ValueError:
+                        pass
+        params = dsl_json.get("parameters", {})
+        if isinstance(params, dict):
+            for p in params.values():
+                if isinstance(p, dict):
+                    v = p.get("value")
+                    if isinstance(v, str) and v:
+                        try:
+                            p["value"] = float(v) if "." in v else int(v)
+                        except ValueError:
+                            pass
 
     def _check_unit_alignment(
         self, dsl_json: dict[str, Any]
@@ -289,13 +320,19 @@ class BNUPEvaluator:
             return res
 
         try:
-            dsl_json = json.loads(dsl_text)
+            from .._parse import parse_json
+            parsed = parse_json(dsl_text)
+            if parsed is None:
+                parsed = json.loads(dsl_text)
+            dsl_json = parsed
             res.json_ok = True
             self.report.json_passed += 1
         except Exception as e:
             res.error = f"json parse: {e}"
             self.report.per_sample.append(res)
             return res
+
+        self._normalize_dsl_types(dsl_json)
 
         if self._validator:
             errors = list(self._validator.iter_errors(dsl_json))
