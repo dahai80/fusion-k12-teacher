@@ -47,7 +47,7 @@
                     {"lesson": 5, "title": "有几只小鸟", "topic": "7、6加几的进位加法", "knowledge_point_ids": ["math-g1-na-02"]}
                 ]},
                 {"unit": 8, "title": "认识钟表", "lessons": [
-                    {"lesson": 1, "title": "小明的一天", "topic": "认识整时和半时", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "小明的一天", "topic": "认识整时和半时", "knowledge_point_ids": ["math-g1-na-03"]}
                 ]}
             ]
         },
@@ -136,9 +136,9 @@
                     {"lesson": 3, "title": "买矿泉水", "topic": "连乘应用", "knowledge_point_ids": ["math-g3-na-02"]}
                 ]},
                 {"unit": 7, "title": "年、月、日", "lessons": [
-                    {"lesson": 1, "title": "看日历", "topic": "认识年月日", "knowledge_point_ids": []},
-                    {"lesson": 2, "title": "一天的时间", "topic": "24时计时法", "knowledge_point_ids": []},
-                    {"lesson": 3, "title": "时间表", "topic": "时间表的制作与阅读", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "看日历", "topic": "认识年月日", "knowledge_point_ids": ["math-g2-na-05"]},
+                    {"lesson": 2, "title": "一天的时间", "topic": "24时计时法", "knowledge_point_ids": ["math-g2-na-05"]},
+                    {"lesson": 3, "title": "时间表", "topic": "时间表的制作与阅读", "knowledge_point_ids": ["math-g2-na-05"]}
                 ]},
                 {"unit": 8, "title": "认识小数", "lessons": [
                     {"lesson": 1, "title": "文具店", "topic": "小数的初步认识", "knowledge_point_ids": ["math-g3-na-04"]},

@@ -38,7 +38,7 @@
                     {"lesson": 2, "title": "10加几和相应的减法", "topic": "10加几和相应的减法", "knowledge_point_ids": ["math-g1-na-02"]}
                 ]},
                 {"unit": 7, "title": "认识钟表", "lessons": [
-                    {"lesson": 1, "title": "认识整时", "topic": "认识整时", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "认识整时", "topic": "认识整时", "knowledge_point_ids": ["math-g1-na-03"]}
                 ]},
                 {"unit": 8, "title": "20以内的进位加法", "lessons": [
                     {"lesson": 1, "title": "9加几", "topic": "9加几", "knowledge_point_ids": ["math-g1-na-02"]},
@@ -78,10 +78,10 @@
                     {"lesson": 3, "title": "整百、整千数加减法", "topic": "整百、整千数加减法", "knowledge_point_ids": ["math-g2-na-02"]}
                 ]},
                 {"unit": 8, "title": "克和千克", "lessons": [
-                    {"lesson": 1, "title": "克和千克", "topic": "克和千克", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "克和千克", "topic": "克和千克", "knowledge_point_ids": ["math-g2-na-01"]}
                 ]},
                 {"unit": 9, "title": "数学广角—推理", "lessons": [
-                    {"lesson": 1, "title": "推理", "topic": "推理", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "推理", "topic": "推理", "knowledge_point_ids": ["math-g1-sp-01"]}
                 ]}
             ]
         },
@@ -119,10 +119,10 @@
                     {"lesson": 3, "title": "分数的简单加减法", "topic": "分数的初步认识", "knowledge_point_ids": ["math-g3-na-05"]}
                 ]},
                 {"unit": 8, "title": "数学广角—集合", "lessons": [
-                    {"lesson": 1, "title": "集合", "topic": "集合", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "集合", "topic": "集合", "knowledge_point_ids": ["math-g2-sp-01"]}
                 ]},
                 {"unit": 9, "title": "数学广角—搭配（一）", "lessons": [
-                    {"lesson": 1, "title": "搭配问题", "topic": "搭配问题", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "搭配问题", "topic": "搭配问题", "knowledge_point_ids": ["math-g3-na-03"]}
                 ]}
             ]
         },
@@ -155,7 +155,7 @@
                     {"lesson": 1, "title": "条形统计图", "topic": "条形统计图", "knowledge_point_ids": ["math-g4-sp-01"]}
                 ]},
                 {"unit": 8, "title": "数学广角—优化", "lessons": [
-                    {"lesson": 1, "title": "优化", "topic": "优化", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "优化", "topic": "优化", "knowledge_point_ids": ["math-g6-cp-01"]}
                 ]}
             ]
         },
@@ -185,7 +185,7 @@
                     {"lesson": 3, "title": "梯形的面积", "topic": "多边形的面积", "knowledge_point_ids": ["math-g5-gm-01"]}
                 ]},
                 {"unit": 7, "title": "数学广角—植树问题", "lessons": [
-                    {"lesson": 1, "title": "植树问题", "topic": "植树问题", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "植树问题", "topic": "植树问题", "knowledge_point_ids": ["math-g4-na-03"]}
                 ]}
             ]
         },
@@ -219,7 +219,7 @@
                     {"lesson": 1, "title": "扇形统计图", "topic": "扇形统计图", "knowledge_point_ids": ["math-g6-sp-01"]}
                 ]},
                 {"unit": 8, "title": "数学广角—数与形", "lessons": [
-                    {"lesson": 1, "title": "数与形", "topic": "数与形", "knowledge_point_ids": []}
+                    {"lesson": 1, "title": "数与形", "topic": "数与形", "knowledge_point_ids": ["math-g6-gm-03"]}
                 ]}
             ]
         }
