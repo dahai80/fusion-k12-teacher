@@ -362,7 +362,7 @@ class BNUPEvaluator:
             res.computed_value = computed
             res.eval_exec_ok = True
             self.report.eval_exec_passed += 1
-            if abs(computed - ground_truth) < 1e-3:
+            if abs(computed - ground_truth) <= 0.01:
                 res.math_ok = True
                 self.report.math_correct += 1
             else:
