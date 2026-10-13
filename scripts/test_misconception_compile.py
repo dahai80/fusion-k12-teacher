@@ -8,12 +8,22 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-# DeepSeek 云端配置 (用户提供的 key) — 必须在 import MLXClient 前注入,
-# 本地 .env 是 local 形态 (mlx gateway), 直跑会 401
+# DeepSeek 云端配置 — 必须在 import MLXClient 前注入, 本地 .env 是 local 形态
+# (mlx gateway), 直跑会 401。key 从环境变量或 .env 读取, 禁止硬编码进仓库。
 os.environ['FUSION_MLX_CLOUD'] = '1'
-os.environ['FUSION_MLX_URL'] = 'https://api.deepseek.com/v1'
-os.environ['FUSION_MLX_MODEL'] = 'deepseek-chat'
-os.environ['FUSION_MLX_API_KEY'] = '***REDACTED***'
+os.environ['FUSION_MLX_URL'] = os.environ.get('FUSION_MLX_URL', 'https://api.deepseek.com/v1')
+os.environ['FUSION_MLX_MODEL'] = os.environ.get('FUSION_MLX_MODEL', 'deepseek-chat')
+_env_key = os.environ.get('FUSION_MLX_API_KEY', '')
+if not _env_key:
+    _env_file = Path('.env')
+    if _env_file.exists():
+        for _line in _env_file.read_text().splitlines():
+            if _line.strip().startswith('FUSION_MLX_API_KEY='):
+                _env_key = _line.split('=', 1)[1].strip()
+                break
+if not _env_key:
+    raise SystemExit("FUSION_MLX_API_KEY 未设置: export 或写入 .env (勿提交仓库)")
+os.environ['FUSION_MLX_API_KEY'] = _env_key
 os.environ['FUSION_MLX_CONNECT_TIMEOUT'] = '30'
 os.environ['FUSION_MLX_READ_TIMEOUT'] = '240'
 from fusion_k12_teacher.ai_client import MLXClient
