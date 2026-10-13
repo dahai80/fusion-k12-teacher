@@ -31,6 +31,16 @@ def _env_model() -> str:
     return os.environ.get("FUSION_MLX_MODEL", _FALLBACK_MODEL)
 
 
+def _cloud_mode() -> bool:
+    """云端形态开关 (#28 迁移评估): FUSION_MLX_CLOUD=1 时所有请求走标准 OpenAI 兼容语义。
+
+    差异: ① 不注入 chat_template_kwargs (严格云厂商会 4xx 拒绝未知字段)
+    ② 不传 GBNF grammar (mlx 专属受限解码, 云端无对应) ③ auto-select 关闭
+    (云模型名与本地库无关, 必须显式 FUSION_MLX_MODEL)。
+    """
+    return os.environ.get("FUSION_MLX_CLOUD", "").strip().lower() in ("1", "true", "yes")
+
+
 _PREFERRED_CHAT_MODELS = (
     "Qwen3.5-9B-4bit", "Qwen3.5-9B", "Qwen3.5-4B", "Qwen3-4B",
     "Qwen3.5-4B-bf16", "Qwen3.5-4B-4bit", "Qwen3-0.6B",
@@ -220,9 +230,13 @@ class MLXClient:
         try:
             if _HAS_FUSION_CORE and self._inner is not None:
                 try:
-                    extra_kwargs: dict[str, Any] = {"chat_template_kwargs": think_kwargs}
-                    if grammar:
-                        extra_kwargs["grammar"] = grammar
+                    # 云端形态不传 GBNF grammar (mlx 专属受限解码, 云 API 无对应字段会被拒)
+                    if grammar and not _cloud_mode():
+                        extra_kwargs: dict[str, Any] = {"grammar": grammar}
+                    else:
+                        extra_kwargs: dict[str, Any] = {}
+                    if think_kwargs:
+                        extra_kwargs["chat_template_kwargs"] = think_kwargs
                     r = await self._inner.chat_text(
                         model=model,
                         messages=messages,
@@ -264,7 +278,8 @@ class MLXClient:
         }
         if think_kwargs:
             payload["chat_template_kwargs"] = think_kwargs
-        if grammar:
+        # 云端形态不传 GBNF grammar (mlx 专属受限解码, 云 API 无对应字段)
+        if grammar and not _cloud_mode():
             payload["grammar"] = grammar
         resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
@@ -319,7 +334,7 @@ class MLXClient:
         import time as _time
         _t0 = _time.monotonic()
         payload: dict[str, Any] = {
-            "model": "kokoro-82m",
+            "model": os.environ.get("FUSION_MLX_TTS_MODEL", "kokoro-82m"),
             "input": text,
             "response_format": response_format,
             "speed": speed,
@@ -354,18 +369,33 @@ class MLXClient:
 
     async def transcribe(
         self, audio: bytes, *,
-        model: str = "whisper-large-v3-turbo",
+        model: str = "",
         language: str = "zh",
     ) -> str:
-        """fusion-mlx /v1/audio/transcriptions — Whisper ASR。返回识别文本。"""
+        """ASR — 默认走 gateway/直连端点的 /v1/audio/transcriptions (Whisper 协议)。
+
+        云端形态: FUSION_MLX_ASR_URL/KEY/MODEL 三个 env 让 ASR 独立指向云厂商端点
+        (照搬 TTS 的 FUSION_MLX_TTS_URL/KEY/MODEL 模式); 未设置时行为与原先一致。
+        """
         import time as _time
         _t0 = _time.monotonic()
+        if not model:
+            model = os.environ.get("FUSION_MLX_ASR_MODEL", "whisper-large-v3-turbo")
         files = {"file": ("audio.wav", audio, "audio/wav")}
         data: dict[str, Any] = {"model": model, "language": language, "word_timestamps": "false"}
         try:
-            resp = await self.httpx_client.post(
-                "/audio/transcriptions", files=files, data=data, headers=self._auth_headers(),
-            )
+            # ASR 独立端点: 云厂商的 /audio/transcriptions 与主 base_url 不同源时启用
+            asr_url = os.environ.get("FUSION_MLX_ASR_URL", "").strip()
+            asr_key = os.environ.get("FUSION_MLX_ASR_KEY", "").strip()
+            if asr_url:
+                client = self._httpx_client
+                url = asr_url.rstrip("/") + "/audio/transcriptions"
+                headers = {"Authorization": f"Bearer {asr_key}"} if asr_key else {}
+            else:
+                client = self.httpx_client
+                url = "/audio/transcriptions"
+                headers = self._auth_headers()
+            resp = await client.post(url, files=files, data=data, headers=headers)
             if resp.status_code >= 400:
                 logger.error("ASR HTTP %d: %s", resp.status_code, resp.text[:200])
                 raise RuntimeError(f"ASR HTTP {resp.status_code}")
@@ -380,6 +410,9 @@ class MLXClient:
     def _think_kwargs(self) -> dict[str, Any]:
         # Qwen3 系列默认开 thinking (reasoning) 模式, 复杂 prompt 生成数分钟 reasoning_content。
         # 教学场景需快速响应, env FUSION_MLX_ENABLE_THINKING=true 可开 (默认关)。
+        # 云端形态 (FUSION_MLX_CLOUD=1): 不注入 — 严格云厂商会 4xx 拒绝未知字段。
+        if _cloud_mode():
+            return {}
         if os.environ.get("FUSION_MLX_ENABLE_THINKING", "").lower() in ("1", "true", "yes"):
             return {}
         return {"enable_thinking": False}
@@ -425,9 +458,19 @@ class MLXClient:
         )
 
     async def _auto_select_model(self, force: bool = False) -> str:
-        """自动选择可用聊天模型 — 优先匹配已知聊天模型，跳过非聊天模型。"""
+        """自动选择可用聊天模型 — 优先匹配已知聊天模型，跳过非聊天模型。
+
+        云端形态 (FUSION_MLX_CLOUD=1) 禁用: 云模型名与本地 mlx 库无关,
+        扫 /v1/models 匹配 _PREFERRED_CHAT_MODELS 只会误选 — 必须显式 FUSION_MLX_MODEL。
+        """
         async with self._auto_select_lock:
             if self.model and not force:
+                return self.model
+            if _cloud_mode():
+                # 云端: 不扫描模型列表, 直接用 env 显式模型名 (缺失则报错暴露, 不静默兜底)
+                env_model = _env_model()
+                logger.info("云端形态: 跳过 auto-select, 使用显式模型 %s", env_model or "(未设置!)")
+                self.model = env_model
                 return self.model
             try:
                 models = await self.list_models()

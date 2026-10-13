@@ -417,6 +417,34 @@ See [docs/deploy.md](docs/deploy.md) for full deployment guide.
 | School intranet / 学校内网 | Docker Compose (`docker-compose up -d`) |
 | Commercial institution / 教培机构商用 | K8s + algorithm registration + compliance / K8s + 算法备案 + 合规配置 |
 
+### 双形态部署 / Deployment forms
+
+一套代码、两种运行形态，由启动脚本选择（开关 `FUSION_MLX_CLOUD`）：
+
+| 形态 | 启动脚本 | 平台 | 推理 |
+|------|----------|------|------|
+| **本地**（原离线形态） | `./startLocal.sh` | 仅 macOS Apple Silicon | fusion-mlx + fusion-gateway 本地推理（`chat_template_kwargs`/GBNF grammar 启用） |
+| **云端** | `./startCloud.sh` | Ubuntu / 任意 Linux | 任意 OpenAI 兼容云 API（`FUSION_MLX_URL` 指向厂商；不注入 mlx 专属字段；必须显式模型名） |
+
+```bash
+# macOS 本地形态 — 启动前自检平台/env/依赖，然后执行 start.sh
+./startLocal.sh -d
+
+# Ubuntu 云端形态（以 DeepSeek 为例）— 先在 .env 配置:
+#   FUSION_MLX_CLOUD=1
+#   FUSION_MLX_URL=https://api.deepseek.com/v1
+#   FUSION_MLX_MODEL=deepseek-chat
+#   FUSION_MLX_API_KEY=sk-xxx
+#   (可选) FUSION_MLX_TTS_URL/KEY/MODEL、FUSION_MLX_ASR_URL/KEY/MODEL
+FUSION_START_DRYRUN=1 ./startCloud.sh   # 仅自检不启动
+./startCloud.sh -d
+```
+
+说明：数字人 MuseTalk 唇形同步依赖 Apple Silicon —— Ubuntu 上 manager 自动降级
+`StaticAvatar`（云端 TTS + 文本/音频走 WS）。`digital-human` extra 跨平台可装，
+mlx 依赖拆分在独立的 `digital-human-mlx` extra。迁移评估详见
+[`architecture/fusion-k12-teacher-2-ubuntu-1012.md`](../architecture/fusion-k12-teacher-2-ubuntu-1012.md)。
+
 Quick Docker start / Docker 快速启动：
 ```bash
 docker build -t fusion-k12-teacher:latest .

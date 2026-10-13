@@ -535,6 +535,36 @@ v2.0 ships cluster-ready deployment templates under [`deploy/`](deploy/) (see §
 
 Gateway integration guide: [`deploy/fusion-gateway-integration.md`](deploy/fusion-gateway-integration.md).
 
+### Deployment forms / 双形态部署
+
+Two runtime forms behind one switch (`FUSION_MLX_CLOUD`), selected by launcher scripts:
+
+| Form / 形态 | Launcher | Platform | Inference |
+|-------------|----------|----------|-----------|
+| **Local** (original offline) | `./startLocal.sh` | macOS Apple Silicon only | fusion-mlx + fusion-gateway (local GPU, `chat_template_kwargs`/GBNF grammar enabled) |
+| **Cloud** | `./startCloud.sh` | Ubuntu / any Linux | Any OpenAI-compatible cloud API (`FUSION_MLX_URL` → vendor; no mlx-specific fields; explicit model name required) |
+
+```bash
+# macOS local form — preflight checks platform/env/dependencies, then runs start.sh
+./startLocal.sh -d
+
+# Ubuntu cloud form (example: DeepSeek) — set .env first:
+#   FUSION_MLX_CLOUD=1
+#   FUSION_MLX_URL=https://api.deepseek.com/v1
+#   FUSION_MLX_MODEL=deepseek-chat
+#   FUSION_MLX_API_KEY=sk-xxx
+#   (optional) FUSION_MLX_TTS_URL/KEY/MODEL, FUSION_MLX_ASR_URL/KEY/MODEL
+FUSION_START_DRYRUN=1 ./startCloud.sh   # preflight only
+./startCloud.sh -d
+```
+
+Notes: digital-human MuseTalk lip-sync requires Apple Silicon — on Ubuntu the
+manager auto-degrades to `StaticAvatar` (cloud TTS + text/audio over WS). The
+`digital-human` extra is cross-platform; mlx dependencies live in the separate
+`digital-human-mlx` extra. See
+[`architecture/fusion-k12-teacher-2-ubuntu-1012.md`](../architecture/fusion-k12-teacher-2-ubuntu-1012.md)
+for the migration assessment.
+
 Quick Docker start:
 ```bash
 docker build -t fusion-k12-teacher:2.0 -f deploy/Dockerfile .

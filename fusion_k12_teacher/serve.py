@@ -238,18 +238,31 @@ async def _mlx_health_watchdog() -> None:
     运维无感知。看门狗保证挂起在 1 个探测周期内可见。
     """
     interval = float(os.environ.get("FUSION_K12_HEALTH_PROBE_INTERVAL", "60"))
-    logger.info("mlx 健康探测已启动 (间隔 %ds)", int(interval))
+    cloud = False
+    try:
+        from .ai_client import _cloud_mode
+        cloud = _cloud_mode()
+    except Exception:
+        pass
+    logger.info("mlx 健康探测已启动 (间隔 %ds, 形态=%s)", int(interval), "cloud" if cloud else "local")
     was_down = False
     while True:
         await asyncio.sleep(interval)
         try:
             models = await mlx_client.list_models() if mlx_client is not None else None
-            # mlx 挂起时 gateway 常返回 200+空列表 (非 None) — 空列表同样视为 down
-            down = not models
+            if cloud:
+                # 云厂商 /v1/models 行为不一 (按 key 权限过滤/返回空列表) —
+                # 空列表不算 down, 仅网络/鉴权异常 (抛异常) 判 down
+                down = models is None
+            else:
+                # mlx 挂起时 gateway 常返回 200+空列表 (非 None) — 空列表同样视为 down
+                down = not models
         except Exception:
             down = True
         if down and not was_down:
-            logger.warning("健康告警: LLM 后端不可达 — 答疑/讲稿/场景生成将失败, 请检查 fusion-mlx/gateway")
+            hint = ("请检查云厂商 API key/配额/网络" if cloud
+                    else "请检查 fusion-mlx/gateway")
+            logger.warning("健康告警: LLM 后端不可达 — 答疑/讲稿/场景生成将失败, %s", hint)
         elif not down and was_down:
             logger.info("健康告警解除: LLM 后端恢复")
         was_down = down
