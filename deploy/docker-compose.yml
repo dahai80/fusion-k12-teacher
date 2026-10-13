@@ -38,7 +38,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    env_file: deploy/.env
+    env_file: .env
     environment:
       FUSION_K12_MODE: cluster
       FUSION_K12_PG_DSN: postgresql://${FUSION_K12_PG_USER:-k12}:${FUSION_K12_PG_PASSWORD:-change-me}@postgres:5432/${FUSION_K12_PG_DB:-k12}
@@ -57,11 +57,11 @@ services:
       replicas: ${FUSION_K12_REPLICAS:-3}
       resources:
         limits:
-          cpu: "2000m"
-          memory: "2Gi"
+          cpus: "2"
+          memory: "2g"
         reservations:
-          cpu: "500m"
-          memory: "512Mi"
+          cpus: "0.5"
+          memory: "512m"
       restart_policy:
         condition: on-failure
     healthcheck:
