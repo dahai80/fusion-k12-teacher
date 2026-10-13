@@ -282,6 +282,21 @@ def _h_cuboid_combine_surface(v: dict[str, float]) -> dict[str, float]:
             "single_sa": single_sa, "max_sa": max_sa, "min_sa": min_sa}
 
 
+def _h_cylinder_cone_cut(v: dict[str, float]) -> dict[str, float]:
+    # 圆柱削最大圆锥 (题面约定 π=3.14): 削去体积=圆柱×2/3, 剩下=×1/3。
+    # main_volume 按题目所问回填 ("削去"→removed, "剩下"→remaining), 默认削去。
+    import sympy as sp
+    r, h = v["radius"], v["height"]
+    pi = sp.Rational(314, 100)  # 精确 3.14, 避免浮点误差
+    cyl = pi * r ** 2 * h
+    removed = sp.nsimplify(cyl * 2 / 3)
+    remaining = cyl - removed
+    main = removed if "removed" in v or "ask" not in v else remaining
+    out = {**v, "cylinder_volume": float(cyl), "removed_volume": float(removed),
+           "remaining_volume": float(remaining), "main_volume": float(main)}
+    return out
+
+
 def _h_combination_count(v: dict[str, float]) -> dict[str, float]:
     n1 = v["n_items1"]
     n2 = v["n_items2"]
@@ -358,6 +373,7 @@ _SCENARIO_HANDLERS: dict[str, ScenarioHandler] = {
     "weekday_calc": _h_weekday_calc,
     "semicircle_perimeter": _h_semicircle_perimeter,
     "cuboid_combine_surface": _h_cuboid_combine_surface,
+    "cylinder_cone_cut": _h_cylinder_cone_cut,
     "combination_count": _h_combination_count,
     "unitary_combined": _h_unitary_combined,
     "redundant_filter": _h_redundant_filter,
@@ -392,6 +408,7 @@ _SCENARIO_REQUIRED: dict[str, list[str]] = {
     "weekday_calc": ["start_day", "add_days"],
     "semicircle_perimeter": ["radius"],
     "cuboid_combine_surface": ["length", "width", "height"],
+    "cylinder_cone_cut": ["radius", "height"],
     "combination_count": ["n_items1", "n_items2"],
     "unitary_combined": ["n_people", "n_days", "total_work", "target_people", "target_days"],
     "redundant_filter": ["total", "removed"],

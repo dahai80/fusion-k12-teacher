@@ -40,6 +40,7 @@ _KNOWN_SCENARIOS = (
     "combination_count", "unitary_combined",
     "redundant_filter", "fold_cut", "stars_bars",
     "chase_meet", "plant_interval", "tank_water",
+    "cylinder_cone_cut",
 )
 
 _EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是数学应用题结构化提取器。从题目文本提取参数, 严格输出 JSON。
@@ -76,6 +77,7 @@ _EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" 
 - redundant_filter: 多余条件筛选题 (含干扰数字不参与运算, 如树上鸟飞走几只又飞来几朵花, 花与鸟无关) (entities 含 scene.total=有效总数如鸟数, scene.removed=减少数如飞走, scene.distraction=干扰数如花朵不参与运算)
 - fold_cut: 对折剪开段数 (绳子/纸对折n次后从中间剪开, 段数=2^n+1, 非锯木头非简单乘法, 关键词"对折""从中间剪开") (entities 含 rope.folds=对折次数)
 - stars_bars: 隔板法/整数分拆/相同物品放不同容器 (n个相同物品放k个不同容器每个至少min_per个求放法数, 每篮≥1用C(n-1,k-1), 每篮≥m先预留m*k再用C(n-m*k+k-1,k-1), 关键词"放法/放进/篮子/盒子/盘子/每个至少/最少分到/几种分法/隔板法/整数分拆", 如7根棒棒糖放3个篮子每篮≥1, 或12块巧克力分3人每人至少3块) (entities 含 bag.n_items=物品数, bag.n_bins=容器数, bag.min_per=每容器最少(默认1, 题目说"每个至少1"填1, "最少3块"填3))
+- cylinder_cone_cut: 圆柱削最大圆锥 (π取3.14, 削去体积=圆柱体积×2/3, 剩下=×1/3; 关键词"削成最大圆锥/削去/减少体积") (entities 含 cyl.radius=圆柱半径, cyl.height=圆柱高) 注意: 问"削去"还是"剩下"由 question_focus 区分, 数值由 SymPy 统一算
 
 输出 JSON 格式:
 {{
@@ -109,7 +111,8 @@ _EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" 
     "work2": {{"n_people": 数值, "n_days": 数值, "total_work": 数值, "target_people": 数值, "target_days": 数值, "label": "工程"}},
     "scene": {{"total": 数值, "removed": 数值, "distraction": 数值, "label": "场景"}},
     "rope": {{"folds": 数值, "label": "绳子"}},
-    "bag": {{"n_items": 数值, "n_bins": 数值, "min_per": 数值(必须填, 题目说"每个至少1"或未提最少填1, "最少3块"/"至少3"填3), "label": "分放"}}
+    "bag": {{"n_items": 数值, "n_bins": 数值, "min_per": 数值(必须填, 题目说"每个至少1"或未提最少填1, "最少3块"/"至少3"填3), "label": "分放"}},
+    "cyl": {{"radius": 数值, "height": 数值, "label": "圆柱"}}
   }},
   "key_milestones": [
     {{"time_ratio": 0.0, "label": "车头上桥", "event": "start_bridge"}}
@@ -315,6 +318,10 @@ class MathSceneCompiler(SceneCompilerBase):
         elif scenario == "fold_cut":
             total_distance = self._var_value(verify, "segments")
             total_time = self._var_value(verify, "folds") or 0.0
+        elif scenario == "cylinder_cone_cut":
+            # 里程映射: 主解=题目所问体积 (handler 已按 question 意图回填主字段)
+            total_distance = self._var_value(verify, "main_volume")
+            total_time = self._var_value(verify, "removed_volume") or 0.0
         elif scenario == "stars_bars":
             total_distance = self._var_value(verify, "ways")
             total_time = self._var_value(verify, "n_bins") or 0.0
@@ -331,9 +338,11 @@ class MathSceneCompiler(SceneCompilerBase):
             timeline={
                 "total_distance": total_distance or 0.0,
                 "total_time": total_time or 0.0,
-                # 答案字段与 generic 路径对齐 — 模板题的主解 (total_distance/total_time
-                # 语义随场景变化, answer 统一取主解) 供前端/测试统一读取
-                "answer": total_distance or total_time,
+                # 答案字段与 generic 路径对齐 — answer 必须是题目所问:
+                # 问时间(通过时间/多久)取 total_time, 问路程/长度取 total_distance
+                # (train 类两者都有值, 固定 `distance or time` 会把"求时间"题答成路程)
+                "answer": self._pick_answer(problem, extracted.get("question_focus", ""),
+                                            total_distance, total_time),
                 "answer_unit": "",
                 "milestones": [m.to_dict() for m in milestones],
             },
@@ -665,6 +674,20 @@ class MathSceneCompiler(SceneCompilerBase):
         return dsl
 
     @staticmethod
+    def _pick_answer(problem: str, question_focus: str,
+                     total_distance: float | None, total_time: float | None) -> float:
+        # answer 按题目所问选择: 时间意图(通过/多久/几秒/几分钟/时间)取 total_time,
+        # 路程意图(多长/多少米/路程/长度)取 total_distance; 意图不明回退原序 (distance or time)
+        text = f"{problem} {question_focus}"
+        asks_time = bool(re.search(r"时间|多久|几秒|几分钟|多少秒|多少分|多长时间|过桥需要", text))
+        asks_dist = bool(re.search(r"多长|多少米|路程|长度|全长|车长|桥长", text))
+        if asks_time and not asks_dist and total_time:
+            return total_time
+        if asks_dist and not asks_time and total_distance:
+            return total_distance
+        return total_distance or total_time or 0.0
+
+    @staticmethod
     def _var_value(verify: VerifyResult | None, name: str) -> float | None:
         if not verify:
             return None
@@ -779,6 +802,9 @@ class MathSceneCompiler(SceneCompilerBase):
             elif "start_day" in val and "add_days" in val:
                 out["start_day"] = float(val["start_day"])
                 out["add_days"] = float(val["add_days"])
+            elif "radius" in val and "height" in val:
+                out["radius"] = float(val["radius"])
+                out["height"] = float(val["height"])
             elif "radius" in val:
                 out["radius"] = float(val["radius"])
             elif "length" in val and "width" in val and "height" in val:
