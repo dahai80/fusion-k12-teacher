@@ -44,3 +44,7 @@ config/runtime
 
 # agent tooling
 .atomcode/
+# train/ workspace: weight snapshots and dataset bodies stay local
+# (verified via train/SHA256SUMS.txt, see train/README.md)
+/train/checkpoints/
+/train/data/

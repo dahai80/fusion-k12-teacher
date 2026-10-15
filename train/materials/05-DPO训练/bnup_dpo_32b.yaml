@@ -1,0 +1,42 @@
+# BNUP DPO Configuration — Stage 2 Preference Alignment (issue #59)
+# ====================================================================
+# Target: Qwen2.5-32B-Instruct, DPO on SFT output adapter
+# Method: DPO (beta=0.1, sigmoid loss)
+# Data: output of `ft bnup-prep --dpo` (ShareGPT preference pairs)
+#
+# Adapter chaining (fusion-mlx #1149, closed via PR #1152): the BNUP
+# pipeline auto-fills init_adapter_path from the SFT stage's adapter
+# path, so the DPO policy model loads with the SFT adapter before
+# preference training (reference model stays base-only). For a standalone
+# `ft bnup-train --stage dpo` or `ft rlsl --method dpo`, pass the SFT
+# adapter path via --init-adapter-path. Empty = fresh LoRA.
+
+rlsl:
+  method: dpo
+  beta: 0.1  # DPO temperature (spec: dpo_beta=0.1, dpo_loss_type=sigmoid)
+  init_adapter_path: ""  # SFT adapter path; auto-filled by pipeline stage
+
+  # Training hyperparameters (spec §"阶段2 DPO配置")
+  batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 5.0e-6
+  num_epochs: 2
+  max_seq_length: 4096  # cutoff_len
+
+  # Logging
+  log_every: 5
+  save_every: 50
+  run_name: bnup_dpo_32b
+  output_dir: ""
+
+# SFT model — DPO uses the same base model id
+sft:
+  model: ""  # same as bnup_sft_32b.yaml (fusion-mlx alias)
+  lora_rank: 16
+  lora_alpha: 32.0
+  lora_dropout: 0.05
+
+# Dataset — BNUP DPO pairs from bnup_dpo_prep
+dataset:
+  hub_dataset: ""  # e.g. "dpo/bnup_math_dpo"
+  max_seq_length: 4096

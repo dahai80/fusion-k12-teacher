@@ -1,0 +1,53 @@
+# BNUP SFT Configuration — Stage 1 Domain SFT (issue #59)
+# ============================================================
+# Target: Qwen2.5-32B-Instruct (北师大版 K-12 数学苏格拉底讲师)
+# Method: 8-bit QDoRA (PRD baseline, issue #63) — fine_tune_type=dora
+#         + quantize_base=True + quant_bits=8. mlx_lm 0.31.3
+#         DoRALinear.from_base accepts QuantizedLinear; verified
+#         forward + gradient flow on quantized base.
+# Hardware: M5 128GB unified memory
+# System prompt: injected via bnup_prep.build_sft_sample (<thinking>+<dsl>)
+# Data: output of `ft bnup-prep --sft` (ShareGPT/Alpaca JSONL)
+
+sft:
+  model: ""  # e.g. "Qwen2.5-32B-Instruct" (fusion-mlx alias)
+  model_type: lm
+  method: qdora
+  quant_bits: 8
+
+  # LoRA parameters
+  lora_rank: 16
+  lora_alpha: 32.0
+  lora_dropout: 0.05
+  lora_target_modules:
+    - q_proj
+    - v_proj
+    - k_proj
+    - o_proj
+
+  # Training hyperparameters (spec §"阶段1 SFT训练配置")
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-4
+  lr_scheduler: cosine
+  warmup_steps: 100  # ~0.1 warmup_ratio
+  num_epochs: 3
+  max_seq_length: 4096  # cutoff_len, prevents JSON truncation (spec §"避坑指南")
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+
+  # Precision
+  use_mxfp8: false
+
+  # Checkpointing
+  save_every: 100
+  log_every: 10
+
+  # Output
+  run_name: bnup_sft_32b
+  output_dir: ""
+
+# Dataset — BNUP SFT JSONL from bnup_prep
+dataset:
+  hub_dataset: ""  # e.g. "sft/bnup_math_sft"
+  max_seq_length: 4096
