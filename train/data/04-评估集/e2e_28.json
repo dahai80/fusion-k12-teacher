@@ -1,0 +1,471 @@
+{
+  "version": "e2e-28-v1",
+  "description": "28-item cross-grade BNUP E2E set (same as Qwen3.5-4B baseline run)",
+  "items": [
+    {
+      "id": "ind-ag-06",
+      "question": "教室里有5排桌子, 每排8张, 一共多少张桌子?",
+      "ground_truth": 40.0,
+      "category": "in_domain",
+      "grade": 1,
+      "topic": "乘法阵列",
+      "template_type": "array_counting",
+      "expected_visual_type": "array_grid",
+      "variables": {
+        "rows": 5,
+        "cols": 8
+      },
+      "misconception_tags": [
+        "count_error"
+      ]
+    },
+    {
+      "id": "ind-ag-07",
+      "question": "小明摆了9行6列积木, 共多少块?",
+      "ground_truth": 54.0,
+      "category": "in_domain",
+      "grade": 1,
+      "topic": "乘法阵列",
+      "template_type": "array_counting",
+      "expected_visual_type": "array_grid",
+      "variables": {
+        "rows": 9,
+        "cols": 6
+      },
+      "misconception_tags": [
+        "count_error"
+      ]
+    },
+    {
+      "id": "ind-ag-10",
+      "question": "教室里有7排桌子, 每排3张, 一共多少张桌子?",
+      "ground_truth": 21.0,
+      "category": "in_domain",
+      "grade": 1,
+      "topic": "乘法阵列",
+      "template_type": "array_counting",
+      "expected_visual_type": "array_grid",
+      "variables": {
+        "rows": 7,
+        "cols": 3
+      },
+      "misconception_tags": [
+        "count_error"
+      ]
+    },
+    {
+      "id": "ind-ag-03",
+      "question": "小明摆了3行3列积木, 共多少块?",
+      "ground_truth": 9.0,
+      "category": "in_domain",
+      "grade": 2,
+      "topic": "乘法阵列",
+      "template_type": "array_counting",
+      "expected_visual_type": "array_grid",
+      "variables": {
+        "rows": 3,
+        "cols": 3
+      },
+      "misconception_tags": [
+        "count_error"
+      ]
+    },
+    {
+      "id": "ind-ag-11",
+      "question": "小明摆了8行3列积木, 共多少块?",
+      "ground_truth": 24.0,
+      "category": "in_domain",
+      "grade": 2,
+      "topic": "乘法阵列",
+      "template_type": "array_counting",
+      "expected_visual_type": "array_grid",
+      "variables": {
+        "rows": 8,
+        "cols": 3
+      },
+      "misconception_tags": [
+        "count_error"
+      ]
+    },
+    {
+      "id": "ind-ag-08",
+      "question": "花坛里有4行花, 每行8朵, 一共多少朵花?",
+      "ground_truth": 32.0,
+      "category": "in_domain",
+      "grade": 2,
+      "topic": "乘法阵列",
+      "template_type": "array_counting",
+      "expected_visual_type": "array_grid",
+      "variables": {
+        "rows": 4,
+        "cols": 8
+      },
+      "misconception_tags": [
+        "count_error"
+      ]
+    },
+    {
+      "id": "ind-td-08",
+      "question": "甲数是乙数的3倍, 甲数比乙数多40, 求乙数。",
+      "ground_truth": 20.0,
+      "category": "in_domain",
+      "grade": 3,
+      "topic": "和差倍比",
+      "template_type": "sum_multiple",
+      "expected_visual_type": "tape_diagram",
+      "variables": {
+        "a": 60,
+        "b": 20,
+        "multiple": 3
+      },
+      "misconception_tags": [
+        "multiple_confusion"
+      ]
+    },
+    {
+      "id": "ind-td-12",
+      "question": "甲数比乙数的2倍多5, 甲数是25, 求乙数。",
+      "ground_truth": 11.0,
+      "category": "in_domain",
+      "grade": 3,
+      "topic": "和差倍比",
+      "template_type": "sum_multiple",
+      "expected_visual_type": "tape_diagram",
+      "variables": {
+        "a": 22,
+        "b": 11,
+        "multiple": 2
+      },
+      "misconception_tags": [
+        "multiple_confusion"
+      ]
+    },
+    {
+      "id": "ind-td-07",
+      "question": "甲数是乙数的2倍, 甲乙两数共33, 求乙数。",
+      "ground_truth": 11.0,
+      "category": "in_domain",
+      "grade": 3,
+      "topic": "和差倍比",
+      "template_type": "sum_multiple",
+      "expected_visual_type": "tape_diagram",
+      "variables": {
+        "a": 22,
+        "b": 11,
+        "multiple": 2
+      },
+      "misconception_tags": [
+        "multiple_confusion"
+      ]
+    },
+    {
+      "id": "ind-dc-02",
+      "question": "某地连续5天最高气温分别为: 10、19、100、90、17 度, 求平均气温。",
+      "ground_truth": 47.2,
+      "category": "in_domain",
+      "grade": 4,
+      "topic": "平均数",
+      "template_type": "statistics_mean",
+      "expected_visual_type": "data_chart",
+      "variables": {
+        "values": [
+          10,
+          19,
+          100,
+          90,
+          17
+        ]
+      },
+      "misconception_tags": [
+        "mean_division_error"
+      ]
+    },
+    {
+      "id": "ind-g2d-05",
+      "question": "长方形长17厘米宽12厘米, 求周长。",
+      "ground_truth": 58.0,
+      "category": "in_domain",
+      "grade": 4,
+      "topic": "长方形周长",
+      "template_type": "rectangle_area",
+      "expected_visual_type": "geometry_2d",
+      "variables": {
+        "length": 17,
+        "width": 12
+      },
+      "misconception_tags": [
+        "perimeter_area_confusion"
+      ]
+    },
+    {
+      "id": "ind-td-06",
+      "question": "甲数比乙数的3倍多3, 甲数是44, 求乙数。",
+      "ground_truth": 14.0,
+      "category": "in_domain",
+      "grade": 4,
+      "topic": "和差倍比",
+      "template_type": "sum_multiple",
+      "expected_visual_type": "tape_diagram",
+      "variables": {
+        "a": 42,
+        "b": 14,
+        "multiple": 3
+      },
+      "misconception_tags": [
+        "multiple_confusion"
+      ]
+    },
+    {
+      "id": "ind-g6-approx-ex-01",
+      "question": "3.14159精确到0.01约多少? 错解: 3.15 (进位错) 正解: 3.14 (千分位1<5舍) 错因: 四舍五入看下一位, 5以下舍",
+      "ground_truth": 3.14,
+      "category": "in_domain",
+      "grade": 5,
+      "topic": "火车过桥",
+      "template_type": "concept_discrimination",
+      "expected_visual_type": "track_timeline",
+      "variables": {},
+      "misconception_tags": [
+        "approximation_round_dir"
+      ]
+    },
+    {
+      "id": "ind-gu-cj-odd-ex-01",
+      "question": "判断: 所有奇数都是质数? 错解: 对 正解: 错, 9、15是奇数也是合数 错因: 奇数与质数不等价",
+      "ground_truth": 0.0,
+      "category": "in_domain",
+      "grade": 5,
+      "topic": "火车过桥",
+      "template_type": "concept_discrimination",
+      "expected_visual_type": "track_timeline",
+      "variables": {},
+      "misconception_tags": [
+        "concept_judge_odd_prime"
+      ]
+    },
+    {
+      "id": "ind-dc-10",
+      "question": "某地连续4天最高气温分别为: 40、31、62、72 度, 求平均气温。",
+      "ground_truth": 51.25,
+      "category": "in_domain",
+      "grade": 5,
+      "topic": "平均数",
+      "template_type": "statistics_mean",
+      "expected_visual_type": "data_chart",
+      "variables": {
+        "values": [
+          40,
+          31,
+          62,
+          72
+        ]
+      },
+      "misconception_tags": [
+        "mean_division_error"
+      ]
+    },
+    {
+      "id": "ind-fc-01",
+      "question": "解方程: x + 14 = 31, 求 x。",
+      "ground_truth": 14.0,
+      "category": "in_domain",
+      "grade": 6,
+      "topic": "一元一次方程",
+      "template_type": "linear_equation",
+      "expected_visual_type": "flow_card",
+      "variables": {
+        "a": 14,
+        "b": 17,
+        "c": 31
+      },
+      "misconception_tags": []
+    },
+    {
+      "id": "ind-i3d-09",
+      "question": "圆柱底面半径6厘米高8厘米, 削成最大圆锥, 削去部分的体积是多少立方厘米? (π取3.14)",
+      "ground_truth": 603.19,
+      "category": "in_domain",
+      "grade": 6,
+      "topic": "圆柱削圆锥",
+      "template_type": "cylinder_cone_cut",
+      "expected_visual_type": "isometric_3d",
+      "variables": {
+        "r": 6,
+        "h": 8
+      },
+      "misconception_tags": [
+        "cone_third_error"
+      ]
+    },
+    {
+      "id": "ind-bd-07",
+      "question": "9个苹果分给4个人, 每人尽量多且一样多, 剩几个?",
+      "ground_truth": 1.0,
+      "category": "in_domain",
+      "grade": 6,
+      "topic": "组合分配",
+      "template_type": "equal_division",
+      "expected_visual_type": "bucket_divider",
+      "variables": {
+        "total": 9,
+        "people": 4
+      },
+      "misconception_tags": [
+        "remainder_error"
+      ]
+    },
+    {
+      "id": "ood-12",
+      "question": "机械效率89%, 总功779焦耳, 求有用功。 (初中物理)",
+      "ground_truth": 693.31,
+      "category": "ood",
+      "grade": 4,
+      "topic": "机械效率",
+      "template_type": "ood_general",
+      "expected_visual_type": "flow_card",
+      "variables": {},
+      "misconception_tags": []
+    },
+    {
+      "id": "ood-29",
+      "question": "一辆汽车以每小时85千米的速度行驶3小时, 行驶了多少千米? (人教版)",
+      "ground_truth": 255.0,
+      "category": "ood",
+      "grade": 5,
+      "topic": "行程问题",
+      "template_type": "ood_general",
+      "expected_visual_type": "track_timeline",
+      "variables": {},
+      "misconception_tags": []
+    },
+    {
+      "id": "ood-calc-06",
+      "question": "计算: 34 + 61 = ? (通用计算)",
+      "ground_truth": 95.0,
+      "category": "ood",
+      "grade": 1,
+      "topic": "加法计算",
+      "template_type": "arithmetic",
+      "expected_visual_type": "flow_card",
+      "variables": {
+        "a": 34,
+        "b": 61
+      },
+      "misconception_tags": []
+    },
+    {
+      "id": "ood-19",
+      "question": "某物体质量374克, 密度为8克/立方厘米, 求体积。 (初中物理)",
+      "ground_truth": 46.75,
+      "category": "ood",
+      "grade": 6,
+      "topic": "密度计算",
+      "template_type": "ood_general",
+      "expected_visual_type": "flow_card",
+      "variables": {},
+      "misconception_tags": []
+    },
+    {
+      "id": "ood-17",
+      "question": "一辆汽车以每小时73千米的速度行驶6小时, 行驶了多少千米? (人教版)",
+      "ground_truth": 438.0,
+      "category": "ood",
+      "grade": 7,
+      "topic": "行程问题",
+      "template_type": "ood_general",
+      "expected_visual_type": "track_timeline",
+      "variables": {},
+      "misconception_tags": []
+    },
+    {
+      "id": "adv-19",
+      "question": "一根铁丝长868毫米, 剪成相等的4段, 每段长多少米? (注意单位转换)",
+      "ground_truth": 0.217,
+      "category": "adversarial",
+      "grade": 3,
+      "topic": "单位混用",
+      "template_type": "adversarial",
+      "expected_visual_type": "tape_diagram",
+      "variables": {},
+      "misconception_tags": [
+        "unit_mixing"
+      ]
+    },
+    {
+      "id": "adv-3d-01",
+      "question": "圆柱底面半径6厘米高4厘米, 旁边有一个边长3厘米的小立方体(无关条件), 削最大圆锥求削去体积。 (π取3.14)",
+      "ground_truth": 301.44,
+      "category": "adversarial",
+      "grade": 6,
+      "topic": "圆柱圆锥(对抗)",
+      "template_type": "cylinder_cone_cut",
+      "expected_visual_type": "isometric_3d",
+      "variables": {
+        "r": 6,
+        "h": 4,
+        "extra": 3
+      },
+      "misconception_tags": [
+        "redundant",
+        "cone_third_error"
+      ]
+    },
+    {
+      "id": "adv-train-22",
+      "question": "上午一列长216米的火车以40米每秒通过416米大桥, 求通过时间。 (含时间干扰词)",
+      "ground_truth": 15.8,
+      "category": "adversarial",
+      "grade": 5,
+      "topic": "行程过桥(对抗)",
+      "template_type": "train_crossing_bridge",
+      "expected_visual_type": "track_timeline",
+      "variables": {
+        "L_bridge": 416,
+        "L_train": 216,
+        "v_train": 40
+      },
+      "misconception_tags": [
+        "redundant",
+        "forget_train_length"
+      ]
+    },
+    {
+      "id": "adv-train-05",
+      "question": "上午一列长160米的火车以24米每秒通过492米大桥, 求通过时间。 (含时间干扰词)",
+      "ground_truth": 27.17,
+      "category": "adversarial",
+      "grade": 5,
+      "topic": "行程过桥(对抗)",
+      "template_type": "train_crossing_bridge",
+      "expected_visual_type": "track_timeline",
+      "variables": {
+        "L_bridge": 492,
+        "L_train": 160,
+        "v_train": 24
+      },
+      "misconception_tags": [
+        "redundant",
+        "forget_train_length"
+      ]
+    },
+    {
+      "id": "adv-train-12",
+      "question": "今天一列长222米的火车以56米每秒通过589米大桥, 求通过时间。 (含时间干扰词)",
+      "ground_truth": 14.48,
+      "category": "adversarial",
+      "grade": 5,
+      "topic": "行程过桥(对抗)",
+      "template_type": "train_crossing_bridge",
+      "expected_visual_type": "track_timeline",
+      "variables": {
+        "L_bridge": 589,
+        "L_train": 222,
+        "v_train": 56
+      },
+      "misconception_tags": [
+        "redundant",
+        "forget_train_length"
+      ]
+    }
+  ]
+}

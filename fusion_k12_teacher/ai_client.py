@@ -172,6 +172,7 @@ class MLXClient:
         max_tokens: int = 4096,
         model: str = "",
         grammar: str | None = None,
+        adapters: str | None = None,
     ) -> str:
         """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx。
 
@@ -179,6 +180,7 @@ class MLXClient:
         模型 404 时失效缓存并强制重新选择。
         model: 覆盖默认模型 (如图片提问临时切 VLM: Qwen2.5-VL-7B)。
         grammar: issue #20 GBNF 语法, 经 gateway#184 透传约束输出格式。
+        adapters: LoRA/DoRA adapter 目录路径, fusion-mlx 原位挂载 (lora-inplace-swap)。
         """
         self._ensure_locks()
         if not self.model:
@@ -191,7 +193,7 @@ class MLXClient:
                 await asyncio.wait_for(sem.acquire(), timeout=self._read_timeout + 30)
                 try:
                     return await asyncio.wait_for(
-                        self._dispatch_chat(messages, used_model, temperature, max_tokens, grammar),
+                        self._dispatch_chat(messages, used_model, temperature, max_tokens, grammar, adapters),
                         timeout=self._read_timeout + 30,
                     )
                 finally:
@@ -222,13 +224,15 @@ class MLXClient:
         temperature: float,
         max_tokens: int,
         grammar: str | None = None,
+        adapters: str | None = None,
     ) -> str:
         import time as _time
         _t0 = _time.monotonic()
         _ok = False
         think_kwargs = self._think_kwargs()
         try:
-            if _HAS_FUSION_CORE and self._inner is not None:
+            # fusion_core chat_text 不支持 adapters — 有 adapter 时直走 httpx (fusion-mlx 原位挂载)
+            if adapters is None and _HAS_FUSION_CORE and self._inner is not None:
                 try:
                     # 云端形态不传 GBNF grammar (mlx 专属受限解码, 云 API 无对应字段会被拒)
                     if grammar and not _cloud_mode():
@@ -250,7 +254,7 @@ class MLXClient:
                     raise
                 except Exception as e:
                     logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
-            r = await self._chat_httpx(messages, model, temperature, max_tokens, think_kwargs, grammar)
+            r = await self._chat_httpx(messages, model, temperature, max_tokens, think_kwargs, grammar, adapters)
             _ok = True
             return r
         finally:
@@ -269,6 +273,7 @@ class MLXClient:
         max_tokens: int,
         think_kwargs: dict | None = None,
         grammar: str | None = None,
+        adapters: str | None = None,
     ) -> str:
         payload = {
             "model": model or _env_model(),
@@ -281,6 +286,9 @@ class MLXClient:
         # 云端形态不传 GBNF grammar (mlx 专属受限解码, 云 API 无对应字段)
         if grammar and not _cloud_mode():
             payload["grammar"] = grammar
+        # LoRA/DoRA 原位挂载 (fusion-mlx lora-inplace-swap), 同为 mlx 专属
+        if adapters and not _cloud_mode():
+            payload["adapters"] = adapters
         resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
             raise _ModelNotFound(f"模型未加载: {model}")

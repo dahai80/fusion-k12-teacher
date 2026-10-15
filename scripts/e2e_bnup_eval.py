@@ -61,28 +61,81 @@ DSL JSON 格式 (必须严格遵守 JSON 语法, 双引号包裹所有键和字�
 现在请解答以下题目, 严格按上述格式输出。
 """
 
+SFT_SYSTEM_PROMPT = """你是一名北师大版 K-12 数学苏格拉底讲师。请分析题目，先在 <thinking> 标签内输出思考链，再在 <dsl> 标签内输出标准的 JSON DSL。"""
+
+
+async def stream_chat(
+    messages: list[dict],
+    model: str,
+    adapters: str,
+    base_url: str,
+    api_key: str,
+    max_tokens: int = 2048,
+    timeout: float = 1800.0,
+) -> str:
+    import httpx
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+    if adapters:
+        payload["adapters"] = adapters
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    parts: list[str] = []
+    async with httpx.AsyncClient(base_url=base_url, timeout=httpx.Timeout(timeout, connect=30.0)) as client:
+        async with client.stream("POST", "/chat/completions", json=payload, headers=headers) as resp:
+            if resp.status_code != 200:
+                body = (await resp.aread()).decode(errors="replace")[:200]
+                raise RuntimeError(f"stream HTTP {resp.status_code}: {body}")
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                try:
+                    d = json.loads(line[6:])
+                    c = d["choices"][0].get("delta", {}).get("content", "")
+                    if c:
+                        parts.append(c)
+                except (KeyError, IndexError, ValueError):
+                    continue
+    return "".join(parts)
+
 
 async def run_eval(
     mlx: MLXClient,
     items: list[dict],
     model: str,
     max_concurrent: int = 1,
+    adapters: str = "",
+    stream: bool = False,
+    base_url: str = "http://localhost:11434/v1",
+    api_key: str = "",
+    prompt_style: str = "eval",
 ) -> tuple:
     evaluator = BNUPEvaluator()
     semaphore = asyncio.Semaphore(max_concurrent)
+    system_prompt = SFT_SYSTEM_PROMPT if prompt_style == "sft" else EVAL_SYSTEM_PROMPT
 
     async def eval_one(idx: int, item: dict) -> dict:
         sid = item.get("id", f"s{idx}")
         prompt = item.get("question", "")
         gt = float(item.get("ground_truth", 0))
         messages = [
-            {"role": "system", "content": EVAL_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ]
         async with semaphore:
             try:
                 start = time.time()
-                resp = await mlx.chat(messages, temperature=0.1, max_tokens=2048, model=model)
+                if stream:
+                    resp = await stream_chat(messages, model, adapters, base_url, api_key)
+                else:
+                    resp = await mlx.chat(
+                        messages, temperature=0.1, max_tokens=2048,
+                        model=model, adapters=adapters or None,
+                    )
                 latency = time.time() - start
             except Exception as e:
                 logger.error("[%d/%d] %s inference failed: %s", idx + 1, len(items), sid, e)
@@ -133,6 +186,9 @@ def main():
     parser.add_argument("--output", default="", help="output JSON path")
     parser.add_argument("--testset", default="", help="custom testset JSON path (default: builtin benchmark)")
     parser.add_argument("--direct-mlx", action="store_true", help="bypass gateway, hit fusion-mlx :11434 directly")
+    parser.add_argument("--adapters", default="", help="LoRA/DoRA adapter dir path (fusion-mlx inplace swap)")
+    parser.add_argument("--stream", action="store_true", help="SSE streaming (bypass 600s server cap, for slow 32B)")
+    parser.add_argument("--prompt-style", default="eval", choices=["eval", "sft"], help="system prompt: eval=harness prompt, sft=SFT training prompt (in-distribution)")
     args = parser.parse_args()
 
     testset_path = args.testset if args.testset else str(BENCHMARK)
@@ -152,6 +208,7 @@ def main():
     if args.direct_mlx:
         os.environ["FUSION_MLX_URL"] = "http://localhost:11434/v1"
         os.environ["FUSION_MLX_API_KEY"] = "fg-admin-key"
+        os.environ.setdefault("FUSION_MLX_READ_TIMEOUT", "600")
         logger.info("direct-mlx mode: base_url=http://localhost:11434/v1 key=fg-admin-key")
     else:
         os.environ.setdefault("FUSION_MLX_URL", "http://localhost:11432/v1")
@@ -166,7 +223,15 @@ def main():
 
     mlx = MLXClient(model=args.model)
 
-    results, report = asyncio.run(run_eval(mlx, items, args.model, args.concurrency))
+    results, report = asyncio.run(
+        run_eval(
+            mlx, items, args.model, args.concurrency, args.adapters,
+            stream=args.stream,
+            base_url=os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1"),
+            api_key=os.environ.get("FUSION_MLX_API_KEY", ""),
+            prompt_style=args.prompt_style,
+        )
+    )
 
     print(report.summary_str())
 
@@ -220,6 +285,7 @@ def main():
     with open(out, "w", encoding="utf-8") as f:
         json.dump({
             "model": args.model or "auto",
+            "adapters": args.adapters or "",
             "total": len(results),
             "report": report.to_dict(),
             "by_grade": by_grade,
