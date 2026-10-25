@@ -281,6 +281,24 @@ cd web && pnpm dev                          # 开发服务器 :5174, 代理 API 
 
 详见 [README.md](README.md#14-teacher-web-gui-web-v10)
 
+#### 14.1 双模式: Standalone + Union Web Shell 远程模块 — v2.2.1 (issue #30)
+
+同一构建产物 (`web/dist/`) 支持两种运行模式:
+
+- **Standalone** (默认): 自有登录页 + 自管 API key/设置, 由 `fusion-k12 serve` 在 `:11448` 分发。开发服务器: `pnpm dev` (`:5174`, 可用 `FUSION_K12_WEB_PORT` 覆盖; 已注册 `architecture/port-registry.yaml` 的 `fusion-k12-web-dev`)。
+- **Embedded** (union-web shell 远程模块): serve 启动时经 `POST /api/v1/shell/manifests` + 周期心跳向 fusion-gateway 注册 `web/manifest.json` (PRD §5.1 schema, `category=domain`, 实现 `fusion_k12_teacher/shell_registry.py`)。shell 以同源 iframe 加载 `/shell/fusion-k12-teacher/` (网关按 `upstream :11448` 动态代理)。嵌入态自动检测 (`window.parent !== window` + `?embedded=1`): 跳过模块自有登录强制跳转、不发 `X-API-Key` (网关代理注入模块密钥)、API 基址锁定同源 shell 路径, 并提供可选"教师登录"入口用于教师绑定功能 (资源库/教材自动保存)。
+
+注册由 env 门控 (默认 OFF, standalone 不受影响):
+
+```bash
+FUSION_SHELL_GATEWAY_URL=http://127.0.0.1:11432 \
+FUSION_GATEWAY_ADMIN_KEY=<fg-admin-key> \
+FUSION_K12_WEB_UPSTREAM=http://127.0.0.1:11448   # 可选覆盖
+fusion-k12 serve
+```
+
+shell 开发态 HMR: shell 宿主设 `FUSION_DEV_MODULES=fusion-k12-teacher:5174` 将 iframe 指向本地 Vite dev server。
+
 ### 14a. 教师身份 + 教材目录 + 资源库 / Teacher Identity + Textbook + Resource Library — v2.3
 
 三个耦合特性, 闭合"匿名临时会话"断层 — 教师现拥有持久账号、从真实教材目录选题、每次生成自动存入个人资源库。

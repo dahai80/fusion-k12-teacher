@@ -5,12 +5,17 @@ import { NLayout, NLayoutSider, NLayoutHeader, NLayoutContent, NMenu, NSpace, NT
 import type { MenuOption } from 'naive-ui'
 import { useHealthStore } from '@/stores/health'
 import { useAuthStore } from '@/stores/auth'
+import { inShell } from '@/shell'
 import TextbookSelect from '@/components/TextbookSelect.vue'
 
 const route = useRoute()
 const router = useRouter()
 const health = useHealthStore()
 const auth = useAuthStore()
+// issue #30: shell 嵌入态登录由宿主持有 — 未登录教师也显示菜单,
+// 教师绑定功能 (资源库/教材自动保存) 可经 /login 自愿登录
+const shell = inShell()
+const showSider = computed(() => shell || auth.isLoggedIn)
 let timer: any = null
 
 onMounted(() => {
@@ -96,7 +101,7 @@ function handleSelect(key: string) {
     <n-message-provider>
       <n-dialog-provider>
         <n-layout has-sider style="height: 100vh">
-          <n-layout-sider v-if="auth.isLoggedIn" bordered :native-scrollbar="true" content-style="padding: 8px 0;" :width="220" collapse-mode="width">
+          <n-layout-sider v-if="showSider" bordered :native-scrollbar="true" content-style="padding: 8px 0;" :width="220" collapse-mode="width">
             <div style="padding: 12px 16px; font-weight: 700; font-size: 15px; border-bottom: 1px solid var(--n-border-color)">
               Fusion K12 教师助手
             </div>
@@ -110,6 +115,7 @@ function handleSelect(key: string) {
                 <n-tag :type="healthTag.type" size="small" round>{{ healthTag.label }}</n-tag>
                 <n-button size="tiny" quaternary @click="health.poll()">刷新</n-button>
                 <n-text v-if="auth.teacher" depth="2" style="font-size: 12px">{{ auth.teacher.name || auth.teacher.username }}</n-text>
+                <n-button v-if="!auth.isLoggedIn" size="tiny" quaternary @click="router.push('/login')">教师登录</n-button>
                 <n-button v-if="auth.isLoggedIn" size="tiny" quaternary @click="auth.logout().then(() => router.push('/login'))">退出</n-button>
               </n-space>
             </n-layout-header>

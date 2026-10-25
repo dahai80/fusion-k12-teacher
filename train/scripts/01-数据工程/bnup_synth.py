@@ -24,12 +24,12 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
 
 import jsonschema
 
-from fusion_k12_teacher.eval.eval_harness import BNUPEvaluator, DSL_SCHEMA
+from fusion_k12_teacher.eval.eval_harness import DSL_SCHEMA, BNUPEvaluator
 
 PARAM_RE = __import__("re").compile(r"params\.(\w+)")
 RESULT_RE = __import__("re").compile(r"results\[(\d+)\]")
@@ -232,7 +232,7 @@ def _t3(rng):
 
 _t3["steps"] = lambda v, x: [
     ("相对速度", "v_train-v_pedestrian" if x["dir"] == "同向" else "v_train+v_pedestrian",
-     f"params.v_train-params.v_pedestrian" if x["dir"] == "同向"
+     "params.v_train-params.v_pedestrian" if x["dir"] == "同向"
      else "params.v_train+params.v_pedestrian", "m/s"),
     ("通过时间", "L_train/results[1]", "params.L_train/results[1]", "s")]
 _t3["question"] = lambda v, x, rng: (
@@ -946,7 +946,7 @@ def synth_one(sid: str, sp: dict, rng: random.Random) -> dict | None:
         "entities": ents,
         "pipeline": pipe,
     }
-    step_vals, why = check_gates(dsl, vars_d, steps, expect, sp["allow_unused"])
+    step_vals, _why = check_gates(dsl, vars_d, steps, expect, sp["allow_unused"])
     if step_vals is None:
         return None
     thinking = build_thinking(sp["topic"], vars_d, steps, step_vals)

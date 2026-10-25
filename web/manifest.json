@@ -1,0 +1,67 @@
+{
+    "id": "fusion-k12-teacher",
+    "title": "K12 教师助手",
+    "title_en": "K12 Teacher Assistant",
+    "description": "本地 AI 备课/命题/批改/学情分析教师工作台。",
+    "description_en": "Local AI teacher workspace: lesson planning, assessment, grading and learning analytics.",
+    "version": "2.2.0",
+    "path": "/k12",
+    "icon": "GraduationCap",
+    "entry": "/shell/fusion-k12-teacher/",
+    "health": "http://127.0.0.1:11432/shell/fusion-k12-teacher/api/health",
+    "backend": "http://127.0.0.1:11432/shell/fusion-k12-teacher/",
+    "upstream": "http://127.0.0.1:11448",
+    "api_key_env": "FUSION_K12_WEB_API_KEY",
+    "devices": [
+        "desktop",
+        "mobile-readonly"
+    ],
+    "category": "domain",
+    "pages": [
+        {
+            "route": "/dashboard",
+            "title": "工作台",
+            "title_en": "Dashboard"
+        },
+        {
+            "route": "/materials",
+            "title": "我的资源库",
+            "title_en": "My Materials"
+        },
+        {
+            "route": "/lesson/plan",
+            "title": "备课·教案",
+            "title_en": "Lesson Plan"
+        },
+        {
+            "route": "/assess/quiz",
+            "title": "命题·测验",
+            "title_en": "Quiz"
+        },
+        {
+            "route": "/grade/math",
+            "title": "批改·数学",
+            "title_en": "Math Grading"
+        },
+        {
+            "route": "/analytics/class",
+            "title": "学情·班级画像",
+            "title_en": "Class Profile"
+        },
+        {
+            "route": "/course/math/graph",
+            "title": "数学知识图谱",
+            "title_en": "Math Knowledge Graph"
+        },
+        {
+            "route": "/classroom/teacher",
+            "title": "课堂备课",
+            "title_en": "Classroom Prep"
+        },
+        {
+            "route": "/digital-human/self-study",
+            "title": "数字人自主学习",
+            "title_en": "Digital Human Self-Study"
+        }
+    ]
+}

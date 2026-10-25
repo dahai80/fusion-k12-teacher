@@ -9,8 +9,10 @@
 # 3. 起完后打 /api/health 确认 backend=ok 才算成功
 #
 # 用法: ./start.sh          前台启动（Ctrl+C 停止）
+#       ./start.sh start    同上（fusion-supervisor 约定别名）
 #       ./start.sh -d       后台启动（日志 /tmp/fusion-k12-serve.log）
 #       ./start.sh stop     停止并确认端口释放
+#       ./start.sh restart  停止 + 后台启动
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -42,6 +44,8 @@ stop_server() {
 }
 
 cmd_stop() { stop_server; }
+
+cmd_restart() { stop_server; cmd_start -d; }
 
 cmd_start() {
   [ -x "$VENV/bin/fusion-k12" ] || { echo "FATAL: 缺 $VENV — 先 source $VENV/bin/activate && pip install -e ."; exit 1; }
@@ -82,8 +86,10 @@ cmd_start() {
 }
 
 case "${1:-}" in
-  stop)  cmd_stop ;;
-  -d)    cmd_start -d ;;
-  "")    cmd_start ;;
-  *)     echo "用法: $0 [ | -d | stop]"; exit 1 ;;
+  start)   cmd_start ;;
+  stop)    cmd_stop ;;
+  restart) cmd_restart ;;
+  -d)      cmd_start -d ;;
+  "")      cmd_start ;;
+  *)       echo "用法: $0 [start|restart|-d|stop]" >&2; exit 1 ;;
 esac

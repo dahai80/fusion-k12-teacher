@@ -229,6 +229,7 @@ def _stop_config_hot_reload() -> None:
 
 # ── #28: mlx 健康探测看门狗 — 后台周期探针, 后端挂起时告警 (仅观测, 不自启重启) ──
 _mlx_watch_task: asyncio.Task | None = None
+_shell_registry_task: asyncio.Task | None = None
 
 
 async def _mlx_health_watchdog() -> None:
@@ -511,7 +512,7 @@ async def lifespan(app: FastAPI):
     global analytics_engine, content_filter, sensitive_wordlist, subject_registry
     global lesson_scripter, packager, session_manager
     global digital_human_manager
-    global _ready
+    global _ready, _shell_registry_task
     # SRV-5: 构建失败时 yield 不执行, 须 try/except 清理已分配资源
     try:
         # P1-8: 单实例锁 — 未持锁则拒绝启动, 防 uvicorn --workers N 多实例跑同套引擎/调度器。
@@ -587,6 +588,16 @@ async def lifespan(app: FastAPI):
         # issue #17: 启动时惰性清理旧上传文件 + 旧资源记录
         _purge_old_uploads()
         _purge_old_materials()
+        # issue #30: Union Web shell 注册 — env 门控, 向 gateway 注册 web/manifest.json 并心跳保活
+        try:
+            from .shell_registry import shell_registration_enabled, shell_registry_loop
+            if shell_registration_enabled():
+                _shell_registry_task = asyncio.create_task(shell_registry_loop())
+                logger.info("shell 网关注册已启动 (manifest=web/manifest.json)")
+            else:
+                logger.info("shell 网关注册未启用 (FUSION_SHELL_GATEWAY_URL / FUSION_GATEWAY_ADMIN_KEY 未配置)")
+        except Exception as e:
+            logger.warning("shell 注册启动失败 (不影响服务): %s", e)
         logger.info("Fusion-K12-Teacher API started, MLXClient initialized")
     except Exception as exc:
         logger.error("lifespan 启动失败, 清理已分配资源: %s", exc, exc_info=True)
@@ -623,6 +634,16 @@ async def lifespan(app: FastAPI):
     _stop_config_hot_reload()
     # #28: 停 mlx 健康探测
     _stop_mlx_health_watchdog()
+    # issue #30: 停 shell 注册心跳
+    if _shell_registry_task is not None:
+        _shell_registry_task.cancel()
+        try:
+            await _shell_registry_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.warning("shell 注册任务收尾异常: %s", e)
+        _shell_registry_task = None
     # M3-T14: 关闭前 flush 剩余审计事件
     try:
         from .audit import get_audit_logger

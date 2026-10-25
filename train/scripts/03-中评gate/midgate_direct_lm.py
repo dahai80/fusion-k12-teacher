@@ -6,7 +6,6 @@ mlx_lm 直载底座输出正常）, 28 题冒烟经由服务层跑批反复失�
 直载底座 + adapters.safetensors (step 500 权重) 逐题推理, 复用 e2e 的
 EVAL_SYSTEM_PROMPT + BNUPEvaluator 五步瀑布判定 (tag/json/schema/eval_exec/math)。
 """
-import asyncio
 import json
 import os
 import sys
@@ -19,9 +18,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 os.environ.setdefault("HF_HOME", str(Path.home() / ".fusion-mlx" / "models"))
 
 # 引擎外直载, 不经过 fusion-mlx 服务层
-from mlx_lm import load, generate  # noqa: E402
+from e2e_bnup_eval import BENCHMARK, EVAL_SYSTEM_PROMPT  # noqa: E402
+from mlx_lm import generate, load  # noqa: E402
 
-from e2e_bnup_eval import EVAL_SYSTEM_PROMPT, BENCHMARK  # noqa: E402
 from fusion_k12_teacher.eval.eval_harness import BNUPEvaluator  # noqa: E402
 
 SNAP = next((Path.home() / ".fusion-mlx/models/models--mlx-community--Qwen2.5-32B-Instruct-4bit/snapshots").glob("*/"))

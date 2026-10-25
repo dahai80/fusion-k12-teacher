@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { inShell } from '@/shell'
 
 const routes: RouteRecordRaw[] = [
   { path: '/login', name: 'login', component: () => import('@/pages/Login.vue'), meta: { public: true } },
@@ -63,6 +64,12 @@ export const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const auth = useAuthStore()
+  // issue #30: shell 嵌入态登录由宿主持有, 不强制跳转模块自有登录页 —
+  // 教师绑定 (资源库自动保存) 仍可经 /login 自愿登录
+  if (inShell()) {
+    next()
+    return
+  }
   if (!auth.isLoggedIn && !to.meta.public) {
     // 未登录访问受保护页 → 登录页带 reason=auth, 页面据此显示"请先登录"提示
     // (原静默重定向让用户误以为菜单"点击没反应")

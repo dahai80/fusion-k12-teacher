@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# ruff: noqa: E402
 """易错题批量场景编译测试 — 逐题调 DeepSeek, 五步瀑布记录通过/失败。"""
 import asyncio
 import json
@@ -26,11 +27,12 @@ if not _env_key:
 os.environ['FUSION_MLX_API_KEY'] = _env_key
 os.environ['FUSION_MLX_CONNECT_TIMEOUT'] = '30'
 os.environ['FUSION_MLX_READ_TIMEOUT'] = '240'
+import jsonschema
+
 from fusion_k12_teacher.ai_client import MLXClient
 from fusion_k12_teacher.course.subjects.math.scene_compiler import MathSceneCompiler
 from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 from fusion_k12_teacher.eval.eval_harness import BNUPEvaluator
-import jsonschema
 
 # SceneDSL 实际产物 schema (entities/timeline 结构) — eval_harness.DSL_SCHEMA
 # 是 bnup_prep 训练闸的 pipeline/parameters 结构, 与 compiler 产物不同构
@@ -88,7 +90,7 @@ async def run_one(compiler, ev, client, p, sem):
                 rec['math_ok'] = m_ok
                 if m_ok is None:
                     rec['err'] = "no answer value"
-        except asyncio.TimeoutError:
+        except TimeoutError:
             rec['err'] = "timeout 180s"
         except Exception as e:
             rec['err'] = f"{type(e).__name__}: {str(e)[:100]}"

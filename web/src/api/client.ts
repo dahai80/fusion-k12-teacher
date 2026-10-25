@@ -1,4 +1,5 @@
 import { useSettingsStore } from '@/stores/settings'
+import { inShell } from '@/shell'
 import { getAuthToken } from './authtoken'
 
 export class ApiError extends Error {
@@ -17,6 +18,9 @@ function baseUrl(): string {
 }
 
 function apiKey(): string {
+  // issue #30: shell 嵌入态经网关同源代理, module api_key 由网关注入 —
+  // UI 不持有 key (PRD §8: Bearer/token 由宿主侧处理)
+  if (inShell()) return ''
   return useSettingsStore().apiKey
 }
 

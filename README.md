@@ -394,6 +394,24 @@ cd web && pnpm dev                          # dev server on :5174 with API proxy
 
 Production: `fusion-k12 serve` serves both API (`/api/*`) and GUI (`/`) from one process on port 11448.
 
+#### 14.1 Dual-Mode: Standalone + Union Web Shell Remote — v2.2.1 (issue #30)
+
+The GUI runs in two modes from one build (`web/dist/`):
+
+- **Standalone** (default): own login page + self-managed API key/settings, served by `fusion-k12 serve` on `:11448`. Dev server: `pnpm dev` (`:5174`, override `FUSION_K12_WEB_PORT`; registered in `architecture/port-registry.yaml` as `fusion-k12-web-dev`).
+- **Embedded** (union-web shell remote): `web/manifest.json` (PRD §5.1 schema, `category=domain`) is registered with fusion-gateway on serve startup via `POST /api/v1/shell/manifests` + periodic heartbeat (`fusion_k12_teacher/shell_registry.py`). The shell loads the SPA in a same-origin iframe at `/shell/fusion-k12-teacher/` (gateway dynamic proxy to `upstream :11448`). Embedded mode is auto-detected (`window.parent !== window` + `?embedded=1`): the module skips its own login redirect, sends no `X-API-Key` (gateway injects the module key on the proxy), pins the API base to the same-origin shell path, and offers an optional "teacher sign-in" for teacher-bound features (resource library / textbook auto-save).
+
+Registration is env-gated (OFF by default, standalone unaffected):
+
+```bash
+FUSION_SHELL_GATEWAY_URL=http://127.0.0.1:11432 \
+FUSION_GATEWAY_ADMIN_KEY=<fg-admin-key> \
+FUSION_K12_WEB_UPSTREAM=http://127.0.0.1:11448   # optional override
+fusion-k12 serve
+```
+
+Shell dev-mode HMR: set `FUSION_DEV_MODULES=fusion-k12-teacher:5174` on the shell host to point the iframe at the local Vite dev server.
+
 ### 14a. Teacher Identity + Textbook Catalog + Resource Library — v2.3
 
 Three coupled features closing the "anonymous temporary session" gap — teachers now have persistent accounts, pick lessons from a real curriculum catalog, and every generation is saved to a personal library.
