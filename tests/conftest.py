@@ -37,6 +37,10 @@ def _offline_llm(monkeypatch):
         # issue #18: MLXClient.__init__ 现在读 FUSION_MLX_MODEL env —
         # 离线模式清掉, 防 shell 环境变量污染 test_default_model 断言
         monkeypatch.delenv("FUSION_MLX_MODEL", raising=False)
+        # issue #34: client key 改经 fusion_core.config 解析 — 清掉规范名与
+        # profile, 防 shell 环境污染 _auth_headers / prod RuntimeError 断言
+        monkeypatch.delenv("FUSION_CLIENT_KEY", raising=False)
+        monkeypatch.delenv("FUSION_PROFILE", raising=False)
     yield
 
 

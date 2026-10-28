@@ -286,12 +286,15 @@ def serve(host, port):
     # exec -a 会被 Python.app 覆盖 argv, 须 setproctitle 才可靠
     try:
         import setproctitle
-        setproctitle.setproctitle("k12-teacher-serve")
+        setproctitle.setproctitle("fusion-k12-teacher-serve")
     except ImportError:
         pass
     # P3: FUSION_K12_PORT env 生效 — deploy.md 原文档提及但 serve 未读, CMD 硬编码 11448 误导运维。
+    # #34: 端口经 fusion_core.config.service_port 单点解析 — FUSION_K12_TEACHER_PORT
+    # 优先 (config-conventions §1), 未设回退 legacy FUSION_K12_PORT, 旧部署零改动。
     if port == 0:
-        port = int(os.environ.get("FUSION_K12_PORT", "11448"))
+        from ._keys import service_listen_port
+        port = service_listen_port(11448)
     if host not in ("127.0.0.1", "localhost", "::1"):
         click.echo("❌ 禁止监听非回环地址; 请用反向代理+鉴权暴露服务, 避免裸奔")
         raise SystemExit(1)

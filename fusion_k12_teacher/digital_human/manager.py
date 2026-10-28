@@ -29,7 +29,10 @@ async def _fusion_mlx_service_up(base_url: str) -> bool:
     # 直接 hard-crash 宿主进程。探测到则降级 StaticAvatar。
     try:
         import httpx
-        key = os.environ.get("FUSION_MLX_API_KEY", "")
+
+        # #34: client key 经 fusion_core.config 单点解析
+        from fusion_k12_teacher._keys import gateway_client_key
+        key = gateway_client_key()
         headers = {"Authorization": f"Bearer {key}"} if key else {}
         root = base_url[:-3] if base_url.endswith("/v1") else base_url
         async with httpx.AsyncClient(timeout=2.0) as c:

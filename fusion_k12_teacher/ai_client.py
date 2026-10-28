@@ -15,6 +15,7 @@ from typing import Any
 
 import httpx
 
+from ._keys import gateway_client_key
 from .errors import NonDegradableError, classify_http_status
 
 logger = logging.getLogger(__name__)
@@ -160,7 +161,8 @@ class MLXClient:
     def _auth_headers(self) -> dict[str, str]:
         # LLM-4: 每次请求读 env, 运行期换 key 即时生效, 不在客户端创建时固化。
         # P1-20: 无 key 时不发 Bearer 头 (原默认 Bearer local 对需认证网关必 401)。
-        key = os.environ.get("FUSION_MLX_API_KEY", "")
+        # #34: client key 经 fusion_core.config 单点解析 (见 _keys.gateway_client_key)。
+        key = gateway_client_key()
         if key:
             return {"Authorization": f"Bearer {key}"}
         return {}
