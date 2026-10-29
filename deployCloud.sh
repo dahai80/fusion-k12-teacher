@@ -100,14 +100,14 @@ step "③ 生成云端 .env（密钥从本机 .env 提取，不回显）"
 LOCAL_API_KEY=$(grep -m1 '^FUSION_K12_API_KEY=' "$(dirname "$0")/.env" | cut -d= -f2)
 LOCAL_ADMIN_KEY=$(grep -m1 '^FUSION_K12_ADMIN_API_KEY=' "$(dirname "$0")/.env" | cut -d= -f2)
 [ -n "$LOCAL_API_KEY" ] || fail "本机 .env 缺 FUSION_K12_API_KEY"
-LOCAL_LLM_KEY=$(grep -m1 '^FUSION_MLX_API_KEY=' "$(dirname "$0")/.env" | cut -d= -f2 || true)
+LOCAL_LLM_KEY=$(grep -m1 '^FUSION_CLIENT_KEY=' "$(dirname "$0")/.env" | cut -d= -f2 || true)
 
 run "cat > $REMOTE_ROOT/.env <<ENVEOF
 # fusion-k12-teacher cloud 形态 (生成于 deployCloud.sh, 勿手改——会被覆盖)
 FUSION_MLX_CLOUD=1
 FUSION_MLX_URL=https://api.deepseek.com/v1
 FUSION_MLX_MODEL=deepseek-chat
-FUSION_MLX_API_KEY=${LOCAL_LLM_KEY:-}
+FUSION_CLIENT_KEY=${LOCAL_LLM_KEY:-}
 FUSION_MLX_READ_TIMEOUT=300
 FUSION_MLX_MAX_CONCURRENCY=4
 FUSION_K12_API_KEY=$LOCAL_API_KEY
@@ -118,7 +118,7 @@ FUSION_K12_HEALTH_PROBE_INTERVAL=60
 ENVEOF
 chmod 600 $REMOTE_ROOT/.env"
 ok ".env 已写入（cloud 形态, 权限 600）"
-warn "云端 LLM key 为占位——若 LOCAL_LLM_KEY 为空请手动补 $REMOTE_ROOT/.env 的 FUSION_MLX_API_KEY"
+warn "云端 LLM key 为占位——若 LOCAL_LLM_KEY 为空请手动补 $REMOTE_ROOT/.env 的 FUSION_CLIENT_KEY"
 
 # ---------------- 4. 启动 serve（cloud 形态） ----------------
 step "④ 启动 serve (127.0.0.1:$PORT, cloud 形态)"

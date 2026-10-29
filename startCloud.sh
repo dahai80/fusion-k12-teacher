@@ -41,14 +41,14 @@ export FUSION_MLX_CLOUD=1   # 云端形态: 强制标准 OpenAI 兼容语义
 # 3) 云端必备项校验 — auto-select 已禁用, 模型名缺失 = 运行时 404
 [ -n "${FUSION_MLX_MODEL:-}" ] || die "云端形态必须显式设置 FUSION_MLX_MODEL (如 deepseek-chat / qwen-plus / glm-4-plus)"
 echo "形态: cloud | LLM 端点: ${FUSION_MLX_URL:-(厂商默认)} | 模型: $FUSION_MLX_MODEL"
-[ -n "${FUSION_MLX_API_KEY:-}" ] || echo "⚠  FUSION_MLX_API_KEY 未设置 — 云厂商将返回 401"
+[ -n "${FUSION_CLIENT_KEY:-}" ] || echo "⚠  FUSION_CLIENT_KEY 未设置 — 云厂商将返回 401"
 
 # 4) dry-run: 打印形态自检结果即退出
 if [ "${FUSION_START_DRYRUN:-0}" = "1" ]; then
   echo "== dry-run (cloud 形态) =="
   echo "FUSION_MLX_URL=${FUSION_MLX_URL:-(厂商默认)}"
   echo "FUSION_MLX_MODEL=$FUSION_MLX_MODEL"
-  echo "FUSION_MLX_API_KEY=$( [ -n "${FUSION_MLX_API_KEY:-}" ] && echo '(已设置)' || echo '(未设置!)')"
+  echo "FUSION_CLIENT_KEY=$( [ -n "${FUSION_CLIENT_KEY:-}" ] && echo '(已设置)' || echo '(未设置!)')"
   echo "FUSION_MLX_CLOUD=$FUSION_MLX_CLOUD"
   echo "FUSION_MLX_TTS_URL=${FUSION_MLX_TTS_URL:-(同主端点)}"
   echo "FUSION_MLX_TTS_MODEL=${FUSION_MLX_TTS_MODEL:-(厂商默认)}"

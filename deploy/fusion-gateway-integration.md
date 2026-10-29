@@ -24,7 +24,7 @@
 # 指向网关 (非直连 fusion-mlx 11434)
 FUSION_MLX_URL=http://fusion-gateway:11432/v1
 # 网关授权 key (k12 透传 Authorization: Bearer <key>, 见 ai_client.py:143-146)
-FUSION_MLX_API_KEY=<gateway-auth-key>
+FUSION_CLIENT_KEY=<gateway-auth-key>
 # 默认模型 (网关按 route 配置分发)
 FUSION_MLX_MODEL=Qwen3.5-9B-4bit
 ```
@@ -84,7 +84,7 @@ cache:
 ## 5. 对接验证清单
 
 - [ ] `FUSION_MLX_URL` 指向网关, 非 11434
-- [ ] `FUSION_MLX_API_KEY` 与网关 `auth` 配置的 key 一致
+- [ ] `FUSION_CLIENT_KEY` 与网关 `auth` 配置的 key 一致
 - [ ] 网关健康: `curl http://fusion-gateway:11432/healthz` 200
 - [ ] k12 探针: `/api/health` (liveness) `/api/ready` (readiness, 含 mlx 探测)
 - [ ] k12 `/api/metrics` 可观测 `k12_llm_call_total{status="error"}` — 网关故障会反映在此
@@ -104,7 +104,7 @@ cache:
 
 ## Gateway API Key 轮换手册 (issue #27)
 
-`FUSION_MLX_API_KEY` 是 k12 → gateway 的调用凭据，属**预期定期轮换**项（明文存于 `.env`）。轮换步骤：
+`FUSION_CLIENT_KEY` 是 k12 → gateway 的调用凭据，属**预期定期轮换**项（明文存于 `.env`）。轮换步骤：
 
 1. **gateway 侧生成新 key**（保留旧 key 生效，双 key 并行）：
    ```bash
@@ -112,7 +112,7 @@ cache:
    ```
 2. **k12 侧更新**（本地部署）：
    ```bash
-   # 编辑 .env: FUSION_MLX_API_KEY=<new-key>
+   # 编辑 .env: FUSION_CLIENT_KEY=<new-key>
    ./start.sh stop && ./start.sh -d   # serve 重载 env
    ```
    集群部署（compose）：改 `deploy/.env` 后 `docker compose --env-file .env up -d --force-recreate k12`（滚动，排水保证不中断）。
@@ -126,5 +126,5 @@ cache:
 
 注意事项：
 - 旧 key 失效时 k12 报 `403 Model not allowed for this API key`（NonDegradableError，不降级）——见到该日志优先怀疑 key 轮换不同步。
-- 若启用配置热更（`FUSION_K12_CONFIG_FILE`），`FUSION_MLX_API_KEY` **不在热更白名单**（启动注入项），轮换必须重启 serve/滚动容器。
+- 若启用配置热更（`FUSION_K12_CONFIG_FILE`），`FUSION_CLIENT_KEY` **不在热更白名单**（启动注入项），轮换必须重启 serve/滚动容器。
 - key 与 gateway 双向对齐，先加新、后删旧，避免出现鉴权真空窗口。

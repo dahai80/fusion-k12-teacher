@@ -24,7 +24,7 @@ die() { echo "FATAL: $*" >&2; exit 1; }
 [ "$(uname)" = "Darwin" ] || die "startLocal.sh 仅支持 macOS (检测到 $(uname))。Ubuntu 请用 ./startCloud.sh"
 
 # 2) env 注入 — start.sh 不会自动加载 .env
-[ -f .env ] || die ".env 不存在。参考 .env.example 创建 (本地形态必配 FUSION_MLX_API_KEY/MODEL)"
+[ -f .env ] || die ".env 不存在。参考 .env.example 创建 (本地形态必配 FUSION_CLIENT_KEY/MODEL)"
 set -a
 # shellcheck disable=SC1091
 source .env

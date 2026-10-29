@@ -72,7 +72,7 @@ class TestDeployTemplates:
         txt = (DEPLOY / ".env.example").read_text(encoding="utf-8")
         required = [
             "FUSION_K12_MODE", "FUSION_K12_API_KEY", "FUSION_K12_ADMIN_API_KEY",
-            "FUSION_MLX_URL", "FUSION_MLX_API_KEY", "FUSION_K12_PG_DSN",
+            "FUSION_MLX_URL", "FUSION_CLIENT_KEY", "FUSION_K12_PG_DSN",
             "FUSION_K12_REDIS_URL", "FUSION_K12_SALT", "FUSION_K12_DRAIN_TIMEOUT",
             "FUSION_K12_REPLICAS", "FUSION_K12_MIN_REPLICAS",
         ]
@@ -103,21 +103,21 @@ class TestGatewayIntegration:
         from fusion_k12_teacher.ai_client import MLXClient
         c = MLXClient()
         # 无 key 不发 Authorization (P1-20)
-        os.environ.pop("FUSION_MLX_API_KEY", None)
+        os.environ.pop("FUSION_CLIENT_KEY", None)
         assert "Authorization" not in c._auth_headers()
         # 有 key 发 Bearer
-        os.environ["FUSION_MLX_API_KEY"] = "gw-key-123"
+        os.environ["FUSION_CLIENT_KEY"] = "gw-key-123"
         try:
             h = c._auth_headers()
             assert h["Authorization"] == "Bearer gw-key-123"
         finally:
-            os.environ.pop("FUSION_MLX_API_KEY", None)
+            os.environ.pop("FUSION_CLIENT_KEY", None)
 
     def test_env_example_gateway_endpoint(self):
         txt = (DEPLOY / ".env.example").read_text(encoding="utf-8")
         # 指向网关 11432, 非 mlx 11434
         assert "11432" in txt
-        assert "FUSION_MLX_API_KEY" in txt
+        assert "FUSION_CLIENT_KEY" in txt
 
 
 # ── 多实例一致性 (cluster 模式逻辑) ──

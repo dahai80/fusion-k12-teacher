@@ -2,7 +2,7 @@
 # fusion-k12-teacher serve 启动脚本
 #
 # 落地经验（勿删）：
-# 1. 项目不自动加载 .env — 必须显式 set -a 注入 FUSION_MLX_API_KEY/MODEL，
+# 1. 项目不自动加载 .env — 必须显式 set -a 注入 FUSION_CLIENT_KEY/MODEL，
 #    否则 /api/health 对 gateway 401 → dashboard 显示"不可达"
 # 2. 重启必须等旧进程真正退出（lsof 验证端口释放），普通 kill 可能杀不死
 #    （残留旧进程占 11448 → 新进程起不来 → 配置怎么改都不生效）
@@ -50,6 +50,22 @@ cmd_restart() { stop_server; cmd_start -d; }
 cmd_start() {
   [ -x "$VENV/bin/fusion-k12" ] || { echo "FATAL: 缺 $VENV — 先 source $VENV/bin/activate && pip install -e ."; exit 1; }
   [ -f .env ] || echo "WARN: 无 .env — gateway 鉴权可能 401"
+
+  # issue #35 (Phase 3.3): register-then-start 自检 — 端口未注册进
+  # port-registry.yaml 则拒绝启动 (CI 之前在启动时就失败)。
+  # 缺 registry 文件 = warn 放行 (standalone 部署); FUSION_SKIP_REGISTRY_CHECK=1 旁路。
+  # 置于残留进程清理之前 — 拒启时不动已在跑的实例。
+  SERVICE="fusion-k12-teacher"
+  REGISTRY="${FUSION_REGISTRY:-$HOME/fusion/architecture/port-registry.yaml}"
+  if [ ! -f "$REGISTRY" ]; then
+    echo "warn: port-registry.yaml not found at $REGISTRY — registry self-check skipped" >&2
+  elif ! grep -A3 "^  ${SERVICE}:" "$REGISTRY" 2>/dev/null | grep -q "port: $PORT$"; then
+    if [ "${FUSION_SKIP_REGISTRY_CHECK:-}" != "1" ]; then
+      echo "port $PORT for ${SERVICE} not registered in $REGISTRY — refusing to start" >&2
+      exit 1
+    fi
+    echo "warn: registry check bypassed (FUSION_SKIP_REGISTRY_CHECK=1)" >&2
+  fi
 
   # 残留旧进程：上次教训 — 不清掉会静默占端口，新进程配置永不生效
   local stale; stale="$(port_pids)"

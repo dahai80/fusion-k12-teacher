@@ -4,7 +4,7 @@
     "title_en": "K12 Teacher Assistant",
     "description": "本地 AI 备课/命题/批改/学情分析教师工作台。",
     "description_en": "Local AI teacher workspace: lesson planning, assessment, grading and learning analytics.",
-    "version": "2.2.2",
+    "version": "2.2.3",
     "path": "/k12",
     "icon": "GraduationCap",
     "entry": "/shell/fusion-k12-teacher/",

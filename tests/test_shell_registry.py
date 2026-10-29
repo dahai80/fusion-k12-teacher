@@ -14,7 +14,7 @@ import pytest
 def _clean_env(monkeypatch, tmp_path):
     for var in (
         "FUSION_SHELL_GATEWAY_URL",
-        "FUSION_GATEWAY_ADMIN_KEY",
+        "FUSION_ADMIN_KEY",
         "FUSION_SHELL_MANIFEST",
         "FUSION_K12_WEB_UPSTREAM",
         "FUSION_K12_WEB_API_KEY",
@@ -34,7 +34,7 @@ def _manifest(tmp_path: Path) -> Path:
 
 def _env(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("FUSION_SHELL_GATEWAY_URL", "http://127.0.0.1:22432")
-    monkeypatch.setenv("FUSION_GATEWAY_ADMIN_KEY", "fg-admin")
+    monkeypatch.setenv("FUSION_ADMIN_KEY", "fg-admin")
     monkeypatch.setenv("FUSION_SHELL_MANIFEST", str(_manifest(tmp_path)))
 
 
@@ -48,7 +48,7 @@ class TestGating:
         from fusion_k12_teacher.shell_registry import shell_registration_enabled
 
         monkeypatch.setenv("FUSION_SHELL_GATEWAY_URL", "http://127.0.0.1:11432")
-        monkeypatch.setenv("FUSION_GATEWAY_ADMIN_KEY", "fg-admin")
+        monkeypatch.setenv("FUSION_ADMIN_KEY", "fg-admin")
         assert shell_registration_enabled() is True
 
     def test_enabled_requires_admin_key(self, monkeypatch):
@@ -182,7 +182,7 @@ class TestRegistryLoop:
         from fusion_k12_teacher.shell_registry import shell_registry_loop
 
         monkeypatch.setenv("FUSION_SHELL_GATEWAY_URL", "http://127.0.0.1:22432")
-        monkeypatch.setenv("FUSION_GATEWAY_ADMIN_KEY", "fg-admin")
+        monkeypatch.setenv("FUSION_ADMIN_KEY", "fg-admin")
         monkeypatch.setenv("FUSION_SHELL_MANIFEST", str(tmp_path / "nope.json"))
 
         async def _go():

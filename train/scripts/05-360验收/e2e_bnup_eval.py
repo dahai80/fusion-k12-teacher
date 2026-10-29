@@ -207,7 +207,7 @@ def main():
 
     if args.direct_mlx:
         os.environ["FUSION_MLX_URL"] = "http://localhost:11434/v1"
-        os.environ["FUSION_MLX_API_KEY"] = "fg-admin-key"
+        os.environ["FUSION_CLIENT_KEY"] = "fg-admin-key"
         os.environ.setdefault("FUSION_MLX_READ_TIMEOUT", "600")
         logger.info("direct-mlx mode: base_url=http://localhost:11434/v1 key=fg-admin-key")
     else:
@@ -216,8 +216,8 @@ def main():
         if env_path.exists():
             for line in env_path.read_text().splitlines():
                 line = line.strip()
-                if line.startswith("FUSION_MLX_API_KEY=") and line.split("=", 1)[1].strip():
-                    os.environ["FUSION_MLX_API_KEY"] = line.split("=", 1)[1].strip()
+                if line.startswith("FUSION_CLIENT_KEY=") and line.split("=", 1)[1].strip():
+                    os.environ["FUSION_CLIENT_KEY"] = line.split("=", 1)[1].strip()
                 elif line.startswith("FUSION_MLX_MODEL=") and line.split("=", 1)[1].strip():
                     os.environ.setdefault("FUSION_MLX_MODEL", line.split("=", 1)[1].strip())
 
@@ -228,7 +228,7 @@ def main():
             mlx, items, args.model, args.concurrency, args.adapters,
             stream=args.stream,
             base_url=os.environ.get("FUSION_MLX_URL", "http://localhost:11434/v1"),
-            api_key=os.environ.get("FUSION_MLX_API_KEY", ""),
+            api_key=os.environ.get("FUSION_CLIENT_KEY", ""),
             prompt_style=args.prompt_style,
         )
     )

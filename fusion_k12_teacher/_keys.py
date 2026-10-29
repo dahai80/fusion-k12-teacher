@@ -14,13 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def gateway_client_key() -> str:
-    # FUSION_CLIENT_KEY → FUSION_MLX_API_KEY 别名链; dev 缺省空+警告,
+    # FUSION_CLIENT_KEY 规范名 (别名链收敛在 fusion_core); dev 缺省空+警告,
     # FUSION_PROFILE=prod 缺省 RuntimeError — 语义见 fusion_core.config。
     try:
         from fusion_core.config import client_key
     except ImportError:
-        logger.debug("fusion_core absent — client key falls back to FUSION_MLX_API_KEY")
-        return os.environ.get("FUSION_MLX_API_KEY", "")
+        # issue #35: 裸装回退只认规范名 FUSION_CLIENT_KEY — 别名链只活在
+        # fusion_core, 本仓不重复 (pattern: fusion-cowork #204, caff989)
+        logger.debug("fusion_core absent — client key falls back to FUSION_CLIENT_KEY")
+        return os.environ.get("FUSION_CLIENT_KEY", "")
     return client_key()
 
 

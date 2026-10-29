@@ -595,7 +595,7 @@ async def lifespan(app: FastAPI):
                 _shell_registry_task = asyncio.create_task(shell_registry_loop())
                 logger.info("shell 网关注册已启动 (manifest=web/manifest.json)")
             else:
-                logger.info("shell 网关注册未启用 (FUSION_SHELL_GATEWAY_URL / FUSION_GATEWAY_ADMIN_KEY 未配置)")
+                logger.info("shell 网关注册未启用 (FUSION_SHELL_GATEWAY_URL / FUSION_ADMIN_KEY 未配置)")
         except Exception as e:
             logger.warning("shell 注册启动失败 (不影响服务): %s", e)
         logger.info("Fusion-K12-Teacher API started, MLXClient initialized")

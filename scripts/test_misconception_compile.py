@@ -14,17 +14,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ['FUSION_MLX_CLOUD'] = '1'
 os.environ['FUSION_MLX_URL'] = os.environ.get('FUSION_MLX_URL', 'https://api.deepseek.com/v1')
 os.environ['FUSION_MLX_MODEL'] = os.environ.get('FUSION_MLX_MODEL', 'deepseek-chat')
-_env_key = os.environ.get('FUSION_MLX_API_KEY', '')
+_env_key = os.environ.get('FUSION_CLIENT_KEY', '')
 if not _env_key:
     _env_file = Path('.env')
     if _env_file.exists():
         for _line in _env_file.read_text().splitlines():
-            if _line.strip().startswith('FUSION_MLX_API_KEY='):
+            if _line.strip().startswith('FUSION_CLIENT_KEY='):
                 _env_key = _line.split('=', 1)[1].strip()
                 break
 if not _env_key:
-    raise SystemExit("FUSION_MLX_API_KEY 未设置: export 或写入 .env (勿提交仓库)")
-os.environ['FUSION_MLX_API_KEY'] = _env_key
+    raise SystemExit("FUSION_CLIENT_KEY 未设置: export 或写入 .env (勿提交仓库)")
+os.environ['FUSION_CLIENT_KEY'] = _env_key
 os.environ['FUSION_MLX_CONNECT_TIMEOUT'] = '30'
 os.environ['FUSION_MLX_READ_TIMEOUT'] = '240'
 import jsonschema

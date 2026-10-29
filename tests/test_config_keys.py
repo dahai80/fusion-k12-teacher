@@ -33,6 +33,8 @@ class TestClientKey:
         assert MLXClient()._auth_headers()["Authorization"] == "Bearer ck-canonical"
 
     def test_legacy_env_still_honored(self, monkeypatch):
+        # 别名链只活在 fusion_core — 无 fusion_core 时本测试无意义
+        pytest.importorskip("fusion_core.config")
         from fusion_k12_teacher.ai_client import MLXClient
 
         monkeypatch.delenv("FUSION_CLIENT_KEY", raising=False)
@@ -40,10 +42,17 @@ class TestClientKey:
         assert MLXClient()._auth_headers()["Authorization"] == "Bearer legacy-key"
 
     def test_fallback_without_fusion_core(self, monkeypatch):
+        # issue #35: 裸装回退只认规范名 FUSION_CLIENT_KEY
+        _drop_fusion_core_config(monkeypatch)
+        monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
+        monkeypatch.setenv("FUSION_CLIENT_KEY", "fb-key")
+        assert gateway_client_key() == "fb-key"
+
+    def test_fallback_ignores_legacy_env(self, monkeypatch):
         _drop_fusion_core_config(monkeypatch)
         monkeypatch.delenv("FUSION_CLIENT_KEY", raising=False)
-        monkeypatch.setenv("FUSION_MLX_API_KEY", "fb-key")
-        assert gateway_client_key() == "fb-key"
+        monkeypatch.setenv("FUSION_MLX_API_KEY", "legacy-key")
+        assert gateway_client_key() == ""
 
     def test_prod_missing_key_raises(self, monkeypatch):
         # config-conventions §3: prod 缺 secret 必须 RuntimeError, 不允许静默空值

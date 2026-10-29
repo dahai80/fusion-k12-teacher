@@ -405,7 +405,7 @@ Registration is env-gated (OFF by default, standalone unaffected):
 
 ```bash
 FUSION_SHELL_GATEWAY_URL=http://127.0.0.1:11432 \
-FUSION_GATEWAY_ADMIN_KEY=<fg-admin-key> \
+FUSION_ADMIN_KEY=<fg-admin-key> \
 FUSION_K12_WEB_UPSTREAM=http://127.0.0.1:11448   # optional override
 fusion-k12 serve
 ```
@@ -570,7 +570,7 @@ Two runtime forms behind one switch (`FUSION_MLX_CLOUD`), selected by launcher s
 #   FUSION_MLX_CLOUD=1
 #   FUSION_MLX_URL=https://api.deepseek.com/v1
 #   FUSION_MLX_MODEL=deepseek-chat
-#   FUSION_MLX_API_KEY=sk-xxx
+#   FUSION_CLIENT_KEY=sk-xxx
 #   (optional) FUSION_MLX_TTS_URL/KEY/MODEL, FUSION_MLX_ASR_URL/KEY/MODEL
 FUSION_START_DRYRUN=1 ./startCloud.sh   # preflight only
 ./startCloud.sh -d
