@@ -69,27 +69,57 @@ class TestFactory:
         assert r.health() is True
         r.close()
 
-    def test_get_repository_cluster_fallback(self, tmp_path, monkeypatch):
-        # M1-T2: cluster 模式 DSN 未配 → 回退 SQLite
+    def test_get_repository_cluster_no_dsn_fails_closed(self, tmp_path, monkeypatch):
+        # issue #36: cluster 模式 DSN 未配 → NonDegradableError 拒启, 不回退 SQLite
+        from fusion_k12_teacher.errors import NonDegradableError
+
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.delenv("FUSION_K12_PG_DSN", raising=False)
         monkeypatch.setenv("FUSION_K12_REPO_DB", str(tmp_path / "c.db"))
-        r = get_repository()
-        assert isinstance(r, SQLiteRepository)
-        r.close()
+        with pytest.raises(NonDegradableError, match="FUSION_K12_PG_DSN"):
+            get_repository()
 
-    def test_get_repository_cluster_dsn_no_asyncpg(self, tmp_path, monkeypatch):
-        # M1-T2: cluster 模式配了 DSN 但 asyncpg 缺失 → 回退 SQLite
+    def test_get_repository_cluster_no_asyncpg_fails_closed(self, tmp_path, monkeypatch):
+        # issue #36: cluster 模式配了 DSN 但 asyncpg 缺失 → NonDegradableError 拒启
+        # (含安装提示), 不回退 SQLite
         import sys
+
+        from fusion_k12_teacher.errors import NonDegradableError
+
         # 模拟 asyncpg 缺失: sys.modules 置 None 使 import asyncpg 抛 ImportError
         monkeypatch.setitem(sys.modules, "asyncpg", None)
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.setenv("FUSION_K12_PG_DSN", "postgresql://u:p@localhost/db")
         monkeypatch.setenv("FUSION_K12_REPO_DB", str(tmp_path / "c2.db"))
-        # asyncpg 未安装 (CI 无 cluster extras), 工厂应捕获回退不崩
-        r = get_repository()
-        assert isinstance(r, SQLiteRepository)
-        r.close()
+        with pytest.raises(NonDegradableError, match=r"\.\[cluster\]"):
+            get_repository()
+
+    def test_serve_init_teacher_services_fatal_propagates(self, monkeypatch):
+        # issue #36: serve 启动路径上 NonDegradableError 必须上抛拒启,
+        # 不能被"生成功能仍可用"的降级 warning 吞掉
+        from fusion_k12_teacher import serve
+        from fusion_k12_teacher.errors import NonDegradableError
+
+        def _boom():
+            raise NonDegradableError("FUSION_K12_MODE=cluster 需要 FUSION_K12_PG_DSN")
+
+        monkeypatch.setattr(serve, "get_repository", _boom)
+        with pytest.raises(NonDegradableError, match="FUSION_K12_PG_DSN"):
+            serve._init_teacher_services()
+        assert serve.auth_service is None
+
+    def test_serve_init_teacher_services_degradable_warns(self, monkeypatch):
+        # 非 fatal 失败仍降级 (无身份+资源库可用), 不影响启动
+        from fusion_k12_teacher import serve
+
+        def _boom():
+            raise RuntimeError("textbook dir missing")
+
+        monkeypatch.setattr(serve, "get_repository", _boom)
+        serve._init_teacher_services()  # 不抛
+        assert serve.auth_service is None
+        assert serve.textbook_loader is None
+        assert serve._materials_repo is None
 
     def test_postgres_repo_missing_asyncpg(self, monkeypatch):
         # M1-T2: asyncpg 缺失时 PostgresRepository 构造抛 ImportError (清晰错误)

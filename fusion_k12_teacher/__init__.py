@@ -9,5 +9,5 @@
 100% 本地离线，基于 fusion-mlx。
 """
 
-__version__ = "2.2.3"
+__version__ = "2.2.4"
 __app_name__ = "Fusion-K12-Teacher"

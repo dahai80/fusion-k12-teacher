@@ -252,7 +252,7 @@ Components:
 | `encrypt-name-map --db X` | In-place encrypt legacy plaintext name_map in standalone SQLite |
 | `rotate-salt [--salt-file F] [--show-versions]` | Rotate salt (archive current as `salt.vN`, generate new); old versions retained for historical ID lookup |
 
-Optional deps (`pip install -e ".[cluster]"`): `asyncpg`, `cryptography`, `redis` — all lazy-imported, missing → clear ImportError + fallback. Standalone needs none. See `docs/v2-enterprise-arch-upgrade.md` and `docs/m1-implementation-0830.md`.
+Optional deps (`pip install -e ".[cluster]"`): `asyncpg`, `cryptography`, `redis` — all lazy-imported. Fail-closed in `cluster` mode (#36): missing `FUSION_K12_PG_DSN` or `asyncpg` raises `NonDegradableError` at startup (no silent SQLite fallback — multi-instance would split-brain). Standalone needs none. See `docs/v2-enterprise-arch-upgrade.md` and `docs/m1-implementation-0830.md`.
 
 ### 11b. Statelessness & Horizontal Scaling (`cache/`, `agent/scheduler.py`) — v2.0 M2
 

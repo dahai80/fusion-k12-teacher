@@ -46,6 +46,7 @@ from .desensitize import DataAnonymizer, DesensitizeConfig
 from .differentiation import DifferentiationEngine
 from .digital_human import DigitalHumanManager
 from .engines import build_engines
+from .errors import rethrow_if_fatal
 from .personalization import PersonalizationEngine
 from .repository import get_repository
 from .safety import ContentFilter, SensitiveWordList
@@ -504,6 +505,28 @@ def _purge_old_materials() -> int:
         return 0
 
 
+def _init_teacher_services() -> None:
+    # 教师身份 + 教材目录 + 资源库: AuthService 复用 scheduler 同款 repo, 教材加载建索引。
+    # issue #36: repo 构造的 NonDegradableError (cluster 误配) 必须上抛拒启 —
+    # 静默降级会让 cluster 实例各自跑 SQLite (split-brain) 且服务仍报 Healthy。
+    global auth_service, textbook_loader, _materials_repo
+    try:
+        _materials_repo = get_repository()
+        auth_service = AuthService(_materials_repo)
+        textbook_loader = TextbookLoader()
+        textbook_loader.load_all()
+        logger.info(
+            "教师身份+教材+资源库就绪: editions=%d",
+            len(textbook_loader.list_editions()),
+        )
+    except Exception as e:
+        rethrow_if_fatal(e)
+        logger.warning("教师身份/教材初始化失败 (生成功能仍可用, 仅无身份+资源库): %s", e)
+        auth_service = None
+        textbook_loader = None
+        _materials_repo = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global mlx_client, curriculum_engine, assessment_engine
@@ -554,22 +577,8 @@ async def lifespan(app: FastAPI):
         scheduler.load_history()
         scheduler.start()
         _init_allowed_dirs()
-        # 教师身份 + 教材目录 + 资源库: AuthService 复用 scheduler 同款 repo, 教材加载建索引。
-        global auth_service, textbook_loader, _materials_repo
-        try:
-            _materials_repo = get_repository()
-            auth_service = AuthService(_materials_repo)
-            textbook_loader = TextbookLoader()
-            textbook_loader.load_all()
-            logger.info(
-                "教师身份+教材+资源库就绪: editions=%d",
-                len(textbook_loader.list_editions()),
-            )
-        except Exception as e:
-            logger.warning("教师身份/教材初始化失败 (生成功能仍可用, 仅无身份+资源库): %s", e)
-            auth_service = None
-            textbook_loader = None
-            _materials_repo = None
+        # 教师身份 + 教材目录 + 资源库 (issue #36: cluster 误配 fail-closed 上抛拒启)
+        _init_teacher_services()
         _ready = True
         # M3-T13/T14: 审计日志器注入 scheduler 的 repo, 启用持久化。
         try:

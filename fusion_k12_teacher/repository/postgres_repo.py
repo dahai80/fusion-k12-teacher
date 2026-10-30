@@ -1,6 +1,6 @@
 """Postgres Repository — cluster 模式后端 (M1-T2)。
 
-asyncpg 可选依赖, 惰性 import — 缺失则 factory 回退 SQLite。
+asyncpg 可选依赖, 惰性 import — 缺失则 factory 抛 NonDegradableError 拒启 (issue #36)。
 schema 与 SQLiteRepository 对齐 (task_history / name_map)。
 连接池 asyncpg.create_pool, 全异步 API。
 
@@ -63,7 +63,7 @@ _ADD_CRYPTO_COLS = [
 class PostgresRepository(Repository):
     """集群 Postgres 持久化后端 — asyncpg 连接池。
 
-    构造惰性 import asyncpg, 缺失抛 ImportError (factory 捕获回退)。
+    构造惰性 import asyncpg, 缺失抛 ImportError (factory 转 NonDegradableError 拒启, issue #36)。
     连接池在 ensure_pool() 惰性建 (首次用时), 避免构造期连库失败阻塞启动。
     """
 
