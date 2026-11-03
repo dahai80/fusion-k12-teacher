@@ -11,6 +11,9 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@fusion/design-tokens": "file:vendor/@fusion/design-tokens",
+    "@fusion/web-sdk": "file:vendor/@fusion/web-sdk",
+    "@fusion/web-ui": "file:vendor/@fusion/web-ui",
     "livekit-client": "^2.22.3",
     "naive-ui": "^2.38.0",
     "pinia": "^2.2.0",

@@ -386,6 +386,7 @@ A Vue 3 + TypeScript + Vite SPA, served by `serve.py` via FastAPI `StaticFiles` 
 - **10 nav sections**, ~30 use cases covering the full teacher workflow: dashboard, lesson planning, assessment, grading, analytics, personalization, content tools, math course (graph/scene/lesson/bank), automation, safety, desensitization, settings
 - **Health polling** (15s interval, topbar status badge), **graceful-degradation UX** (skeleton loading + engine error display + retry), **session-persisted analytics dataset** (Pinia + localStorage)
 - **WebSocket** streaming for Socratic lesson-script generation (5-event protocol: start → stream_chunk → stage_change → dsl_complete → finish)
+- **Union-shell design compliance** (v2.2.6, issue #38): vendored `@fusion/web-sdk`, `@fusion/web-ui`, `@fusion/design-tokens` (`web/vendor/`); theme and language follow the shell over the SDK channels (`web/src/shellTheme.ts`, `web/src/i18n.ts`) instead of self-detection, Naive UI is driven by `NConfigProvider` (`darkTheme` + `zhCN`/`enUS`), and every route carries a bilingual header (`meta.title` / `meta.titleEn`). Standalone mode falls back to `localStorage` / `prefers-color-scheme` and defaults to Chinese.
 
 ```bash
 cd web && pnpm install && pnpm build      # outputs web/dist/, auto-mounted by serve.py

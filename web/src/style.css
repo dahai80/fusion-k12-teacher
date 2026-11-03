@@ -1,0 +1,15 @@
+/* issue #38: 全局底色/字体走 design-tokens — dark 为默认调色板 (:root),
+   html.light 翻转 --fs-*; naive-ui 表面由 config-provider darkTheme 接管。 */
+html,
+body,
+#app {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+}
+
+body {
+    background: var(--fs-bg);
+    color: var(--fs-text-primary);
+    font-family: var(--fs-font-sans);
+}

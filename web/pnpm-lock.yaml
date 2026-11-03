@@ -8,6 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@fusion/design-tokens':
+        specifier: file:vendor/@fusion/design-tokens
+        version: file:vendor/@fusion/design-tokens
+      '@fusion/web-sdk':
+        specifier: file:vendor/@fusion/web-sdk
+        version: file:vendor/@fusion/web-sdk
+      '@fusion/web-ui':
+        specifier: file:vendor/@fusion/web-ui
+        version: file:vendor/@fusion/web-ui(react@18.3.0)
       livekit-client:
         specifier: ^2.22.3
         version: 2.22.3(@types/dom-mediacapture-record@1.0.22)
@@ -209,6 +218,17 @@ packages:
     engines: {node: '>=12'}
     cpu: [x64]
     os: [win32]
+
+  '@fusion/design-tokens@file:vendor/@fusion/design-tokens':
+    resolution: {directory: vendor/@fusion/design-tokens, type: directory}
+
+  '@fusion/web-sdk@file:vendor/@fusion/web-sdk':
+    resolution: {directory: vendor/@fusion/web-sdk, type: directory}
+
+  '@fusion/web-ui@file:vendor/@fusion/web-ui':
+    resolution: {directory: vendor/@fusion/web-ui, type: directory}
+    peerDependencies:
+      react: ^18.3.0
 
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
@@ -506,6 +526,9 @@ packages:
   jose@6.2.12:
     resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
+  js-tokens@3.0.0:
+    resolution: {integrity: sha512-poXEQHPMmTrYZuJgNRll2sbc3kJsSU1m/g1Q93IE6txNj3p6xOOOmdj1G/zCVGawYSPzTkSoWGg1otqbeqKJeg==}
+
   livekit-client@2.22.3:
     resolution: {integrity: sha512-jw9zBKXY5Gtr5MZ7vEON3QhMNccuDvYHck1PFSyG1aaateQPqgKZFBMgZkFZaXHIf9RV4MDW5xpTK2b/+qbwOg==}
     peerDependencies:
@@ -520,6 +543,10 @@ packages:
   loglevel@1.9.2:
     resolution: {integrity: sha512-HgMmCqIJSAKqo68l0rS2AanEWfkxaZ5wNiEFb5ggm08lDs9Xl2KxBlX3PTcaD2chBM1gXAYf491/M2Rv8Jwayg==}
     engines: {node: '>= 0.6.0'}
+
+  loose-envify@1.4.0:
+    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
+    hasBin: true
 
   machina@7.0.1:
     resolution: {integrity: sha512-0Xkgs8NeBvO2hW6bjJT8ewLWrMfh1haMPstaghpASWjXkLjRhtDiaJG1Kb7mslaOHxZYxpH7PIjpmirRVYbMMA==}
@@ -567,6 +594,10 @@ packages:
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
+
+  react@18.3.0:
+    resolution: {integrity: sha512-RPutkJftSAldDibyrjuku7q11d3oy6wKOyPe5K1HA/HwwrXcEqBdHsLypkC2FFYjP7bPUa6gbzSBhw4sY2JcDg==}
+    engines: {node: '>=0.10.0'}
 
   rollup@4.63.4:
     resolution: {integrity: sha512-4U0liVayNIoLp3GFl1FcI8561WepLnZ1rqfraGh7S9B3Ur5F9S283y8Futii7RUU2C/97tOBmBy7nYvhoiOpbQ==}
@@ -787,6 +818,15 @@ snapshots:
 
   '@esbuild/win32-x64@0.21.3':
     optional: true
+
+  '@fusion/design-tokens@file:vendor/@fusion/design-tokens': {}
+
+  '@fusion/web-sdk@file:vendor/@fusion/web-sdk': {}
+
+  '@fusion/web-ui@file:vendor/@fusion/web-ui(react@18.3.0)':
+    dependencies:
+      '@fusion/design-tokens': file:vendor/@fusion/design-tokens
+      react: 18.3.0
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
@@ -1049,6 +1089,8 @@ snapshots:
 
   jose@6.2.12: {}
 
+  js-tokens@3.0.0: {}
+
   livekit-client@2.22.3(@types/dom-mediacapture-record@1.0.22):
     dependencies:
       '@livekit/mutex': 1.1.1
@@ -1068,6 +1110,10 @@ snapshots:
   lodash@4.18.1: {}
 
   loglevel@1.9.2: {}
+
+  loose-envify@1.4.0:
+    dependencies:
+      js-tokens: 3.0.0
 
   machina@7.0.1: {}
 
@@ -1122,6 +1168,10 @@ snapshots:
       nanoid: 3.3.19
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  react@18.3.0:
+    dependencies:
+      loose-envify: 1.4.0
 
   rollup@4.63.4:
     dependencies:
