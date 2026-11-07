@@ -478,7 +478,7 @@ FUSION_START_DRYRUN=1 ./startCloud.sh   # 仅自检不启动
 说明：数字人 MuseTalk 唇形同步依赖 Apple Silicon —— Ubuntu 上 manager 自动降级
 `StaticAvatar`（云端 TTS + 文本/音频走 WS）。`digital-human` extra 跨平台可装，
 mlx 依赖拆分在独立的 `digital-human-mlx` extra。迁移评估详见
-[`architecture/fusion-k12-teacher-2-ubuntu-1012.md`](../architecture/fusion-k12-teacher-2-ubuntu-1012.md)。
+`architecture/fusion-k12-teacher-2-ubuntu-1012.md` (monorepo workspace doc, not in this repo)。
 
 Quick Docker start / Docker 快速启动：
 ```bash

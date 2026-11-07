@@ -596,7 +596,7 @@ Notes: digital-human MuseTalk lip-sync requires Apple Silicon — on Ubuntu the
 manager auto-degrades to `StaticAvatar` (cloud TTS + text/audio over WS). The
 `digital-human` extra is cross-platform; mlx dependencies live in the separate
 `digital-human-mlx` extra. See
-[`architecture/fusion-k12-teacher-2-ubuntu-1012.md`](../architecture/fusion-k12-teacher-2-ubuntu-1012.md)
+`architecture/fusion-k12-teacher-2-ubuntu-1012.md` (monorepo workspace doc, not in this repo)
 for the migration assessment.
 
 Quick Docker start:
