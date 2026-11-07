@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "Fusion-K12-Teacher 部署指南", en: "Fusion-K12-Teacher deployment guide" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/deploy.md
+---
+
 # Fusion-K12-Teacher 部署指南
 
 ## 场景一：个人教师本地使用

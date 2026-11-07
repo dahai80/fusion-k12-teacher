@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "审计修复报告 2026-08-24", en: "Audit fix report 2026-08-24" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/audit-fix-0824.md
+---
+
 # 审计修复报告 — 2026-08-24
 
 对抗式架构审计（`audit/fusion-k12-teacher-audit-report-0824.md`，68 项缺陷，8 簇）全量修复。

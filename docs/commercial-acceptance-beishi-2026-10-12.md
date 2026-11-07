@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "北市商业化验收报告 2026-10-12", en: "Beishi commercial acceptance report 2026-10-12" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/commercial-acceptance-beishi-2026-10-12.md
+---
+
 # 商用验收报告 — 北师大版小学 1-6 年级数学（2026-10-12）
 
 **验收对象**: fusion-k12-teacher v2.1.2（HTTP API + GUI, 127.0.0.1:11448）

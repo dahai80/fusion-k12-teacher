@@ -1,11 +1,26 @@
-<div align="center">
-  <h1>🍎 Fusion-K12-Teacher</h1>
-  <p><strong>Local AI-powered K-12 education assistant for macOS Apple Silicon</strong></p>
-  <p><em>100% offline, zero data upload, powered by fusion-mlx. The domestic alternative to Claude K-12 Teacher.</em></p>
-  <p>
-    <a href="README_CN.md">中文文档</a>
-  </p>
-</div>
+---
+doc_id: fusion-k12-teacher/readme
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: readme
+title: { zh: "Fusion-K12-Teacher README（英文）", en: "Fusion-K12-Teacher README (English)" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - README.md
+---
+
+# 🍎 Fusion-K12-Teacher
+
+**Local AI-powered K-12 education assistant for macOS Apple Silicon**
+
+*100% offline, zero data upload, powered by fusion-mlx. The domestic alternative to Claude K-12 Teacher.*
+
+[中文文档](README_CN.md)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue" alt="Python">
@@ -608,9 +623,6 @@ Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 ---
 
-<p align="center">
-  <strong>Fusion-K12-Teacher — Local AI Education. Zero Upload, Complete Privacy.</strong>
-</p>
-<p align="center">
-  <sub>Built with ❤️ and fusion-mlx</sub>
-</p>
+**Fusion-K12-Teacher — Local AI Education. Zero Upload, Complete Privacy.**
+
+Built with ❤️ and fusion-mlx
