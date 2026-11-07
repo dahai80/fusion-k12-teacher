@@ -9,7 +9,7 @@ audience: engineer
 status: draft
 version: 2.2.6
 updated: 2026-11-07
-owner: @dahai
+owner: "@dahai"
 source_of_truth:
   - README.md
   - fusion_k12_teacher/serve.py
