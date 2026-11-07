@@ -1,13 +1,30 @@
-<div align="center">
-  <h1>🍎 Fusion-K12-Teacher</h1>
-  <p><strong>Local AI-powered K-12 education assistant for macOS Apple Silicon</strong></p>
-  <p><strong>本地 AI K-12 教育助手 — macOS Apple Silicon 原生</strong></p>
-  <p><em>100% offline, zero data upload, powered by fusion-mlx. The domestic alternative to Claude K-12 Teacher.</em></p>
-  <p><em>100% 本地离线，数据不出境，基于 fusion-mlx。国内 Claude K-12 Teacher 替代方案。</em></p>
-  <p>
-    <a href="README.md">English</a> | <strong>中文</strong>
-  </p>
-</div>
+---
+doc_id: fusion-k12-teacher/readme
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: readme
+title: { zh: "Fusion-K12-Teacher README（中文）", en: "Fusion-K12-Teacher README (Chinese)" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - README_CN.md
+---
+
+# 🍎 Fusion-K12-Teacher
+
+**Local AI-powered K-12 education assistant for macOS Apple Silicon**
+
+**本地 AI K-12 教育助手 — macOS Apple Silicon 原生**
+
+*100% offline, zero data upload, powered by fusion-mlx. The domestic alternative to Claude K-12 Teacher.*
+
+*100% 本地离线，数据不出境，基于 fusion-mlx。国内 Claude K-12 Teacher 替代方案。*
+
+[English](README.md) | **中文**
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-blue" alt="Python">
@@ -461,7 +478,7 @@ FUSION_START_DRYRUN=1 ./startCloud.sh   # 仅自检不启动
 说明：数字人 MuseTalk 唇形同步依赖 Apple Silicon —— Ubuntu 上 manager 自动降级
 `StaticAvatar`（云端 TTS + 文本/音频走 WS）。`digital-human` extra 跨平台可装，
 mlx 依赖拆分在独立的 `digital-human-mlx` extra。迁移评估详见
-[`architecture/fusion-k12-teacher-2-ubuntu-1012.md`](../architecture/fusion-k12-teacher-2-ubuntu-1012.md)。
+`architecture/fusion-k12-teacher-2-ubuntu-1012.md` (monorepo workspace doc, not in this repo)。
 
 Quick Docker start / Docker 快速启动：
 ```bash
@@ -488,12 +505,8 @@ Apache 2.0 协议，详见 [LICENSE](LICENSE)。
 
 ---
 
-<p align="center">
-  <strong>Fusion-K12-Teacher — Local AI Education. Zero Upload, Complete Privacy.</strong>
-</p>
-<p align="center">
-  <strong>本地 AI 教育，零上传，完全隐私。</strong>
-</p>
-<p align="center">
-  <sub>Built with ❤️ and fusion-mlx</sub>
-</p>
+**Fusion-K12-Teacher — Local AI Education. Zero Upload, Complete Privacy.**
+
+**本地 AI 教育，零上传，完全隐私。**
+
+Built with ❤️ and fusion-mlx

@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "v2 企业级架构升级设计", en: "v2 enterprise architecture upgrade design" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/v2-enterprise-arch-upgrade.md
+---
+
 # Fusion-K12-Teacher v2.0 企业级架构升级方案
 
 > 现状: v1.3.0 单机生产就绪, 不达企业级多节点商用标准
@@ -369,16 +385,16 @@ P = 优先级 (P1 最高), W = 估时 (人天), 依赖 = 前置任务号。
 
 **合计**: 22 任务, ~52 人天。
 
-## 六、里程碑与发布节奏
+## 六、阶段目标与发布节奏
 
-| 里程碑 | 范围 | 任务 | 版本 | 产出 |
+| 阶段目标 | 范围 | 任务 | 版本 | 产出 |
 |--------|------|------|------|------|
 | M1 基础底座 | Repository + 加密 + salt | T1-T9 | v2.0-alpha | 持久化抽象 + PII 加密, 单机模式回归绿 |
 | M2 无状态化 ✅ | 单例移除 + 并发 + 缓存 | T10-T12 | v2.0-beta (2.0.0b0) | 多实例可跑, scheduler 跨实例去重, Redis 限流接入, 367 测试绿 |
 | M3 可观测 ✅ | 审计 + 指标 + 配置热更 | T13-T19 | v2.0-rc (2.0.0rc) | 审计留存+导出, Prometheus 指标端点, 配置热更新, 探针, SIGTERM 排水, 403 测试绿 |
 | M4 集群发布 ✅ | 部署模板 + 对接 + 压测 | T20-T22 | **v2.0 (2.0.0)** | k8s 模板, 网关对接, 集成测试绿, 商用就绪 |
 
-每里程碑独立可验证, M1 后单机形态仍全功能 (向后兼容硬约束)。
+每阶段目标独立可验证, M1 后单机形态仍全功能 (向后兼容硬约束)。
 
 ### M3 落地记录 (v2.0.0rc)
 

@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/docs/api
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: api-reference
+title: { zh: "Fusion-K12-Teacher API 参考", en: "Fusion-K12-Teacher API reference" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/api.md
+---
+
 # Fusion-K12-Teacher API Reference
 
 ## MLXClient

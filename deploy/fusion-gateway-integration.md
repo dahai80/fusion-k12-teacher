@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "fusion-gateway 集成指南", en: "fusion-gateway integration guide" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - deploy/fusion-gateway-integration.md
+---
+
 # T21: fusion-gateway 对接指南
 
 本工程 (fusion-k12-teacher) 通过 fusion-gateway 路由所有 LLM 流量。网关属上游项目 (Go, 独立仓库), **本工程不修改其代码** — 仅对接配置, 上游不足走 issue→PR 流程。

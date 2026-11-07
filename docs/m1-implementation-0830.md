@@ -1,8 +1,24 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "M1 实施报告 2026-08-30", en: "M1 implementation report 2026-08-30" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/m1-implementation-0830.md
+---
+
 # M1 基础底座实施报告 (v2.0.0a0)
 
 **日期**: 2026-08-30  
 **版本**: v1.3.0 → v2.0.0a0  
-**里程碑**: M1 基础底座 (T1-T9 全部完成)
+**阶段目标**: M1 基础底座 (T1-T9 全部完成)
 
 ## 概述
 
@@ -76,7 +92,7 @@ FUSION_K12_MODE=cluster
 - anonymizer salt 来源经 `get_salt_provider`, 缺省链式保持原 `_resolve_salt` 行为。
 - name_map 无 cipher = 明文 (v1.3.0 schema), 有 cipher = 加密列, 同表共存。
 
-## 后续里程碑
+## 后续阶段目标
 
 - **M2**: 配置中心 + 服务发现 (Etcd/Consul), Redis 共享会话。
 - **M3**: 多实例负载均衡, 无状态化, 健康检查与故障转移。

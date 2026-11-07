@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "审计修复报告第三批 2026-08-30", en: "Audit fix report wave 3 2026-08-30" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/audit-fix-wave3-0830.md
+---
+
 # 审计修复报告 Wave 3 — 2026-08-30 (P2 工程实现缺陷)
 
 对抗式架构审计 (`~/fusion/audit/fusion-k12-teacher-audit-result-0830.md`, 44 项: 15 ARCH-HARD / 13 RUNTIME-RISK / 16 ENG-DEFECT) 分 3 波修复。本波 = Wave 3 P2 工程实现缺陷, 8 项。

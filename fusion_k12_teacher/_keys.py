@@ -33,7 +33,7 @@ def service_listen_port(legacy_default: int) -> int:
         from fusion_core.config import service_port
     except ImportError:
         logger.debug("fusion_core absent — port falls back to FUSION_K12_PORT")
-        return int(os.environ.get("FUSION_K12_PORT", str(legacy_default)))
+        return _legacy_port_env(legacy_default)
     return service_port("fusion-k12-teacher", default=_legacy_port_env(legacy_default))
 
 

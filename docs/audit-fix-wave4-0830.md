@@ -1,3 +1,19 @@
+---
+doc_id: fusion-k12-teacher/guide
+product: fusion-k12-teacher
+class: app
+entry: guided-ui
+doc_type: guide
+title: { zh: "审计修复报告第四批 2026-08-30", en: "Audit fix report wave 4 2026-08-30" }
+audience: engineer
+status: draft
+version: 2.2.6
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/audit-fix-wave4-0830.md
+---
+
 # 审计修复报告 Wave 4 — 2026-08-30 (P3 生产加固)
 
 生产发布审计 (`~/fusion/audit/fusion-k12-audit-result-product-0830.md`) P3 级问题修复。本波聚焦生产加固与运维配套, 不改核心业务逻辑。
