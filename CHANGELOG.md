@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "Fusion-K12-Teacher 变更记录", en: "Fusion-K12-Teacher changelog" }
 audience: engineer
 status: draft
-version: 2.2.6
+version: 2.2.7
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:
@@ -17,9 +17,10 @@ source_of_truth:
 
 # Changelog
 
-## Unreleased
+## 2.2.7
 
-- docs: adopt fusion docs-system v1.1 contract (app x guided-ui) — add docs/product-page.md, docs/get-started.md, docs/troubleshooting.md, docs/img/web-login.png, ci/validate_docs.py, .github/workflows/docs.yml; add 12-key frontmatter to existing first-party markdown.
+- docs: adopt fusion docs-system v1.1 contract (app x guided-ui) — add docs/product-page.md, docs/get-started.md, docs/troubleshooting.md, docs/img/web-login.png, ci/validate_docs.py, .github/workflows/docs.yml; add 12-key frontmatter to existing first-party markdown (PR #39).
+- fix: resolve legacy port env through `_legacy_port_env` helper instead of inline read.
 
 ## 2.2.6
 
