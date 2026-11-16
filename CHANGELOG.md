@@ -7,8 +7,8 @@ doc_type: changelog
 title: { zh: "Fusion-K12-Teacher 变更记录", en: "Fusion-K12-Teacher changelog" }
 audience: engineer
 status: draft
-version: 2.2.7
-updated: 2026-11-07
+version: 2.2.8
+updated: 2026-11-16
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
@@ -16,6 +16,10 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 2.2.8
+
+- ci: fusion#2 efficiency retrofit (PR #41, issue #40) — per-ref concurrency cancel on CI + docs workflows; pip dependency cache on lint and all test matrix legs; sharding and nightly tier assessed as not warranted (suite ~81s).
 
 ## 2.2.7
 
