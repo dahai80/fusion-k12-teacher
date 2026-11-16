@@ -1,5 +1,10 @@
 name: docs
 
+# issue #40 (fusion#2 checklist): cancel superseded docs runs per ref.
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     paths:
