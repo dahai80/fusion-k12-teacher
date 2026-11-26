@@ -1,7 +1,8 @@
-"""SQLite Repository — standalone 模式后端。
+"""SQLite Repository — standalone mode backend.
 
-stdlib sqlite3, 零外部依赖。history 整列表覆写改为单表行存 (带自增 id),
-name_map KV 表。并发靠 sqlite3 文件锁 + 短事务。
+stdlib sqlite3, zero external dependencies. History full-list overwrite is replaced with
+single-table row storage (auto-increment id); name_map is a KV table. Concurrency relies
+on sqlite3 file locking + short transactions.
 """
 
 from __future__ import annotations
@@ -82,8 +83,9 @@ CREATE TABLE IF NOT EXISTS materials (
 CREATE INDEX IF NOT EXISTS idx_materials_teacher ON materials(teacher_id);
 """
 
-# M1-T6: 加密列 — name_hash (sha256 查询键, 无明文) + name_encrypted (AES-GCM 可逆)。
-# 旧列 map_key/reverse 保留兼容明文模式; 加密模式写新列, map_key 置空。
+# M1-T6: encrypted columns — name_hash (sha256 query key, no plaintext) + name_encrypted (AES-GCM reversible).
+# Legacy map_key/reverse columns kept for plaintext-mode compatibility; encrypted mode writes the new
+# columns and blanks map_key.
 _ADD_CRYPTO_COLS = [
     "ALTER TABLE name_map ADD COLUMN name_hash TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE name_map ADD COLUMN name_encrypted TEXT NOT NULL DEFAULT ''",
@@ -95,15 +97,15 @@ def _ensure_crypto_cols(conn) -> None:
         try:
             conn.execute(sql)
         except sqlite3.OperationalError:
-            # 列已存在
+            # Column already exists
             pass
 
 
 class SQLiteRepository(Repository):
-    """单机 SQLite 持久化后端。
+    """Single-machine SQLite persistence backend.
 
-    单连接 + 模块级锁, 单进程串行写。standalone 模式够用;
-    多进程/多实例需 PostgresRepository (M1-T2)。
+    Single connection + module-level lock, single-process serial writes. Sufficient for
+    standalone mode; multi-process/multi-instance needs PostgresRepository (M1-T2).
     """
 
     def __init__(self, db_path: str):
@@ -116,10 +118,10 @@ class SQLiteRepository(Repository):
         self._conn.executescript(_SCHEMA)
         _ensure_crypto_cols(self._conn)
         self._conn.commit()
-        logger.info("SQLiteRepository 就绪: %s", self._db_path)
+        logger.info("SQLiteRepository ready: %s", self._db_path)
 
     def save_history(self, records: list[dict[str, Any]]) -> None:
-        # 整列表覆写语义: 清表后批量插, 保持与旧 history.json 行为一致。
+        # Full-list overwrite semantics: clear table then batch insert, matching legacy history.json behavior.
         with self._lock:
             cur = self._conn.cursor()
             cur.execute("DELETE FROM task_history")
@@ -142,9 +144,9 @@ class SQLiteRepository(Repository):
         reverse_map: dict[str, str],
         cipher: object | None = None,
     ) -> None:
-        # M1-T6: cipher 非空 → 加密模式。name_hash=sha256(map_key) 作查询键(无明文),
-        # name_encrypted=AES-GCM(原名) 可逆回查。map_key/reverse 置空。
-        # cipher 为空 → 明文模式 (v1.3.0 兼容), 写 map_key/reverse。
+        # M1-T6: cipher non-None → encrypted mode. name_hash=sha256(map_key) as query key (no plaintext),
+        # name_encrypted=AES-GCM(original name) reversible lookup. map_key/reverse blanked.
+        # cipher None → plaintext mode (v1.3.0 compatible), writes map_key/reverse.
         with self._lock:
             cur = self._conn.cursor()
             cur.execute("DELETE FROM name_map")
@@ -167,8 +169,10 @@ class SQLiteRepository(Repository):
     def load_name_map(
         self, cipher: object | None = None
     ) -> tuple[dict[str, str], dict[str, str]]:
-        # M1-T6: 优先读加密列 (name_encrypted 有值即加密行), cipher 解密还原原名。
-        # 无 cipher 或加密列空 → 回退明文 map_key/reverse (兼容旧库/明文模式)。
+        # M1-T6: prefer encrypted columns (name_encrypted non-empty means encrypted row), cipher
+        # decrypts to recover the original name.
+        # No cipher or empty encrypted column → fall back to plaintext map_key/reverse
+        # (legacy DB / plaintext mode compatible).
         with self._lock:
             cur = self._conn.execute(
                 "SELECT map_key, anon_id, reverse, name_encrypted FROM name_map"
@@ -180,9 +184,9 @@ class SQLiteRepository(Repository):
                     try:
                         real = cipher.decrypt(ne)
                     except Exception as e:
-                        logger.warning("name_map 解密失败, 回退明文: %s", e)
+                        logger.warning("name_map decryption failed, falling back to plaintext: %s", e)
                         real = rev
-                    # 加密模式键用 map_key (调用方传 name\x00seq), 还原原名入反向表
+                    # Encrypted mode keys use map_key (caller passes name\x00seq); restore original name into reverse map
                     name_map[map_key] = anon_id
                     if real:
                         reverse_map[anon_id] = real
@@ -196,9 +200,9 @@ class SQLiteRepository(Repository):
         with self._lock:
             try:
                 self._conn.close()
-                logger.info("SQLiteRepository 已关闭: %s", self._db_path)
+                logger.info("SQLiteRepository closed: %s", self._db_path)
             except Exception as e:
-                logger.warning("关闭 SQLiteRepository 失败: %s", e)
+                logger.warning("Failed to close SQLiteRepository: %s", e)
 
     def health(self) -> bool:
         try:
@@ -206,10 +210,10 @@ class SQLiteRepository(Repository):
                 self._conn.execute("SELECT 1").fetchone()
             return True
         except Exception as e:
-            logger.warning("SQLiteRepository 健康探测失败: %s", e)
+            logger.warning("SQLiteRepository health probe failed: %s", e)
             return False
 
-    # ── M2-T11: 任务锁 ──
+    # ── M2-T11: task locks ──
 
     @staticmethod
     def _now() -> float:
@@ -217,7 +221,7 @@ class SQLiteRepository(Repository):
         return time.time()
 
     def try_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
-        # 先 reap 超时锁, 再尝试插入; 同 owner 重入视为续约成功。
+        # Reap expired locks first, then try insert; re-entry by same owner counts as renewal.
         with self._lock:
             now = self._now()
             self._conn.execute(
@@ -235,7 +239,7 @@ class SQLiteRepository(Repository):
                 self._conn.commit()
                 return True
             if row[0] == owner:
-                # 同 owner 重入: 续约
+                # Same-owner re-entry: renew
                 self._conn.execute(
                     "UPDATE task_lock SET acquired_ts = ?, ttl = ? WHERE task_id = ? AND owner = ?",
                     (now, ttl, task_id, owner),
@@ -271,7 +275,7 @@ class SQLiteRepository(Repository):
             self._conn.commit()
             return cur.rowcount
 
-    # ── M3-T14: 审计持久化 ──
+    # ── M3-T14: audit persistence ──
 
     def save_audit(self, records: list[dict[str, Any]]) -> None:
         if not records:
@@ -322,7 +326,7 @@ class SQLiteRepository(Repository):
             rows = cur.fetchall()
         if since_ts:
             return [dict(zip(cols, r)) for r in rows]
-        # 无 since: DESC 取 recent, 返回时按时间正序
+        # No since_ts: fetch recent DESC, return in chronological order
         return [dict(zip(cols, r)) for r in reversed(rows)]
 
     def purge_audit(self, before_ts: str) -> int:
@@ -333,7 +337,7 @@ class SQLiteRepository(Repository):
             self._conn.commit()
             return cur.rowcount
 
-    # ── 教师身份 ──
+    # ── Teacher identity ──
 
     _TEACHER_COLS = (
         "id", "username", "name", "school", "region",
@@ -394,7 +398,7 @@ class SQLiteRepository(Repository):
             self._conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
             self._conn.commit()
 
-    # ── 资源库 ──
+    # ── Resource library ──
 
     _MATERIAL_COLS = (
         "id", "teacher_id", "edition", "subject", "grade", "lesson_id",
@@ -472,8 +476,10 @@ class SQLiteRepository(Repository):
     def purge_old_materials(
         self, before_ts: str = "", max_per_teacher: int = 500
     ) -> int:
-        # issue #17: 两策略合并 — 1) before_ts 之前全删; 2) 每教师超 max 的旧记录删。
-        # created_at 格式 "YYYY-MM-DD HH:MM:SS" 字典序 = 时间序, 可直接字符串比较。
+        # issue #17: two combined strategies — 1) delete all before before_ts; 2) per teacher,
+        # delete oldest records beyond max.
+        # created_at format "YYYY-MM-DD HH:MM:SS" sorts lexicographically = chronologically,
+        # so direct string comparison works.
         deleted = 0
         with self._lock:
             if before_ts:
@@ -501,5 +507,5 @@ class SQLiteRepository(Repository):
                         deleted += cur.rowcount
             if deleted > 0:
                 self._conn.commit()
-                logger.info("purge_old_materials: 清理 %d 条旧资源", deleted)
+                logger.info("purge_old_materials: purged %d old materials", deleted)
         return deleted

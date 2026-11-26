@@ -1,4 +1,4 @@
-"""BNUPEvaluator 四维指标测试 — issue #23 A3。"""
+"""BNUPEvaluator four-dimension metric tests — issue #23 A3."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from fusion_k12_teacher.eval.eval_harness import (
     EvalReport,
 )
 
+# i18n: user-facing (fixture model output with Chinese teaching content)
 VALID_OUTPUT = """<thinking>
 1. 识别题型: 火车过桥。
 2. 总路程 = 桥长 + 车长 = 800 + 200 = 1000。
@@ -46,6 +47,7 @@ class TestExtractTags:
 
     def test_extract_tags_missing_dsl(self):
         ev = BNUPEvaluator()
+        # i18n: user-facing (fixture Chinese text)
         tags = ev.extract_tags("<thinking>只有思考</thinking> 没有 dsl")
         assert tags["thinking"] is not None
         assert tags["dsl"] is None
@@ -141,6 +143,7 @@ class TestEvaluateSample:
 
     def test_tag_fail_no_dsl(self):
         ev = BNUPEvaluator()
+        # i18n: user-facing (fixture Chinese text)
         res = ev.evaluate_sample("<thinking>只有思考</thinking>", ground_truth=50, sample_id="s4")
         assert res.tag_ok is False
         assert res.json_ok is False
@@ -172,6 +175,7 @@ class TestBatchReport:
         assert len(report.per_sample) == 8
 
     def test_summary_str_contains_metrics(self):
+        # i18n: user-facing (asserts Chinese report labels from EvalReport.summary_str, kept as product content)
         ev = BNUPEvaluator()
         ev.evaluate_sample(VALID_OUTPUT, 50.0, "s1")
         s = ev.report.summary_str()
@@ -188,6 +192,7 @@ class TestBatchReport:
         assert ev.report.meets_thresholds() is True
 
     def test_empty_report_summary(self):
+        # i18n: user-facing (asserts Chinese report text from EvalReport.summary_str)
         report = EvalReport()
         assert "无测试数据" in report.summary_str()
 

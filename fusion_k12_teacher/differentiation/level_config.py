@@ -5,13 +5,16 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# E8: 每个层级配置须含的键集 — 加载时校验, typo (如 excersise_count) 立即暴露,
-# 不再被引擎 f-string 抛 KeyError 后被 gather 当层异常静默降级空 LayerContent。
+# E8: required key set for every level config — validated at load time so typos (e.g.
+# excersise_count) surface immediately instead of the engine f-string raising KeyError and
+# gather silently degrading that layer to an empty LayerContent.
 _REQUIRED_CONFIG_KEYS = frozenset({
     "label", "vocabulary_level", "example_complexity", "exercise_count",
     "hint_density", "scaffold_steps", "extension", "max_abstraction", "prompt_modifier",
 })
 
+# i18n: user-facing (level labels, vocabulary tiers and prompt_modifiers are Chinese
+# teaching-product content shown to teachers/students and fed to LLM prompts)
 LEVEL_CONFIGS: dict[str, dict[str, Any]] = {
     "struggling": {
         "label": "学困生",
@@ -68,19 +71,20 @@ LEVEL_CONFIGS: dict[str, dict[str, Any]] = {
 
 
 def _validate_level_configs() -> None:
-    """E8: 加载时校验各层级配置键集完整 — typo/缺键立即抛, 不静默空层。"""
+    """E8: validate each level config's key set is complete at load time — typos/missing keys
+    raise immediately, no silent empty layers."""
     for lvl, cfg in LEVEL_CONFIGS.items():
         missing = _REQUIRED_CONFIG_KEYS - set(cfg.keys())
         extra = set(cfg.keys()) - _REQUIRED_CONFIG_KEYS
         if missing:
             raise KeyError(
-                f"LEVEL_CONFIGS[{lvl!r}] 缺键 {sorted(missing)}, 须含 {sorted(_REQUIRED_CONFIG_KEYS)}"
+                f"LEVEL_CONFIGS[{lvl!r}] missing keys {sorted(missing)}, must contain {sorted(_REQUIRED_CONFIG_KEYS)}"
             )
         if extra:
             raise KeyError(
-                f"LEVEL_CONFIGS[{lvl!r}] 多键 {sorted(extra)}, 未知键可能 typo"
+                f"LEVEL_CONFIGS[{lvl!r}] extra keys {sorted(extra)}, unknown keys are likely typos"
             )
-    logger.debug("LEVEL_CONFIGS 键集校验通过: %s", list(LEVEL_CONFIGS.keys()))
+    logger.debug("LEVEL_CONFIGS key-set validation passed: %s", list(LEVEL_CONFIGS.keys()))
 
 
 _validate_level_configs()

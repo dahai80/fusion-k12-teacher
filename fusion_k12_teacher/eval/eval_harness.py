@@ -1,12 +1,12 @@
-"""BNUP 评估 harness — 四维指标自动化评估 (PRD §384-558, issue #23 A3)。
+"""BNUP eval harness — automated four-dimension metric evaluation (PRD §384-558, issue #23 A3).
 
-维度 1 格式硬约束: 标签隔离率/JSON 语法率/Schema 合格率/eval 可执行率
-维度 2 数理准确率: 最终数值与 Ground Truth 一致率
-维度 3 教学质量: SxS 裁判 (sxs_judge.py)
-维度 4 系统性能: TTFT/TPS (compare_models.py 采集)
+Dimension 1 format hard constraints: tag isolation rate / JSON syntax rate / schema pass rate / eval executability rate
+Dimension 2 math accuracy: final value vs ground-truth agreement rate
+Dimension 3 teaching quality: SxS judge (sxs_judge.py)
+Dimension 4 system performance: TTFT/TPS (collected by compare_models.py)
 
-复用 cot_pipeline.extract_thinking/extract_dsl 做 <thinking>/<dsl> 标签隔离,
-内联 DSL_SCHEMA 与 fusion-core SOCRATIC_DSL_V3_SCHEMA + to_spec_dict 输出对齐。
+Reuses cot_pipeline.extract_thinking/extract_dsl for <thinking>/<dsl> tag isolation;
+the inline DSL_SCHEMA is aligned with fusion-core SOCRATIC_DSL_V3_SCHEMA + to_spec_dict output.
 """
 
 from __future__ import annotations
@@ -143,6 +143,7 @@ class EvalReport:
         }
 
     def summary_str(self) -> str:
+        # i18n: user-facing (Chinese BNUP acceptance report, asserted in tests and printed by e2e_bnup_eval.py)
         if self.total_samples == 0:
             return "无测试数据"
         lines = [
@@ -180,10 +181,10 @@ class EvalReport:
 
 
 class BNUPEvaluator:
-    """四维指标自动化评估器 (PRD §434-558)。
+    """Automated four-dimension metric evaluator (PRD §434-558).
 
-    evaluate_sample: 5 步瀑布式校验 (tag → json → schema → eval → math)。
-    evaluate_batch: 批量评估 + 聚合报告。
+    evaluate_sample: 5-step waterfall validation (tag → json → schema → eval → math).
+    evaluate_batch: batch evaluation + aggregated report.
     """
 
     def __init__(self) -> None:
@@ -192,7 +193,7 @@ class BNUPEvaluator:
             import jsonschema
             self._validator = jsonschema.Draft202012Validator(DSL_SCHEMA)
         except ImportError:
-            logger.warning("jsonschema 未安装, Schema 校验降级为字典键检查")
+            logger.warning("jsonschema not installed, schema validation degrades to dict key checks")
             self._validator = None
 
     def extract_tags(self, response_text: str) -> dict[str, str | None]:
@@ -211,12 +212,12 @@ class BNUPEvaluator:
     def evaluate_eval_expression(
         self, pipeline: list[dict[str, Any]], parameters: dict[str, Any]
     ) -> float:
-        """安全执行 pipeline eval 表达式 (PRD §453-471)。
+        """Safely execute pipeline eval expressions (PRD §453-471).
 
-        params.xxx → params_val['xxx'], results[n] → results_val[n]。
-        中文运算符 ×÷− 自动转 Python * / -。
-        eval restricted globals: __builtins__=None。
-        返回最后一个 step 的计算结果。
+        params.xxx → params_val['xxx'], results[n] → results_val[n].
+        CJK operators ×÷− are auto-converted to Python * / -.
+        eval restricted globals: __builtins__=None.
+        Returns the computed result of the last step.
         """
         params_val = {k: v.get("value", 0) for k, v in parameters.items() if isinstance(v, dict)}
         results_val: dict[int, float] = {}
@@ -376,7 +377,7 @@ class BNUPEvaluator:
     def evaluate_batch(
         self, samples: list[dict[str, Any]]
     ) -> EvalReport:
-        """批量评估。sample: {id, response_text, ground_truth}。"""
+        """Batch evaluation. sample: {id, response_text, ground_truth}."""
         for item in samples:
             self.evaluate_sample(
                 response_text=item.get("response_text", ""),

@@ -1,7 +1,7 @@
-"""BNUP 1-6 年级端到端测试 — 真实模型推理 + 四维评估。
+"""BNUP grades 1-6 end-to-end eval — real model inference + four-dimension evaluation.
 
-验证: 所有课后题/易错题能否产出正确解题步骤和答案。
-用法: python scripts/e2e_bnup_eval.py [--max N] [--category in_domain]
+Validates: whether all textbook/misconception questions produce correct solution steps and answers.
+Usage: python scripts/e2e_bnup_eval.py [--max N] [--category in_domain]
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ from fusion_k12_teacher.eval.eval_harness import BNUPEvaluator  # noqa: E402
 BENCHMARK = Path(__file__).parent.parent / "fusion_k12_teacher" / "eval" / "data" / "bnup_benchmark.json"
 RESULTS_DIR = Path(__file__).parent.parent / "scripts" / "e2e_results"
 
+# i18n: user-facing (LLM system prompt, Chinese teaching product)
 EVAL_SYSTEM_PROMPT = """你是数学解题专家。对于每道题, 必须严格按以下格式输出:
 
 1. 先在 <thinking> 标签内简短写出解题思路 (1-3 句话, 不要长篇推导)。
@@ -61,6 +62,7 @@ DSL JSON 格式 (必须严格遵守 JSON 语法, 双引号包裹所有键和字�
 现在请解答以下题目, 严格按上述格式输出。
 """
 
+# i18n: user-facing (LLM system prompt, Chinese teaching product)
 SFT_SYSTEM_PROMPT = """你是一名北师大版 K-12 数学苏格拉底讲师。请分析题目，先在 <thinking> 标签内输出思考链，再在 <dsl> 标签内输出标准的 JSON DSL。"""
 
 
@@ -257,6 +259,7 @@ def main():
         if r["math_ok"]:
             by_vt[vt]["math_ok"] += 1
 
+    # i18n: user-facing (Chinese acceptance report breakdown, mirrors report.summary_str())
     print("\n--- 按年级 ---")
     for g in sorted(by_grade):
         s = by_grade[g]
@@ -293,6 +296,7 @@ def main():
             "by_visual_type": by_vt,
             "results": results,
         }, f, ensure_ascii=False, indent=2)
+    # i18n: user-facing (Chinese acceptance report output)
     print(f"\n完整结果: {out}")
 
 

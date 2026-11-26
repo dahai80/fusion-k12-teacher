@@ -1,4 +1,4 @@
-"""引擎工厂 — 统一构建所有引擎实例，供 cli/serve 共用，避免重复 DI 接线。"""
+"""Engine factory — builds all engine instances uniformly for cli/serve, avoiding duplicated DI wiring."""
 
 from __future__ import annotations
 
@@ -20,13 +20,14 @@ from .subjects import SubjectExpert
 
 logger = logging.getLogger(__name__)
 
-# issue #14: fire-and-forget 任务须持强引用, 否则事件循环仅持弱引用可被 GC。
+# issue #14: fire-and-forget tasks must hold a strong reference, otherwise the event loop only
+# keeps a weak reference and they can be GC'd.
 _close_tasks: set[asyncio.Task[None]] = set()
 
 
 @dataclass
 class EngineBundle:
-    """所有引擎实例 + 共享 MLXClient + 共享 ContentFilter。"""
+    """All engine instances + shared MLXClient + shared ContentFilter."""
     mlx: MLXClient
     curriculum: CurriculumEngine
     assessment: AssessmentEngine
@@ -37,26 +38,31 @@ class EngineBundle:
     standards_loader: StandardsLoader
     standards_query: StandardsQuery
     analytics: AnalyticsEngine
-    # P1-9: 暴露共享 ContentFilter, 供 serve 复用同实例 (敏感词/年龄规则一份),
-    # 不在 serve 内再各自构造造成规则双份不同步。
+    # P1-9: expose the shared ContentFilter so serve reuses the same instance (one copy of
+    # sensitive-word/age rules), instead of serve constructing its own and ending up with two
+    # divergent rule sets.
     content_filter: ContentFilter = None  # type: ignore[assignment]
-    # 学科课程平台 (PRD math-doubao 解耦): SubjectRegistry 持有各学科模块 (math/physics/...),
-    # 平台不耦合具体学科, 加学科零改 engines/serve。
+    # Subject course platform (PRD math-doubao decoupling): SubjectRegistry holds each subject
+    # module (math/physics/...); the platform is not coupled to specific subjects — adding a
+    # subject requires zero changes to engines/serve.
     subject_registry: SubjectRegistry = None  # type: ignore[assignment]
 
 
 def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle:
-    """构建全部引擎 — 单一接线点，cli/serve 共用。
+    """Build all engines — single wiring point, shared by cli/serve.
 
-    model/mlx 二选一：传 mlx 则复用，否则用 model 新建。
+    model/mlx are mutually exclusive: pass mlx to reuse it, otherwise create a new one from model.
     """
     _owns_mlx = mlx is None
     if mlx is None:
         mlx = MLXClient(model=model)
-    # P3: 构造期间任一步抛错 (如 loader.load_all 课标损坏) 须关闭已 eager 建的 mlx httpx 连接池,
-    # 否则调用方拿不到 bundle 也无引用 → 连接池泄漏。mlx 由调用方传入时不动 (调用方管生命周期)。
+    # P3: if any step during construction raises (e.g. loader.load_all on corrupted standards),
+    # the already-eagerly-created mlx httpx pool must be closed; otherwise the caller gets no
+    # bundle and holds no reference → pool leak. When mlx is passed in by the caller, leave it
+    # alone (the caller owns its lifecycle).
     try:
-        # A6: 共享单一 ContentFilter — 7 引擎统一安全过滤, 非各自默认构造 (敏感词/年龄规则一份)。
+        # A6: single shared ContentFilter — unified safety filtering across 7 engines, not each
+        # engine's default construction (one copy of sensitive-word/age rules).
         content_filter = ContentFilter()
         curriculum = CurriculumEngine(mlx, content_filter)
         assessment = AssessmentEngine(mlx, content_filter)
@@ -68,8 +74,9 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
         standards_query = StandardsQuery(loader)
         differentiation = DifferentiationEngine(mlx, standards_query, content_filter)
         analytics = AnalyticsEngine(mlx, standards_query, content_filter)
-        # 学科课程平台: SubjectRegistry 自动发现 course/subjects/* 下已注册学科。
-        # 平台只持 registry, 不 import 具体学科 — 加学科 (physics/chemistry/...) 零改 engines/serve。
+        # Subject course platform: SubjectRegistry auto-discovers registered subjects under course/subjects/*.
+        # The platform only holds the registry and does not import concrete subjects — adding a
+        # subject (physics/chemistry/...) requires zero changes to engines/serve.
         subject_registry = SubjectRegistry()
         subject_registry.discover_and_init(mlx=mlx, content_filter=content_filter, standards_query=standards_query)
     except Exception:
@@ -81,17 +88,19 @@ def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle
                     _close_task = loop.create_task(mlx.close())
                     _close_tasks.add(_close_task)
                     _close_task.add_done_callback(_close_tasks.discard)
-                    logger.warning("build_engines 失败, 已调度异步清理 mlx 连接池: %s", _close_task)
+                    logger.warning("build_engines failed, scheduled async cleanup of mlx pool: %s", _close_task)
                 else:
                     loop.run_until_complete(mlx.close())
             except Exception as close_exc:
-                logger.warning("build_engines 失败清理 mlx 连接池失败: %s", close_exc)
+                logger.warning("build_engines failed to clean up mlx pool: %s", close_exc)
         raise
-    # A14: build_engines 纯构造, 不再副作用注册全局 registry。
-    # 注册与构造分离 — 调用方(cli/serve)显式调 register_all_engines(bundle...)。
-    # 原 build_engines 内调 register_all_engines mutate 模块级 registry(executor.py:61),
-    # 构造与注册耦合, 测试建 bundle 也污染全局, 工厂非纯。现拆离。
-    logger.info("引擎构建完成: model=%s", mlx.model or "(auto)")
+    # A14: build_engines is pure construction, no longer registers the global registry as a side effect.
+    # Registration and construction are separated — callers (cli/serve) explicitly call
+    # register_all_engines(bundle...).
+    # Previously build_engines called register_all_engines, mutating the module-level registry
+    # (executor.py:61); construction and registration were coupled, tests building a bundle also
+    # polluted the global, and the factory was impure. Now split apart.
+    logger.info("Engines built: model=%s", mlx.model or "(auto)")
     return EngineBundle(
         mlx=mlx,
         curriculum=curriculum,

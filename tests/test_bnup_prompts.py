@@ -1,4 +1,7 @@
-"""issue #22: BNUP 苏格拉底 prompt 注册表测试 — 路由规则 + 系统指令 + 集中引用。"""
+"""issue #22: BNUP Socratic prompt registry tests — routing rules + system instructions + centralized reference."""
+
+# i18n: user-facing (all Chinese strings below assert product LLM-prompt content from
+# course/prompts/bnup_socratic.py, which is kept Chinese; topics are fixture data)
 
 from __future__ import annotations
 

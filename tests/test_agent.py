@@ -1,4 +1,4 @@
-"""Agent 模块测试 — models / executor / tasks / scheduler。"""
+"""Agent module tests — models / executor / tasks / scheduler."""
 
 import asyncio
 import os
@@ -22,6 +22,7 @@ from fusion_k12_teacher.agent.tasks import build_task, list_available_tasks
 
 class TestTaskStep:
     def test_create(self):
+        # i18n: user-facing (fixture subject value, Chinese product data)
         step = TaskStep(engine="curriculum", method="generate_lesson_plan", params={"subject": "数学"}, output_key="plan")
         assert step.engine == "curriculum"
         assert step.method == "generate_lesson_plan"
@@ -95,8 +96,8 @@ class TestEngineRegistry:
 
 class TestExecuteStep:
     def test_execute_step_simple(self):
-        # AGT-1: 须用白名单内的 engine+method, 否则被方法授权拦截
-        # TEST-8: try/finally 保清理, 失败也勿泄漏全局 registry 单例
+        # AGT-1: must use an allowlisted engine+method, otherwise blocked by method authorization
+        # TEST-8: try/finally guarantees cleanup; never leak the global registry singleton on failure
         mock_engine = MagicMock()
         mock_engine.generate_lesson_plan = AsyncMock(return_value={"result": "ok"})
         registry.register("curriculum", mock_engine)
@@ -110,8 +111,8 @@ class TestExecuteStep:
             registry._engines.pop("curriculum", None)
 
     def test_execute_step_variable_resolution(self):
-        # AGT-1: 须用白名单内的 engine+method
-        # TEST-8: try/finally 保清理
+        # AGT-1: must use an allowlisted engine+method
+        # TEST-8: try/finally guarantees cleanup
         mock_engine = MagicMock()
         mock_engine.generate_quiz = AsyncMock(return_value={"processed": True})
         registry.register("curriculum", mock_engine)
@@ -124,6 +125,7 @@ class TestExecuteStep:
             registry._engines.pop("curriculum", None)
 
     def test_execute_step_missing_engine(self):
+        # i18n: user-facing (asserts Chinese error text produced by agent/executor.py, owned outside this batch)
         step = TaskStep(engine="_missing", method="foo", params={}, output_key="out")
         context = {}
         with pytest.raises(ValueError, match="引擎未注册"):
@@ -132,8 +134,8 @@ class TestExecuteStep:
 
 class TestExecuteTask:
     def test_execute_task_single_step(self):
-        # AGT-1: 须用白名单内的 engine+method
-        # TEST-8: try/finally 保清理
+        # AGT-1: must use an allowlisted engine+method
+        # TEST-8: try/finally guarantees cleanup
         mock_engine = MagicMock()
         mock_engine.grade_essay = AsyncMock(return_value={"done": True})
         registry.register("assessment", mock_engine)
@@ -146,7 +148,7 @@ class TestExecuteTask:
             registry._engines.pop("assessment", None)
 
     def test_execute_task_step_failure(self):
-        # TEST-8: try/finally 保清理
+        # TEST-8: try/finally guarantees cleanup
         mock_engine = MagicMock()
         mock_engine.fail_method = AsyncMock(side_effect=Exception("boom"))
         registry.register("_test_eng4", mock_engine)
@@ -165,10 +167,11 @@ class TestExecuteTask:
         assert result.status == "failed"
 
 
-# ─── Tasks (预定义) ────────────────────────────────────
+# ─── Tasks (predefined) ────────────────────────────────
 
 
 class TestPredefinedTasks:
+    # i18n: user-facing (asserts Chinese task names from agent/tasks.py, kept as product content)
     def test_list_available_tasks(self):
         tasks = list_available_tasks()
         assert isinstance(tasks, dict)
@@ -198,7 +201,7 @@ class TestPredefinedTasks:
     def test_build_task_batch_differentiated(self):
         task = build_task("batch_differentiated_materials", subject="英语", grade=5, topics="阅读,写作")
         assert task.name == "批量分层教学材料"
-        assert len(task.steps) == 4  # 2 topics × (lesson + quiz)
+        assert len(task.steps) == 4  # 2 topics x (lesson + quiz)
 
     def test_build_task_unknown(self):
         with pytest.raises(ValueError):
