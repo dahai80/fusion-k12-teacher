@@ -7,8 +7,8 @@ doc_type: changelog
 title: { zh: "Fusion-K12-Teacher 变更记录", en: "Fusion-K12-Teacher changelog" }
 audience: engineer
 status: draft
-version: 2.2.8
-updated: 2026-11-16
+version: 2.2.9
+updated: 2026-11-26
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
@@ -16,6 +16,12 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 2.2.9
+
+- chore: translate source comments/logs/exceptions to English across 157 files (PR #46); user-facing product content stays Chinese and is marked `# i18n: user-facing`.
+- refactor: remove all 663 docstrings per repo convention (issue #45); click group help moved to explicit `help=`.
+- chore: drop project-local Python 3.14 venv, run from shared root venv 3.12 (issue #44, workspace audit #43).
 
 ## 2.2.8
 
