@@ -1,7 +1,7 @@
-"""StaticAvatar — 始终可用的兜底数字人。
+"""StaticAvatar — always-available fallback digital human.
 
-无 lip-sync, 仅 idle 帧 (breath/blink via Simulation)。
-MuseTalk 不可用或降级时使用。
+No lip-sync, only idle frames (breath/blink via Simulation).
+Used when MuseTalk is unavailable or degraded.
 """
 
 from __future__ import annotations

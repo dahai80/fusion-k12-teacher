@@ -1,7 +1,8 @@
-"""审计事件模型 — M3-T13。
+"""Audit event model — M3-T13.
 
-每请求一条审计事件, 含 trace_id (链路追踪透传)、路由、状态、耗时、
-学生标识哈希 (不落原文 PII)。供持久化 + 导出 + 告警基线。
+One audit event per request, including trace_id (trace passthrough), route,
+status, duration, and the hashed student identifier (no raw PII stored).
+Used for persistence + export + alerting baseline.
 """
 
 from __future__ import annotations
@@ -14,12 +15,12 @@ from typing import Any
 
 
 def new_trace_id() -> str:
-    """生成 trace_id — 16 进制短串, 供日志/审计/LLM 透传。"""
+    """Generate a trace_id — short hex string, passed through logs/audit/LLM."""
     return uuid.uuid4().hex
 
 
 def hash_pii(value: Any) -> str:
-    """PII 短哈希 — 日志/审计不落原文。空值返空串。"""
+    """Short PII hash — logs/audit never store the raw value. Empty input returns empty string."""
     s = str(value or "")
     if not s:
         return ""
@@ -28,7 +29,7 @@ def hash_pii(value: Any) -> str:
 
 @dataclass
 class AuditEvent:
-    """审计事件 — 一条请求/操作的审计记录。"""
+    """Audit event — one audit record of a request/operation."""
 
     ts: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%S"))
     trace_id: str = ""

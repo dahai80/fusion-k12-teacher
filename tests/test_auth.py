@@ -1,4 +1,4 @@
-"""auth 模块测试 — 注册/登录/token 校验/登出。"""
+"""auth module tests — register/login/token verification/logout."""
 
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ class TestPassword:
 
 class TestRegister:
     def test_register_success(self, auth):
+        # i18n: user-facing (Chinese sample name, test fixture data)
         t = auth.register("teacher1", "pass123", name="张老师")
         assert t.id.startswith("t_")
         assert t.username == "teacher1"
@@ -39,11 +40,13 @@ class TestRegister:
 
     def test_duplicate_username(self, auth):
         auth.register("teacher1", "pass123")
-        with pytest.raises(AuthError, match="已存在"):
+        # i18n: user-facing (asserts error text owned by auth/service.py)
+        with pytest.raises(AuthError, match="already exists"):
             auth.register("teacher1", "other456")
 
     def test_short_password(self, auth):
-        with pytest.raises(AuthError, match="至少 6 位"):
+        # i18n: user-facing (asserts error text owned by auth/service.py)
+        with pytest.raises(AuthError, match="at least 6"):
             auth.register("teacher2", "123")
 
 
@@ -57,11 +60,13 @@ class TestLogin:
 
     def test_login_wrong_password(self, auth):
         auth.register("teacher1", "pass123")
-        with pytest.raises(AuthError, match="错误"):
+        # i18n: user-facing (asserts error text owned by auth/service.py)
+        with pytest.raises(AuthError, match="invalid username or password"):
             auth.login("teacher1", "wrong")
 
     def test_login_unknown_user(self, auth):
-        with pytest.raises(AuthError, match="错误"):
+        # i18n: user-facing (asserts error text owned by auth/service.py)
+        with pytest.raises(AuthError, match="invalid username or password"):
             auth.login("ghost", "pass123")
 
 
@@ -69,7 +74,7 @@ class TestToken:
     def test_verify_expired(self, auth):
         auth.register("t1", "pass123")
         token, _teacher = auth.login("t1", "pass123")
-        # 篡改 expiry 为过去时间
+        # tamper expiry into the past
         import base64
         import hashlib
         import hmac

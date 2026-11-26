@@ -1,8 +1,10 @@
-"""配置模块 — M3-T17。
+"""Config module — M3-T17.
 
-提供者: EnvProvider (静态 env) / FileProvider (mtime 轮询)。
-get_config() 工厂: FUSION_K12_CONFIG_FILE 指定文件则用 FileProvider, 否则 EnvProvider。
-后台线程轮询刷新可热更新项 (model/限流/salt/日志级别), 变更回调刷新引擎持有配置。
+Providers: EnvProvider (static env) / FileProvider (mtime polling).
+The get_config() factory uses FileProvider when FUSION_K12_CONFIG_FILE points to
+a file, otherwise EnvProvider.
+A background thread polls and refreshes hot-reloadable items (model/rate
+limit/salt/log level); change callbacks refresh engine-held config.
 """
 
 from __future__ import annotations
@@ -28,10 +30,11 @@ _config: ConfigProvider | None = None
 
 
 def get_config() -> ConfigProvider:
-    """单例配置提供者工厂。
+    """Singleton config provider factory.
 
-    FUSION_K12_CONFIG_FILE 指定配置文件 → FileProvider (可热更);
-    否则 EnvProvider (静态)。惰性建, 首次调用后不变。
+    FUSION_K12_CONFIG_FILE pointing at a config file -> FileProvider (hot
+    reload); otherwise EnvProvider (static). Built lazily, fixed after the
+    first call.
     """
     global _config
     if _config is not None:
@@ -39,15 +42,15 @@ def get_config() -> ConfigProvider:
     cfg_path = os.environ.get("FUSION_K12_CONFIG_FILE", "")
     if cfg_path and os.path.exists(cfg_path):
         _config = FileProvider(cfg_path)
-        logger.info("使用 FileProvider 配置: %s", cfg_path)
+        logger.info("Using FileProvider config: %s", cfg_path)
     else:
         _config = EnvProvider()
-        logger.info("使用 EnvProvider 配置 (静态)")
+        logger.info("Using EnvProvider config (static)")
     return _config
 
 
 def reset_config() -> None:
-    """重置单例 — 测试用。"""
+    """Reset the singleton — for tests."""
     global _config
     if _config is not None:
         try:

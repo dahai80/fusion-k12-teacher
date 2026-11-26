@@ -1,7 +1,7 @@
-"""emotion_tag 解析广播日志过滤 — TLive-Omni pattern 4。
+"""emotion_tag parsing/broadcast/log filtering — TLive-Omni pattern 4.
 
-正则剥离 [tag] -> TTS 语速 + Avatar 表情。未知 tag -> neutral。
-日志过滤器: 记录前剥离 tag, 不污染日志。
+Regex strips [tag] -> TTS speed + avatar expression. Unknown tag -> neutral.
+Log filter: strips the tag before emitting, keeping logs unpolluted.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ class EmotionTagParser:
             return text, _DEFAULT_TAG
         tag = m.group(1)
         if tag not in EMOTION_SPEED:
-            logger.debug("emotion[%s]: 未知 tag %s -> neutral", self.session_id, tag)
+            logger.debug("emotion[%s]: unknown tag %s -> neutral", self.session_id, tag)
             tag = _DEFAULT_TAG
         return _TAG_RE.sub("", text).rstrip(), tag
 

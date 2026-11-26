@@ -1,6 +1,7 @@
-"""IdleMotion — 纯 CPU 微动作 (眨眼/凝视/呼吸/barge-in 3 阶段)。
+"""IdleMotion — pure-CPU micro motions (blink/gaze/breath/barge-in 3 stages).
 
-无 MLX 依赖。供 StaticAvatar/MuseTalkAvatar 生成 idle 帧。移植 linguakids simulation 思路。
+No MLX dependency. Used by StaticAvatar/MuseTalkAvatar to generate idle frames.
+Ported from the linguakids simulation approach.
 """
 
 from __future__ import annotations
@@ -53,8 +54,10 @@ class IdleMotion:
         return 1.0 / (1.0 + math.exp(-10 * (x - 0.5)))
 
     def barge_in_stages(self, elapsed_ms: float) -> tuple[float, float, float]:
-        # 3 阶段 Sigmoid: 嘴形收敛 (0-40ms) → 眼神切换 (40-90ms) → 头部转向 (90-150ms)。
-        # 每阶段各自 Sigmoid, 错峰 50ms, 模拟自然打断过渡 (linguakids 3-stage cascade)。
+        # 3-stage sigmoid: lip convergence (0-40ms) -> gaze switch (40-90ms) ->
+        # head turn (90-150ms). Each stage has its own sigmoid, staggered by
+        # 50ms, simulating a natural interruption transition (linguakids
+        # 3-stage cascade).
         def _sigmoid(t: float, start_ms: float, span_ms: float) -> float:
             if t < start_ms:
                 return 0.0

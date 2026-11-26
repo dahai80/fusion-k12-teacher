@@ -1,4 +1,4 @@
-"""Agent 模块 — 任务编排 + 调度 + 执行。"""
+"""Agent module — task orchestration + scheduling + execution."""
 
 from .executor import EngineRegistry, execute_step, execute_task, register_all_engines
 from .models import TaskResult, TaskStep, TeachingTask

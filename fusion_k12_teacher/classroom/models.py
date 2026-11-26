@@ -1,7 +1,10 @@
-"""课堂模块数据模型 — K1 文字版 (LiveKit/数字人上游 deferred)。
+"""Classroom module data models — K1 text version (LiveKit/digital-human
+upstream deferred).
 
-对齐 fusion-k12-classroom-prd E1-E6: 课程包/讲稿/会话/作答/报告。
-K1 文字版: 无 LiveKit 音视频, session 仅落库不签 token; 讲课以文字逐页呈现。
+Aligned with fusion-k12-classroom-prd E1-E6: course packages/lesson
+scripts/sessions/answers/reports.
+K1 text version: no LiveKit audio/video, session is persisted only without
+token signing; the lesson is presented page by page as text.
 """
 
 from __future__ import annotations

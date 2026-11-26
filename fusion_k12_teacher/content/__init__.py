@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher 内容生成模块。"""
+"""Fusion-K12-Teacher content generation module."""
 
 from .generator import ContentGenerator, Worksheet
 

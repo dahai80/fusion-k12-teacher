@@ -1,5 +1,6 @@
-"""#34 (config Phase 2.2): 网关凭据/端口单点解析 — fusion_core.config 优先,
-缺席回退语义等价旧 env 读取 (可选依赖约束, 见 CLAUDE.md)。"""
+"""#34 (config Phase 2.2): Single-point resolution of gateway credentials/port —
+fusion_core.config first, falling back to semantically equivalent legacy env
+reads when absent (optional-dependency constraint, see CLAUDE.md)."""
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ from fusion_k12_teacher._keys import gateway_client_key, service_listen_port
 
 
 def _drop_fusion_core_config(monkeypatch):
-    # sys.modules 置 None → from fusion_core.config import ... 触发 ImportError
+    # sys.modules set to None -> from fusion_core.config import ... raises ImportError
     monkeypatch.setitem(sys.modules, "fusion_core.config", None)
 
 
@@ -24,7 +25,7 @@ class TestClientKey:
         assert "Authorization" not in MLXClient()._auth_headers()
 
     def test_canonical_env_preferred(self, monkeypatch):
-        # fusion_core 别名链: FUSION_CLIENT_KEY 优先于 legacy FUSION_MLX_API_KEY
+        # fusion_core alias chain: FUSION_CLIENT_KEY takes priority over legacy FUSION_MLX_API_KEY
         pytest.importorskip("fusion_core.config")
         from fusion_k12_teacher.ai_client import MLXClient
 
@@ -33,7 +34,7 @@ class TestClientKey:
         assert MLXClient()._auth_headers()["Authorization"] == "Bearer ck-canonical"
 
     def test_legacy_env_still_honored(self, monkeypatch):
-        # 别名链只活在 fusion_core — 无 fusion_core 时本测试无意义
+        # the alias chain lives only in fusion_core — this test is meaningless without it
         pytest.importorskip("fusion_core.config")
         from fusion_k12_teacher.ai_client import MLXClient
 
@@ -42,7 +43,7 @@ class TestClientKey:
         assert MLXClient()._auth_headers()["Authorization"] == "Bearer legacy-key"
 
     def test_fallback_without_fusion_core(self, monkeypatch):
-        # issue #35: 裸装回退只认规范名 FUSION_CLIENT_KEY
+        # issue #35: bare-install fallback only honors canonical FUSION_CLIENT_KEY
         _drop_fusion_core_config(monkeypatch)
         monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
         monkeypatch.setenv("FUSION_CLIENT_KEY", "fb-key")
@@ -55,7 +56,7 @@ class TestClientKey:
         assert gateway_client_key() == ""
 
     def test_prod_missing_key_raises(self, monkeypatch):
-        # config-conventions §3: prod 缺 secret 必须 RuntimeError, 不允许静默空值
+        # config-conventions §3: prod with a missing secret must raise RuntimeError, no silent empty value
         pytest.importorskip("fusion_core.config")
         monkeypatch.delenv("FUSION_CLIENT_KEY", raising=False)
         monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)

@@ -1,4 +1,4 @@
-"""M3-T17 配置热更新测试。"""
+"""M3-T17 config hot-reload tests."""
 
 from __future__ import annotations
 
@@ -42,8 +42,9 @@ class TestFileProvider:
         f = tmp_path / "cfg.txt"
         f.write_text("FUSION_MLX_MODEL=qwen\n")
         p = FileProvider(str(f))
-        assert p.refresh() == {}  # mtime 未变
-        # 触碰 mtime (写新内容 + 显式后置 mtime 避同秒抖动)
+        assert p.refresh() == {}  # mtime unchanged
+        # Touch the mtime (write new content; explicit later mtime avoids
+        # same-second jitter)
         time.sleep(0.01)
         f.write_text("FUSION_MLX_MODEL=qwen2\n")
         changed = p.refresh()
@@ -57,7 +58,7 @@ class TestFileProvider:
         time.sleep(0.01)
         f.write_text("SOME_OTHER=val2\n")
         changed = p.refresh()
-        # 非 HOT_RELOADABLE 不进 changed
+        # non-HOT_RELOADABLE keys do not enter changed
         assert "SOME_OTHER" not in changed
 
     def test_missing_file_empty(self, tmp_path):
@@ -74,7 +75,7 @@ class TestConfigProviderCallback:
         p.on_change(lambda k, v: seen.append((k, v)))
         time.sleep(0.01)
         f.write_text("FUSION_MLX_MODEL=m2\n")
-        # 手动调 refresh + 回调 (绕过线程时序)
+        # manually call refresh + callbacks (bypasses thread timing)
         changed = p.refresh()
         for k, v in changed.items():
             for cb in p._callbacks:

@@ -1,6 +1,6 @@
-"""MlxWhisperASR — fusion-mlx /v1/audio/transcriptions 插件。
+"""MlxWhisperASR — fusion-mlx /v1/audio/transcriptions plugin.
 
-word_timestamps=False 加速。asyncio.Lock 串行化 (单 GPU)。
+word_timestamps=False for speed. Serialized by asyncio.Lock (single GPU).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ class MlxWhisperASR(ASRPlugin):
 
     async def init(self) -> None:
         if self._mlx is None:
-            logger.warning("asr_mlx: mlx_client 为 None, 不可用")
+            logger.warning("asr_mlx: mlx_client is None, unavailable")
             self._available = False
             return
         self._available = True
@@ -43,7 +43,7 @@ class MlxWhisperASR(ASRPlugin):
             try:
                 return await self._mlx.transcribe(pcm, model=self._model, language=self._language)
             except Exception as exc:
-                logger.error("asr_mlx: 转写失败 %s", exc)
+                logger.error("asr_mlx: transcription failed %s", exc)
                 return ""
 
     async def cancel(self) -> None:

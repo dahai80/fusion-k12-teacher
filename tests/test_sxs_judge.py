@@ -1,4 +1,4 @@
-"""SxSJudge 双盲裁判测试 — issue #23 A4。"""
+"""SxSJudge double-blind judge tests — issue #23 A4."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ class TestSxSJudge:
         mlx = MockMLX(JUDGE_RESPONSE)
         judge = SxSJudge(mlx, judge_model="judge")
         result = await judge.judge_pair(
+            # i18n: user-facing (teaching prompt, test fixture data)
             prompt="火车过桥", output_a="output_a", output_b="output_b",
             a_is_base=True, sample_id="p1",
         )
@@ -80,6 +81,7 @@ class TestSxSJudge:
         mlx = MockMLX(JUDGE_RESPONSE)
         judge = SxSJudge(mlx, judge_model="j")
         pairs = [
+            # i18n: user-facing (teaching prompts, test fixture data)
             {"id": f"p{i}", "prompt": f"问题{i}", "output_a": "base", "output_b": "ft"}
             for i in range(10)
         ]

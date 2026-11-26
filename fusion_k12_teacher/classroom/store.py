@@ -1,7 +1,10 @@
-"""课堂持久化 — SQLite 存课程包/会话, 复用 repository db 路径模式。
+"""Classroom persistence — SQLite storing course packages/sessions, reusing the
+repository db path pattern.
 
-独立表 classroom_packages / classroom_sessions, 不侵入现有 repository schema。
-并发安全: sqlite3 默认 serialized, 额外加 threading.Lock 防写冲突。
+Standalone tables classroom_packages / classroom_sessions, no intrusion into the
+existing repository schema.
+Concurrency safety: sqlite3 is serialized by default, plus a threading.Lock
+against write conflicts.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ class ClassroomStore:
         Path(self._db).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._init_schema()
-        logger.info("classroom_store: 初始化 db=%s", self._db)
+        logger.info("classroom_store: initialized db=%s", self._db)
 
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db, timeout=10)
@@ -83,7 +86,7 @@ class ClassroomStore:
             try:
                 return json.loads(row["payload"])
             except Exception as exc:
-                logger.warning("classroom_store: 包 JSON 解析失败 %s", exc)
+                logger.warning("classroom_store: package JSON parse failed %s", exc)
                 return None
 
     def list_packages(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -122,7 +125,7 @@ class ClassroomStore:
             try:
                 return json.loads(row["payload"])
             except Exception as exc:
-                logger.warning("classroom_store: 会话 JSON 解析失败 %s", exc)
+                logger.warning("classroom_store: session JSON parse failed %s", exc)
                 return None
 
     def list_sessions(self, class_id: str = "", limit: int = 100) -> list[dict[str, Any]]:

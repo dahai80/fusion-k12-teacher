@@ -1,7 +1,9 @@
-"""数学题库加载器 — 首发火车过桥全题型 (k_12.md 收编)。
+"""Math problem bank loader — launch set covers all train-crossing-bridge
+problem types (consolidated from k_12.md).
 
-按「知识点节点 ID + 认知层级 + 错因标签」三元组打标, A/B/C 分层。
-数据源: data/train_bridge_bank.json。只读加载, 提供 query/filter。
+Tagged by the triple "knowledge node ID + cognitive level + misconception
+tag", with A/B/C difficulty layers.
+Data source: data/train_bridge_bank.json. Read-only load; provides query/filter.
 """
 
 from __future__ import annotations
@@ -59,7 +61,7 @@ class Problem:
 
 
 class MathProblemBank:
-    """数学题库 — 从 JSON 加载, 内存查询。"""
+    """Math problem bank — loaded from JSON, queried in memory."""
 
     def __init__(self) -> None:
         self._problems: list[Problem] = []
@@ -70,18 +72,18 @@ class MathProblemBank:
     def load(self) -> None:
         p = Path(__file__).parent / "data" / "train_bridge_bank.json"
         if not p.exists():
-            logger.warning("math_problem_bank: 题库文件不存在 %s", p)
+            logger.warning("math_problem_bank: problem bank file missing %s", p)
             return
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except Exception as exc:
-            logger.error("math_problem_bank: JSON 解析失败 %s: %s", p, exc)
+            logger.error("math_problem_bank: JSON parse failed %s: %s", p, exc)
             return
         self._meta = {k: v for k, v in data.items() if k not in ("problems", "misconceptions", "formula_cheatsheet")}
         self._problems = [Problem.from_dict(d) for d in data.get("problems", [])]
         self._misconceptions = list(data.get("misconceptions", []))
         self._formula_cheatsheet = list(data.get("formula_cheatsheet", []))
-        logger.info("math_problem_bank: 加载完成 problems=%d misconceptions=%d", len(self._problems), len(self._misconceptions))
+        logger.info("math_problem_bank: load complete problems=%d misconceptions=%d", len(self._problems), len(self._misconceptions))
 
     @property
     def count(self) -> int:

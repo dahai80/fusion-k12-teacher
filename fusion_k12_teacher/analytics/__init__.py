@@ -1,4 +1,5 @@
-"""学情分析模块 — 班级画像、学生画像、错题归因、补救方案。"""
+"""Learning analytics module — class profiles, student profiles, error
+attribution, remediation plans."""
 
 from .engine import AnalyticsEngine
 from .loader import load_from_csv, load_from_json

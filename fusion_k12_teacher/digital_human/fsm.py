@@ -1,7 +1,8 @@
-"""FSM 五态状态机 — TLive-Omni pattern 1。
+"""FSM five-state state machine — TLive-Omni pattern 1.
 
-IDLE/USER_SPEAKING/AI_THINKING/AI_SPEAKING/ERROR + 统一钩子。
-ERROR 态自动触发 BargeInBus 清场。所有转换结构化日志 (不含 emotion tag)。
+IDLE/USER_SPEAKING/AI_THINKING/AI_SPEAKING/ERROR + unified hooks.
+The ERROR state automatically triggers BargeInBus clear-down. All transitions
+are logged in structured form (no emotion tag).
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ class SessionFSM:
 
     def register_hook(self, name: str, fn: Hook) -> None:
         if name not in self._hooks:
-            logger.warning("fsm[%s]: 未知钩子 %s, 忽略", self.session_id, name)
+            logger.warning("fsm[%s]: unknown hook %s, ignoring", self.session_id, name)
             return
         self._hooks[name].append(fn)
 
@@ -67,7 +68,7 @@ class SessionFSM:
     async def transition(self, new: SessionState, *, reason: str = "") -> None:
         if new not in _ALLOWED.get(self._state, frozenset()):
             raise TransitionError(
-                f"fsm[{self.session_id}]: 非法转换 {self._state.value} -> {new.value} ({reason})"
+                f"fsm[{self.session_id}]: illegal transition {self._state.value} -> {new.value} ({reason})"
             )
         old = self._state
         logger.info("fsm[%s]: %s -> %s reason=%s", self.session_id, old.value, new.value, reason)
@@ -86,7 +87,7 @@ class SessionFSM:
                 if res is not None:
                     await res
             except Exception as exc:
-                logger.error("fsm[%s]: 钩子 %s 异常: %s", self.session_id, name, exc)
+                logger.error("fsm[%s]: hook %s raised an exception: %s", self.session_id, name, exc)
 
     def can_go(self, new: SessionState) -> bool:
         return new in _ALLOWED.get(self._state, frozenset())

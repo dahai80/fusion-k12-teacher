@@ -1,6 +1,7 @@
-"""进程内缓存 — standalone 默认后端 (M2-T12)。
+"""In-process cache — standalone default backend (M2-T12).
 
-LRU + TTL, asyncio.Lock 保护。单进程正确; 多实例各自一份 (限流配额独立)。
+LRU + TTL, guarded by asyncio.Lock. Correct for a single process; each of
+multiple instances holds its own copy (independent rate-limit quotas).
 """
 
 from __future__ import annotations
@@ -11,12 +12,12 @@ from collections import OrderedDict
 
 from .base import CacheBackend
 
-# 惰性清扫最小间隔 (秒) — 防每次 incr 都全量扫描
+# Minimum lazy-sweep interval (seconds) — avoids a full scan on every incr
 _SWEEP_INTERVAL = 60.0
 
 
 class LocalCache(CacheBackend):
-    """进程内 OrderedDict LRU + TTL。"""
+    """In-process OrderedDict LRU + TTL."""
 
     def __init__(self, max_entries: int = 4096):
         self._data: OrderedDict[str, tuple[str, float]] = OrderedDict()
@@ -63,8 +64,10 @@ class LocalCache(CacheBackend):
     async def incr(self, key: str, ttl: int = 60) -> int:
         now = time.monotonic()
         async with self._lock:
-            # issue #15: 计数器 dict 无上限, 过期项仅在同 key 再 incr 时才清 —
-            # 海量不同 key (如伪造 IP 限流) 可无限增长。惰性批量清扫兜底。
+            # issue #15: the counter dict is unbounded; expired entries were only
+            # cleared when the same key was incr'd again — a flood of distinct
+            # keys (e.g. spoofed-IP rate limiting) could grow without limit.
+            # Lazy batch sweep as a backstop.
             if len(self._counters) > self._max and now - self._last_sweep >= _SWEEP_INTERVAL:
                 self._sweep_expired(now)
             exp = self._counter_ttl.get(key, 0.0)
@@ -79,7 +82,7 @@ class LocalCache(CacheBackend):
             return self._counters[key]
 
     def _sweep_expired(self, now: float) -> None:
-        """批量清除过期计数器 — 须持 _lock 调用 (issue #15)。"""
+        """Batch-clear expired counters — must be called while holding _lock (issue #15)."""
         expired = [k for k, exp in self._counter_ttl.items() if exp > 0 and now >= exp]
         for k in expired:
             self._counters.pop(k, None)

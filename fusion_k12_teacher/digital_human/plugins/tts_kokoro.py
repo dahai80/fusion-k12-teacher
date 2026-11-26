@@ -1,6 +1,6 @@
-"""KokoroTTS — fusion-mlx /v1/audio/speech 插件。
+"""KokoroTTS — fusion-mlx /v1/audio/speech plugin.
 
-emotion -> speed 映射。返回 wav bytes。同一 PCM 喂 AvatarPlugin.render。
+emotion -> speed mapping. Returns wav bytes. Same PCM feeds AvatarPlugin.render.
 """
 
 from __future__ import annotations
@@ -15,8 +15,10 @@ from .base import TTSPlugin
 
 logger = logging.getLogger(__name__)
 
-# 默认中文女声 — Kokoro 英文声线对纯中文输入无效 (静音/乱音),
-# 数字人教师默认讲中文, 须默认中文声线; 可用 FUSION_K12_TTS_VOICE 覆盖。
+# Default Chinese female voice — Kokoro English voices are ineffective on pure
+# Chinese input (silence/garbled sound); the digital-human teacher speaks
+# Chinese by default, so a Chinese voice is the default; override via
+# FUSION_K12_TTS_VOICE.
 _DEFAULT_VOICE = os.environ.get("FUSION_K12_TTS_VOICE", "zf_xiaoxiao")
 
 
@@ -35,7 +37,7 @@ class KokoroTTS(TTSPlugin):
 
     async def init(self) -> None:
         if self._mlx is None:
-            logger.warning("tts_kokoro: mlx_client 为 None, 不可用")
+            logger.warning("tts_kokoro: mlx_client is None, unavailable")
             self._available = False
             return
         self._available = True
@@ -49,12 +51,13 @@ class KokoroTTS(TTSPlugin):
             return b""
         speed = EMOTION_SPEED.get(emotion, 1.0) * self._speed / max(self._speed, 0.01)
         speed = round(min(max(speed, 0.5), 2.0), 2)
-        # 中文朗读规范化: 分数/百分号/小数/数学符号 → 中文读法 (Kokoro G2P 数字弱)
+        # Chinese speech normalization: fractions/percent/decimals/math symbols
+        # -> Chinese readings (Kokoro G2P is weak on digits)
         text = normalize_zh_speech(text)
         try:
             return await self._mlx.speech(text, voice=self._voice, response_format="wav", speed=speed)
         except Exception as exc:
-            logger.error("tts_kokoro: 合成失败 %s", exc)
+            logger.error("tts_kokoro: synthesis failed %s", exc)
             return b""
 
     async def cancel(self) -> None:

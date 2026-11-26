@@ -1,4 +1,4 @@
-"""SaltProvider 测试 — M1-T7。"""
+"""SaltProvider tests — M1-T7."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class TestRandomFallbackSaltProvider:
         path = str(tmp_path / "rand")
         salt1 = RandomFallbackSaltProvider(path).get_salt()
         assert len(salt1) == 32  # token_hex(16)
-        # 文件已写, 第二次读应一致
+        # file written; a second read should be identical
         salt2 = RandomFallbackSaltProvider(path).get_salt()
         assert salt2 == salt1
 
@@ -61,7 +61,7 @@ class TestConfigCenterSaltProvider:
             ConfigCenterSaltProvider().get_salt()
 
     def test_missing_redis_lib_raises(self, monkeypatch):
-        # redis 未安装 (cluster extras 不含 redis), 应抛清晰 ImportError
+        # redis not installed (cluster extras do not include redis), should raise a clear ImportError
         import sys
         monkeypatch.setenv("FUSION_K12_REDIS_URL", "redis://localhost:6379")
         monkeypatch.setitem(sys.modules, "redis", None)
@@ -106,12 +106,13 @@ class TestGetSaltProvider:
 
 class TestAnonymizerUsesProvider:
     def test_anonymizer_picks_env_salt(self, monkeypatch):
-        # M1-T7: DataAnonymizer 经 get_salt_provider 取 salt
+        # M1-T7: DataAnonymizer picks up the salt via get_salt_provider
         monkeypatch.setenv("FUSION_K12_SALT", "unified-salt")
         from fusion_k12_teacher.desensitize import DataAnonymizer, DesensitizeConfig
 
         anon = DataAnonymizer(DesensitizeConfig())
         assert anon.salt == "unified-salt"
-        # 同 salt → 同名同 ID (跨节点一致前提)
+        # same salt -> same name to same ID (prerequisite for cross-node consistency)
         anon2 = DataAnonymizer(DesensitizeConfig())
+        # i18n: user-facing (Chinese sample name, test fixture data)
         assert anon.anonymize_name("张三") == anon2.anonymize_name("张三")

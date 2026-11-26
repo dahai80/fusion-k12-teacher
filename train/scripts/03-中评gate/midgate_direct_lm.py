@@ -1,10 +1,14 @@
 #!/usr/bin/env python
-"""中评 gate runner — 引擎外直载 (mlx_lm) 32B 底座 + LoRA adapter, 绕过引擎服务层。
+"""Mid-eval gate runner — engine-external direct load (mlx_lm) of the 32B base
+model + LoRA adapter, bypassing the engine service layer.
 
-背景: fusion-mlx v0.10.12 服务层对 32B 底座长生成输出乱码（tokenizer 引擎外验证正常,
-mlx_lm 直载底座输出正常）, 28 题冒烟经由服务层跑批反复失败。本 runner 用 mlx_lm
-直载底座 + adapters.safetensors (step 500 权重) 逐题推理, 复用 e2e 的
-EVAL_SYSTEM_PROMPT + BNUPEvaluator 五步瀑布判定 (tag/json/schema/eval_exec/math)。
+Background: fusion-mlx v0.10.12 service layer emits garbled output for long
+generations on the 32B base (tokenizer verified fine externally; mlx_lm direct
+base load output is fine), and the 28-question smoke batch via the service
+layer failed repeatedly. This runner uses mlx_lm to load the base +
+adapters.safetensors (step 500 weights) directly and runs per-question
+inference, reusing the e2e EVAL_SYSTEM_PROMPT + BNUPEvaluator five-step
+waterfall gating (tag/json/schema/eval_exec/math).
 """
 import json
 import os
@@ -17,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 os.environ.setdefault("HF_HOME", str(Path.home() / ".fusion-mlx" / "models"))
 
-# 引擎外直载, 不经过 fusion-mlx 服务层
+# Engine-external direct load, not going through the fusion-mlx service layer
 from e2e_bnup_eval import BENCHMARK, EVAL_SYSTEM_PROMPT  # noqa: E402
 from mlx_lm import generate, load  # noqa: E402
 
@@ -31,9 +35,10 @@ MAX_TOKENS = 2048
 
 def main():
     items = json.load(open(BENCHMARK))["items"]
-    # 28 题冒烟集: benchmark 头部隔层抽样 (与 e2e --max 28 同口径)
+    # 28-question smoke set: stratified sampling from the benchmark head
+    # (same criteria as e2e --max 28)
     items = items[:28]
-    print(f"加载底座 + LoRA adapter ({ADAPTER_DIR.name})...", flush=True)
+    print(f"Loading base model + LoRA adapter ({ADAPTER_DIR.name})...", flush=True)
     model, tokenizer = load(str(SNAP), adapter_path=str(ADAPTER_DIR))
     evaluator = BNUPEvaluator()
     results = []
@@ -84,8 +89,8 @@ def main():
     OUT.write_text(json.dumps({"model": f"32B-LoRA:{ADAPTER_DIR.name}", "report": rep, "results": results},
                               ensure_ascii=False, indent=1))
     n = len(results)
-    print("\n=== 28 题中评 gate (引擎外直载) ===", flush=True)
-    print(f"样本: {n}")
+    print("\n=== 28-question mid-eval gate (engine-external direct load) ===", flush=True)
+    print(f"samples: {n}")
     for k in ("tag_rate", "json_rate", "schema_rate", "eval_exec_rate", "math_accuracy"):
         v = rep.get(k)
         v = f"{v*100:.1f}%" if isinstance(v, (int, float)) else v

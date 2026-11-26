@@ -1,11 +1,12 @@
-"""学科实现包 — 各学科 SubjectModule 在此注册。
+"""Subject implementation package — each subject's SubjectModule registers here.
 
-加学科流程:
-1. 新建 subjects/{subject_id}/ 包, 实现 SubjectModule (继承 course.base.SubjectModule)。
-2. 在下方 _BUILTIN 注册表加一行。
-3. 平台 (engines/serve/gui) 零改。
+Adding a subject:
+1. Create a subjects/{subject_id}/ package implementing SubjectModule
+   (inherits course.base.SubjectModule).
+2. Add one line to the _BUILTIN registry below.
+3. Zero changes to the platform (engines/serve/gui).
 
-当前已注册: math。规划中: physics / chemistry / english / chinese。
+Currently registered: math. Planned: physics / chemistry / english / chinese.
 """
 
 from __future__ import annotations
@@ -14,12 +15,13 @@ from ..base import SubjectModule
 
 
 def get_builtin_subjects() -> list[type[SubjectModule]]:
-    """返回内置学科模块类列表。import 在函数内, 避免平台层硬依赖具体学科。"""
+    """Return the list of built-in subject module classes. Imports stay inside the
+    function to avoid a hard platform-layer dependency on specific subjects."""
     subjects: list[type[SubjectModule]] = []
     try:
         from .math import MathSubject
         subjects.append(MathSubject)
     except ImportError as exc:
         import logging
-        logging.getLogger(__name__).warning("subjects: math 学科导入失败: %s", exc)
+        logging.getLogger(__name__).warning("subjects: math subject import failed: %s", exc)
     return subjects

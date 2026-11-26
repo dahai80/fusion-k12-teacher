@@ -1,7 +1,8 @@
-"""滚动窗口隔离式对话记忆 — TLive-Omni pattern 5。
+"""Rolling-window isolated conversation memory — TLive-Omni pattern 5.
 
-MAX_TOKENS 预算, 超限自动截断最旧非 system 消息。分层 system prompt 拼接。
-token 计数: 优先 tiktoken, 缺失用 char/4 估算。
+MAX_TOKENS budget; when exceeded, oldest non-system messages are truncated
+automatically. Layered system prompt assembly. Token counting: prefers
+tiktoken, falls back to char/4 estimate when missing.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ class _Msg:
 class RollingWindowMemory:
     session_id: str = ""
     max_tokens: int = 4096
+    # i18n: user-facing (LLM prompt text)
     base_prompt: str = "你是一位耐心、专业的老师。"
     persona: str = ""
     course_context: str = ""
@@ -58,7 +60,7 @@ class RollingWindowMemory:
             self.level = level
 
     def enable_bnup_mode(self) -> None:
-        """issue #22: 切换到 BNUP 数学苏格拉底教学模式 (使用 BNUP_SYSTEM_PROMPT)。"""
+        """issue #22: switch to the BNUP math Socratic teaching mode (uses BNUP_SYSTEM_PROMPT)."""
         self.base_prompt = BNUP_SYSTEM_PROMPT
         logger.info("memory[%s]: BNUP mode enabled", self.session_id)
 
@@ -70,6 +72,7 @@ class RollingWindowMemory:
 
     def add_rag(self, snippet: str) -> None:
         if snippet:
+            # i18n: user-facing (LLM prompt text)
             self._msgs.append(_Msg(role="system", content=f"[知识补充] {snippet}", sticky=True))
 
     def _truncate(self) -> None:
@@ -77,7 +80,7 @@ class RollingWindowMemory:
         while self._total_tokens() > budget and len(self._msgs) > 1:
             for i, m in enumerate(self._msgs):
                 if not m.sticky and m.role != "system":
-                    logger.debug("memory[%s]: 截断旧消息 role=%s", self.session_id, m.role)
+                    logger.debug("memory[%s]: truncating old message role=%s", self.session_id, m.role)
                     self._msgs.pop(i)
                     break
             else:
@@ -89,9 +92,12 @@ class RollingWindowMemory:
     def build_system_prompt(self) -> str:
         parts = [self.base_prompt]
         if self.course_context:
+            # i18n: user-facing (LLM prompt text)
             parts.append(f"\n[课程上下文]\n{self.course_context}")
         if self.persona:
+            # i18n: user-facing (LLM prompt text)
             parts.append(f"\n[人设]\n{self.persona}")
+        # i18n: user-facing (LLM prompt text)
         parts.append(f"\n[分层] {self.level}")
         return "\n".join(parts)
 

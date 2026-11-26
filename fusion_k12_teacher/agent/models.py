@@ -1,4 +1,4 @@
-"""Agent 模块数据模型 — TeachingTask, TaskStep, TaskResult。"""
+"""Agent module data models — TeachingTask, TaskStep, TaskResult."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .._coerce import coerce_bool, coerce_dict, coerce_str, coerce_str_list
 
 @dataclass
 class TaskStep:
-    """任务步骤 — 指定引擎方法及参数。"""
+    """Task step — specifies an engine method and its parameters."""
 
     engine: str
     method: str
@@ -40,7 +40,7 @@ class TaskStep:
 
 @dataclass
 class TeachingTask:
-    """教学任务 — 含调度配置与步骤链。"""
+    """Teaching task — includes scheduling config and the step chain."""
 
     id: str
     name: str
@@ -80,7 +80,7 @@ class TeachingTask:
 
 @dataclass
 class TaskResult:
-    """任务执行结果。"""
+    """Task execution result."""
 
     task_id: str
     status: str = "pending"

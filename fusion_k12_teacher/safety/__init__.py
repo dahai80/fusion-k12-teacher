@@ -1,4 +1,5 @@
-"""安全模块 — 内容过滤 + 适龄审查 + 数据脱敏 + PII 加密 + salt 来源 (M1-T5/T7)。"""
+"""Safety module — content filtering + age-appropriateness review + data
+desensitization + PII encryption + salt sourcing (M1-T5/T7)."""
 
 from .age_checker import AgeChecker
 from .filter import SAFETY_PROMPT_SUFFIX, ContentFilter
@@ -33,7 +34,7 @@ __all__ = [
 
 
 def __getattr__(name):
-    # M1-T5: DataCipher/CryptoError 惰性导出 — 缺 cryptography 不影响 import 包
+    # M1-T5: DataCipher/CryptoError lazy export — missing cryptography does not break package import
     if name in ("DataCipher", "CryptoError"):
         from .crypto import CryptoError, DataCipher
         return {"DataCipher": DataCipher, "CryptoError": CryptoError}[name]

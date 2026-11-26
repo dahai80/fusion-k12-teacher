@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher 课程规划模块。"""
+"""Fusion-K12-Teacher curriculum planning module."""
 
 from .engine import CurriculumEngine, LessonPlan, Quiz
 

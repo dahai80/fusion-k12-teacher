@@ -1,4 +1,4 @@
-"""salt 轮换 + 版本化测试 — M1-T8。"""
+"""Salt rotation + versioning tests — M1-T8."""
 
 from __future__ import annotations
 
@@ -23,14 +23,14 @@ class TestVersionedSaltProvider:
         old = p.get_salt()
         new_ver, new = p.rotate()
         assert new != old
-        assert new_ver == 2  # 初始 v1, 轮换后新当前是 v2
+        assert new_ver == 2  # initial v1, new current after rotation is v2
 
     def test_rotate_archives_old(self, tmp_path):
         path = str(tmp_path / "salt")
         p = VersionedSaltProvider(path)
         old = p.get_salt()
         p.rotate()
-        # 旧 salt 应在归档 v1
+        # old salt should be archived as v1
         archived = p.get_salt_for_version(1)
         assert archived == old
 
@@ -48,7 +48,7 @@ class TestVersionedSaltProvider:
         path = str(tmp_path / "salt")
         p = VersionedSaltProvider(path)
         p.get_salt()
-        # 不存在版本回退当前
+        # missing version falls back to current
         assert p.get_salt_for_version(999) == p.get_salt()
 
     def test_current_version(self, tmp_path):
@@ -66,7 +66,7 @@ class TestVersionedSaltProvider:
         for _ in range(3):
             _, s = p.rotate()
             salts.append(s)
-        assert len(set(salts)) == 4  # 全不同
+        assert len(set(salts)) == 4  # all distinct
 
 
 class TestRotateSaltCLI:
@@ -79,9 +79,10 @@ class TestRotateSaltCLI:
         runner = CliRunner()
         result = runner.invoke(cli, ["rotate-salt", "--salt-file", salt_file])
         assert result.exit_code == 0, result.output
+        # i18n: user-facing (asserts CLI output text owned by cli.py)
         assert "已轮换" in result.output
-        assert "v2" in result.output  # 初始 v1, rotate 后新当前 v2
-        # 验证文件已写
+        assert "v2" in result.output  # initial v1, new current v2 after rotate
+        # verify the file was written
         from fusion_k12_teacher.safety.salt_provider import VersionedSaltProvider
         assert VersionedSaltProvider(salt_file).get_salt()
 
@@ -91,11 +92,12 @@ class TestRotateSaltCLI:
         from fusion_k12_teacher.cli import cli
 
         salt_file = str(tmp_path / "salt")
-        # 先轮换两次产生多版本
+        # rotate twice first to produce multiple versions
         runner = CliRunner()
         runner.invoke(cli, ["rotate-salt", "--salt-file", salt_file])
         runner.invoke(cli, ["rotate-salt", "--salt-file", salt_file])
         result = runner.invoke(cli, ["rotate-salt", "--salt-file", salt_file, "--show-versions"])
         assert result.exit_code == 0, result.output
+        # i18n: user-facing (asserts CLI output text owned by cli.py)
         assert "salt 版本" in result.output
         assert "v1" in result.output

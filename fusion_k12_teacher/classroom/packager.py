@@ -1,6 +1,8 @@
-"""E2/E3 课程包打包器 — 教案+课件+测验+脚本 → class_id + 6 位课堂码, SQLite 持久化。
+"""E2/E3 course package packager — lesson plan + slides + quiz + script ->
+class_id + 6-digit class code, persisted in SQLite.
 
-课堂码: 6 位数字, 唯一性靠 store code UNIQUE 约束 + 重试。
+Class code: 6 digits; uniqueness relies on the store's code UNIQUE constraint
+plus retries.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ class Packager:
             created_at=now_ts(), material_flags=flags,
         )
         self.store.save_package(pkg.to_dict())
-        logger.info("packager: 打包 class_id=%s code=%s topic=%s", class_id, code, topic)
+        logger.info("packager: packed class_id=%s code=%s topic=%s", class_id, code, topic)
         return pkg
 
     def get_by_code(self, code: str) -> CoursePackage | None:
@@ -72,5 +74,5 @@ class Packager:
             code = "".join(str(random.randint(0, 9)) for _ in range(_CODE_LEN))
             if not self.store.get_package_by_code(code):
                 return code
-        # 极小概率冲突, 放宽用 class_id 后缀
+        # Extremely unlikely collision; relax by using a class_id suffix
         return new_id("")[-_CODE_LEN:]

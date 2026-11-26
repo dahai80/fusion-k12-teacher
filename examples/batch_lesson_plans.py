@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""示例：批量生成不同学科的课程计划"""
+"""Example: batch-generate lesson plans for different subjects"""
 import asyncio
 import json
 import logging
@@ -15,6 +15,7 @@ async def main():
     mlx = MLXClient()
     engine = CurriculumEngine(mlx)
 
+    # i18n: user-facing (subject names and teaching topics, LLM inputs)
     subjects = [
         ("数学", 3, "分数的初步认识"),
         ("语文", 5, "古诗词三首"),
@@ -23,9 +24,9 @@ async def main():
     ]
 
     for subject, grade, topic in subjects:
-        logger.info("生成课程计划: %s %d年级 %s", subject, grade, topic)
+        logger.info("Generating lesson plan: %s grade %d %s", subject, grade, topic)
         result = await engine.generate_lesson_plan(subject, grade, topic)
-        logger.info("完成: %s — 目标数=%d", topic, len(result.objectives))
+        logger.info("Done: %s — objectives=%d", topic, len(result.objectives))
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         print("---")
 

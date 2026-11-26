@@ -1,7 +1,9 @@
-"""课堂模块 — K1 文字版 (classroom PRD E1-E6)。
+"""Classroom module — K1 text version (classroom PRD E1-E6).
 
-平台-内容解耦: classroom 不依赖具体学科, 判分委托 AssessmentEngine/course verifier。
-LiveKit/数字人/TTS 上游 deferred (issue), K1 仅文字逐页讲课 + 文字作答。
+Platform-content decoupling: classroom does not depend on specific subjects;
+scoring is delegated to AssessmentEngine/course verifier.
+LiveKit/digital-human/TTS upstream deferred (issue); K1 only teaches page by
+page in text + text answers.
 """
 
 from __future__ import annotations

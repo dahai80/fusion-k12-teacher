@@ -1,7 +1,8 @@
-"""掌握度追踪 — 置信度启发式 (DKT 替代, PRD §8.1)。
+"""Mastery tracking — confidence heuristic (DKT replacement, PRD §8.1).
 
-替代 DKT Transformer 预训练 (上游重资产, 提 issue): 用滚动正确率 + 样本数 + 置信度
-近似 P(Mastery)。冷启动门槛: N≥5 且置信度>80% 才显热力 (PRD P2 约束)。
+Replaces pretrained DKT Transformer (heavy upstream asset, file an issue):
+approximate P(Mastery) with rolling accuracy + sample count + confidence.
+Cold-start gate: N>=5 and confidence>80% before showing heat (PRD P2 constraint).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ class MasteryRecord:
     node_id: str
     total: int = 0
     correct: int = 0
-    history: list[bool] = field(default_factory=list)  # 最近 N 次 (True=对)
+    history: list[bool] = field(default_factory=list)  # last N attempts (True=correct)
 
     @property
     def accuracy(self) -> float:
@@ -29,7 +30,7 @@ class MasteryRecord:
 
     @property
     def confidence(self) -> float:
-        # 基于样本数的 Wilson 区间下界作为置信度 (z=1.28, 80% 单侧)
+        # Wilson lower bound based on sample count as confidence (z=1.28, 80% one-sided)
         if self.total < 1:
             return 0.0
         z = 1.28
@@ -42,19 +43,21 @@ class MasteryRecord:
 
     @property
     def mastery_probability(self) -> float:
-        # 近似 P(Mastery): 准确率 × 置信度
+        # Approximate P(Mastery): accuracy x confidence
         return self.accuracy * self.confidence
 
     @property
     def display_ready(self) -> bool:
-        # PRD P2 冷启动门槛: N≥5。confidence 仍作展示字段 (真 DKT 置信度待上游模型接入),
-        # 此处放宽 conf 门槛 — Wilson 下界在小样本保守, 会误判冷启动。
+        # PRD P2 cold-start gate: N>=5. confidence remains a display field (real
+        # DKT confidence awaits upstream model integration); the conf gate is
+        # relaxed here — Wilson lower bound is conservative on small samples
+        # and would misjudge cold start.
         return self.total >= _MIN_SAMPLES
 
     @property
     def heat_color(self) -> str:
         if not self.display_ready:
-            return "gray"  # 数据不足不显热力 (P2 约束)
+            return "gray"  # insufficient data, no heat shown (P2 constraint)
         p = self.accuracy
         if p >= 0.75:
             return "green"
@@ -64,7 +67,7 @@ class MasteryRecord:
 
 
 class MasteryTracker:
-    """学生知识点掌握度追踪 — 本地内存/SQLite。"""
+    """Per-student knowledge-node mastery tracking — local memory/SQLite."""
 
     def __init__(self) -> None:
         self._records: dict[str, dict[str, MasteryRecord]] = {}  # student_id -> node_id -> record
