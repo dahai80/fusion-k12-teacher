@@ -19,7 +19,10 @@ cd "$(dirname "$0")"
 
 PORT="${FUSION_K12_PORT:-11448}"
 LOG_FILE="${FUSION_K12_LOG:-/tmp/fusion-k12-serve.log}"
-VENV=".venv"
+# issue #44: workspace policy is one shared root venv for all fusion-* Python
+# projects (pinned by /Users/dahai/fusion/.python-version). Project-local
+# venvs are forbidden. Override with FUSION_K12_VENV if layout differs.
+VENV="${FUSION_K12_VENV:-$HOME/fusion/.venv}"
 
 port_pids() { lsof -t -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true; }
 
