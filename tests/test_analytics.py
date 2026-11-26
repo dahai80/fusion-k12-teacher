@@ -1,4 +1,4 @@
-"""学情分析模块全覆盖测试 — models, loader, engine。"""
+"""Full-coverage tests for the analytics module — models, loader, engine."""
 
 from __future__ import annotations
 
@@ -21,9 +21,10 @@ from fusion_k12_teacher.analytics.models import (
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Models 测试
+# Models tests
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample names/subjects)
 class TestModels:
     def test_student_assessment_percentage(self):
         a = StudentAssessment(
@@ -129,9 +130,10 @@ class TestModels:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Loader 测试
+# Loader tests
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample names/subjects)
 class TestLoader:
     def test_load_json_array_format(self):
         data = [{
@@ -234,18 +236,19 @@ class TestLoader:
             os.path.dirname(__file__), "..",
             "fusion_k12_teacher", "analytics", "data", "sample_assessments.json",
         )
-        # TEST-9: 样本文件是已提交前置数据, 非可选; 缺失即 fail-loud,
-        # 不再 pytest.skip 静默丢失覆盖信号(删除即误判全绿)。
-        assert os.path.exists(sample_path), f"样本数据文件缺失: {sample_path}"
+        # TEST-9: the sample file is committed prerequisite data, not optional; missing → fail loud,
+        # no more pytest.skip silently dropping coverage signal (deleting it would falsely read all-green).
+        assert os.path.exists(sample_path), f"Sample data file missing: {sample_path}"
         result = load_from_json(sample_path)
         assert len(result) >= 3
         assert result[0].student_id == "S001"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Engine 统计方法测试
+# Engine statistics method tests
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample names/subjects)
 class TestAnalyticsEngineStats:
     def setup_method(self):
         self.engine = AnalyticsEngine()
@@ -414,9 +417,10 @@ class TestAnalyticsEngineStats:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Engine LLM 方法 mock 测试
+# Engine LLM method mock tests
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data and mock LLM payloads below use Chinese sample content)
 class TestAnalyticsEngineLLM:
     def _make_engine(self, mock_response: str):
         mlx = MagicMock()
@@ -542,7 +546,7 @@ class TestAnalyticsEngineLLM:
             generated_at="2024-01-01T00:00:00",
         )
         report = await engine.generate_class_report(profile)
-        assert "班级报告" in report
+        assert "班级报告" in report  # i18n: user-facing
 
     @pytest.mark.asyncio
     async def test_generate_class_report_fallback(self):
@@ -562,8 +566,8 @@ class TestAnalyticsEngineLLM:
             generated_at="2024-01-01T00:00:00",
         )
         report = await engine.generate_class_report(profile)
-        assert "班级学情报告" in report
-        assert "分数" in report
+        assert "班级学情报告" in report  # i18n: user-facing
+        assert "分数" in report  # i18n: user-facing
 
     @pytest.mark.asyncio
     async def test_build_class_profile_llm_failure(self):

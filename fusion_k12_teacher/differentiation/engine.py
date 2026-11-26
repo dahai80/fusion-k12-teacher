@@ -15,7 +15,7 @@ from .models import DifferentiatedContent, GroupTask, LayerContent
 
 logger = logging.getLogger(__name__)
 
-# ENG-17: 分层内容直达学生, 文本/列表有界 + 过 ContentFilter
+# ENG-17: tiered content goes straight to students — text/lists bounded + passed through ContentFilter
 _MAX_STR = 5000
 _MAX_LIST = 50
 
@@ -32,8 +32,8 @@ def _bound_str_list(val: Any) -> list[str]:
 
 
 def _bound_exercises(val: Any, grade: str = "", filter_fn=None) -> list[Any]:
-    # P1-6: 分层练习题 (question/answer/hint) 直达学生, 须经安全过滤。
-    # filter_fn = engine._filter_output(text, grade), 命中不当内容替换掩码。
+    # P1-6: tiered exercise items (question/answer/hint) go straight to students — must pass the safety filter.
+    # filter_fn = engine._filter_output(text, grade); on hit, replaces with the mask.
     if not isinstance(val, list):
         return []
     _filter_keys = ("question", "answer", "hint", "explanation", "options")
@@ -68,7 +68,7 @@ def _sgt(subject: str, grade: str, topic: str) -> tuple[str, str, str]:
 
 
 class DifferentiationEngine:
-    """分层教学引擎 — 三层差异化内容生成。"""
+    """Differentiated instruction engine — three-tier differentiated content generation."""
 
     def __init__(
         self,
@@ -78,29 +78,29 @@ class DifferentiationEngine:
         aligner: StandardsAligner | None = None,
     ):
         self.mlx = mlx or MLXClient()
-        # E9: aligner 可注入 — 原直接 new 致 engine 与具体 aligner 强耦合,
-        # 无法用假 aligner 隔离测试 engine, 替换对齐策略须改引擎源码。
+        # E9: aligner is injectable — constructing it directly coupled the engine to the concrete aligner,
+        # making it impossible to test the engine in isolation with a fake aligner; swapping the alignment strategy required engine source changes.
         self._aligner = aligner or StandardsAligner(standards_query)
         self._filter = content_filter or ContentFilter()
 
     def _filter_output(self, text: str, grade: str) -> str:
-        """ENG-17: 分层文本过 safety.check_output, 命中则替换掩码并告警。"""
+        """ENG-17: tiered text passes safety.check_output; on hit, replaced with the mask and a warning is logged."""
         if not isinstance(text, str) or not text:
             return text
         check = self._filter.check_output(text, grade)
         if not check.is_safe:
-            logger.warning("分层内容检出不当, 已过滤: %s", check.summary)
+            logger.warning("Inappropriate tiered content detected, filtered: %s", check.summary)
             return check.filtered_text
         return text
 
     @staticmethod
     def _set_layer(result: DifferentiatedContent, lvl: str, content: LayerContent) -> None:
-        """E3: 写入 result.layers[lvl] — dict 存储, 新增层级免改 dataclass。
+        """E3: write into result.layers[lvl] — dict storage, so adding tiers requires no dataclass change.
 
-        ENG-23 守门: 层级名须在 LEVEL_CONFIGS 内, 否则跳过避免写入幽灵层级。
+        ENG-23 guard: tier name must exist in LEVEL_CONFIGS, otherwise skip to avoid writing a ghost tier.
         """
         if lvl not in LEVEL_CONFIGS:
-            logger.warning("层级 %s 不在 LEVEL_CONFIGS, 跳过赋值(可能配置已改名)", lvl)
+            logger.warning("Tier %s not in LEVEL_CONFIGS, skipping assignment (config may have been renamed)", lvl)
             return
         result.layers[lvl] = content
 
@@ -111,7 +111,7 @@ class DifferentiationEngine:
         topic: str,
         duration: int = 45,
     ) -> DifferentiatedContent:
-        """生成三层分层教案。"""
+        """Generate a three-tier differentiated lesson."""
         subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
         alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
@@ -121,8 +121,8 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        # E2: levels 取自 LEVEL_CONFIGS.keys() 单一来源, 不再三处硬编码,
-        # 新增层级只改 level_config.py 一处, 避免任一处漏改致该层静默不生成。
+        # E2: levels come from the single source LEVEL_CONFIGS.keys(), no more hardcoding in three places;
+        # adding a tier only touches level_config.py, avoiding a missed spot silently dropping that tier.
         levels = list(LEVEL_CONFIGS.keys())
         layer_coros = [
             self._generate_layer(
@@ -139,10 +139,10 @@ class DifferentiationEngine:
 
         for lvl, lr in zip(levels, layer_results):
             if isinstance(lr, Exception):
-                # P1-7: NonDegradableError (401/403/5xx) 不被 gather 吞成空层 — 须上抛暴露。
+                # P1-7: NonDegradableError (401/403/5xx) must not be swallowed by gather into an empty tier — rethrow to surface it.
                 rethrow_if_fatal(lr)
-                logger.error(f"分层教案生成失败 [{lvl}]: {lr}")
-                # R12: 失败层记入 layer_errors, 不再静默降级空层让教师拿无感知空内容。
+                logger.error(f"Differentiated lesson generation failed [{lvl}]: {lr}")
+                # R12: record the failed tier in layer_errors, no more silently degrading to an empty tier the teacher cannot see.
                 result.layer_errors[lvl] = str(lr)
                 self._set_layer(result, lvl, LayerContent())
             else:
@@ -150,7 +150,7 @@ class DifferentiationEngine:
 
         if isinstance(group_tasks, Exception):
             rethrow_if_fatal(group_tasks)  # P1-7
-            logger.error(f"分组任务生成失败: {group_tasks}")
+            logger.error(f"Group task generation failed: {group_tasks}")
             result.group_tasks = []
         else:
             result.group_tasks = group_tasks
@@ -164,7 +164,7 @@ class DifferentiationEngine:
         topic: str,
         num_questions: int = 10,
     ) -> DifferentiatedContent:
-        """生成三层分层测验。"""
+        """Generate a three-tier differentiated quiz."""
         subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
         alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
@@ -174,7 +174,7 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        # E2: levels 单一来源 LEVEL_CONFIGS.keys()
+        # E2: levels from the single source LEVEL_CONFIGS.keys()
         levels = list(LEVEL_CONFIGS.keys())
         quiz_coros = [
             self._generate_quiz_layer(
@@ -186,8 +186,8 @@ class DifferentiationEngine:
         for lvl, qr in zip(levels, quiz_results):
             if isinstance(qr, Exception):
                 rethrow_if_fatal(qr)  # P1-7
-                logger.error(f"分层测验生成失败 [{lvl}]: {qr}")
-                # R12: 失败层记入 layer_errors 透出
+                logger.error(f"Differentiated quiz generation failed [{lvl}]: {qr}")
+                # R12: record the failed tier in layer_errors to surface it
                 result.layer_errors[lvl] = str(qr)
                 self._set_layer(result, lvl, LayerContent())
             else:
@@ -202,7 +202,7 @@ class DifferentiationEngine:
         topic: str,
         num_questions: int = 8,
     ) -> DifferentiatedContent:
-        """生成三层分层工作纸。"""
+        """Generate a three-tier differentiated worksheet."""
         subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
         alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
@@ -212,7 +212,7 @@ class DifferentiationEngine:
             standards_aligned=alignment.curriculum_codes,
         )
 
-        # E2: levels 单一来源 LEVEL_CONFIGS.keys()
+        # E2: levels from the single source LEVEL_CONFIGS.keys()
         levels = list(LEVEL_CONFIGS.keys())
         ws_coros = [
             self._generate_worksheet_layer(
@@ -224,8 +224,8 @@ class DifferentiationEngine:
         for lvl, wr in zip(levels, ws_results):
             if isinstance(wr, Exception):
                 rethrow_if_fatal(wr)  # P1-7
-                logger.error(f"分层工作纸生成失败 [{lvl}]: {wr}")
-                # R12: 失败层记入 layer_errors 透出
+                logger.error(f"Differentiated worksheet generation failed [{lvl}]: {wr}")
+                # R12: record the failed tier in layer_errors to surface it
                 result.layer_errors[lvl] = str(wr)
                 self._set_layer(result, lvl, LayerContent())
             else:
@@ -242,8 +242,9 @@ class DifferentiationEngine:
         num_questions: int,
         standards_context: str,
     ) -> LayerContent:
-        """生成单层工作纸。"""
+        """Generate a single-tier worksheet."""
         config = LEVEL_CONFIGS.get(level, LEVEL_CONFIGS["standard"])
+        # i18n: user-facing
         prompt = f"""为{grade}年级{subject}课程中"{topic}"设计练习工作纸。
 
 当前层级: {config['label']}
@@ -262,6 +263,7 @@ class DifferentiationEngine:
 }}"""
 
         response = await self.mlx.chat([
+            # i18n: user-facing
             {"role": "system", "content": f"你是一位专业K-12教师，为{config['label']}设计适合的练习工作纸。"},
             {"role": "user", "content": prompt},
         ], temperature=0.3)
@@ -285,8 +287,9 @@ class DifferentiationEngine:
         duration: int,
         standards_context: str,
     ) -> LayerContent:
-        """生成单层内容。"""
+        """Generate single-tier content."""
         config = LEVEL_CONFIGS.get(level, LEVEL_CONFIGS["standard"])
+        # i18n: user-facing
         prompt = f"""你是一位经验丰富的K-12教师，正在为{grade}年级{subject}课程中"{topic}"主题设计教学材料。
 
 当前层级: {config['label']}
@@ -307,6 +310,7 @@ class DifferentiationEngine:
 }}"""
 
         response = await self.mlx.chat([
+            # i18n: user-facing
             {"role": "system", "content": f"你是一位专业K-12教师，擅长为{config['label']}设计差异化教学材料。"},
             {"role": "user", "content": prompt},
         ], temperature=0.3)
@@ -331,8 +335,9 @@ class DifferentiationEngine:
         num_questions: int,
         standards_context: str,
     ) -> LayerContent:
-        """生成单层测验。"""
+        """Generate a single-tier quiz."""
         config = LEVEL_CONFIGS.get(level, LEVEL_CONFIGS["standard"])
+        # i18n: user-facing
         prompt = f"""为{grade}年级{subject}课程中"{topic}"生成测验题。
 
 当前层级: {config['label']}
@@ -344,6 +349,7 @@ class DifferentiationEngine:
 返回JSON格式，每道题包含：question, type(选择/填空/解答), options(选择题), answer, hint, points, difficulty"""
 
         response = await self.mlx.chat([
+            # i18n: user-facing
             {"role": "system", "content": f"你是一位专业K-12教师，为{config['label']}生成适合的测验题目。"},
             {"role": "user", "content": prompt},
         ], temperature=0.3)
@@ -351,6 +357,7 @@ class DifferentiationEngine:
         questions = self._parse_json(response)
         if isinstance(questions, list):
             return LayerContent(
+                # i18n: user-facing
                 explanation=f"{config['label']}测验",
                 exercises=_bound_exercises(questions, grade, self._filter_output),
             )
@@ -364,8 +371,9 @@ class DifferentiationEngine:
         duration: int,
         standards_context: str = "",
     ) -> list[GroupTask]:
-        """生成分组课堂任务单。"""
-        # A7: 接收并注入 standards_context, 分组任务与课标对齐, 非与课标脱钩。
+        """Generate group classroom task sheets."""
+        # A7: receive and inject standards_context — group tasks align with the curriculum, not decoupled from it.
+        # i18n: user-facing
         prompt = f"""为{grade}年级{subject}课程"{topic}"设计三组分层课堂任务：
 
 A组(基础): 面向学困生，任务简单，重在巩固基础
@@ -385,11 +393,12 @@ C组(挑战): 面向优等生，任务有挑战，重在拓展探究
 
         try:
             response = await self.mlx.chat([
+                # i18n: user-facing
                 {"role": "system", "content": "你是一位专业K-12教师，擅长设计分层分组课堂活动。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
         except Exception as e:
-            logger.error(f"分组任务 LLM 调用失败: {e}")
+            logger.error(f"Group task LLM call failed: {e}")
             rethrow_if_fatal(e)
             return []
 
@@ -407,9 +416,9 @@ C组(挑战): 面向优等生，任务有挑战，重在拓展探究
                 ))
             if tasks:
                 return tasks
-        logger.error("分组任务生成失败: LLM 返回空或无法解析, 教师将无分组任务")
+        logger.error("Group task generation failed: LLM returned empty or unparseable output, teacher will have no group tasks")
         return []
 
     def _parse_json(self, text: Any) -> Any:
-        # E1: 收敛至单一 _parse.parse_json, 不再各引擎手抄分叉实现
+        # E1: consolidated into the single _parse.parse_json, no more per-engine hand-copied divergent implementations
         return parse_json(text)
