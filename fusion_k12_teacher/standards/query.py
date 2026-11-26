@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from ._cjk import _cjk_tokens, _word_match  # E4: single CJK matching implementation, no more per-module copies
+from ._cjk import (  # E4: single CJK matching implementation, no more per-module copies
+    _cjk_tokens,
+    _word_match,
+)
 from .loader import StandardsLoader
 from .models import CoverageReport, KnowledgePoint
 
