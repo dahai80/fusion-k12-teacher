@@ -10,23 +10,25 @@ _SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
 
 
 def _migrate_standard(data: dict[str, Any], version: str) -> dict[str, Any]:
-    """E7: 课标 schema 版本迁移 — 已知版本间显式转换字段布局, 非 loader 整文件静默跳过。
+    """E7: curriculum standard schema version migration — explicit field-layout conversion between known
+    versions, instead of the loader silently skipping the whole file.
 
-    新增 schema 版本时在此登记迁移函数: 把新版本字段映射回 v1.0 布局后按 v1.0 加载,
-    避免"课标 schema 升级到 2.0 时全部新格式文件被静默丢弃, 运行时课标消失无报错"。
-    未知版本(无迁移路径)仍抛 ValueError 让 loader 记失败文件显式暴露。
+    When adding a new schema version, register its migration function here: map the new version's
+    fields back to the v1.0 layout and load as v1.0, avoiding "when the standard schema upgrades to
+    2.0, all new-format files get silently dropped and the standards vanish at runtime with no error".
+    Unknown versions (no migration path) still raise ValueError so the loader records the failed file explicitly.
     """
     if version == "1.0":
         return data
-    # 未来新增版本迁移在此扩展, 例:
+    # Extend future version migrations here, e.g.:
     # if version == "2.0":
-    #     data = _migrate_1_to_2(data)  # 字段重命名/重组
+    #     data = _migrate_1_to_2(data)  # field renames/regrouping
     #     return data
     raise ValueError(
-        f"课标 {data.get('id', '?')} schema_version={version} 不受支持"
-        f"(已知: {sorted(_SUPPORTED_SCHEMA_VERSIONS)}), 无迁移路径, 拒绝加载以免数据损坏"
+        f"curriculum standard {data.get('id', '?')} schema_version={version} not supported"
+        f"(known: {sorted(_SUPPORTED_SCHEMA_VERSIONS)}), no migration path, refusing to load to avoid data corruption"
     )
-# STD-9: difficulty_level 枚举白名单 — typo (basik) 会被当非 basic, aligner 永不强制 must_cover。
+# STD-9: difficulty_level enum whitelist — a typo (basik) would be treated as non-basic, aligner never enforces must_cover.
 _VALID_DIFFICULTY_LEVELS = {"basic", "standard", "advanced"}
 
 
@@ -59,12 +61,12 @@ class KnowledgePoint:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> KnowledgePoint:
-        # STD-9: difficulty_level 校验枚举 — 非法值(typo/空) 记 warning 回退 standard,
-        # 避免 aligner 把 typo 当非 basic 排除出 must_cover 永不强制。
+        # STD-9: validate difficulty_level enum — invalid values (typo/empty) log a warning and fall back to standard,
+        # avoiding the aligner treating a typo as non-basic and excluding it from must_cover forever.
         difficulty = data.get("difficulty_level", "standard")
         if difficulty not in _VALID_DIFFICULTY_LEVELS:
             logger.warning(
-                "知识点 %s difficulty_level=%r 非法(须为 %s), 回退 standard",
+                "knowledge point %s difficulty_level=%r invalid (must be one of %s), falling back to standard",
                 data.get("id", "?"), difficulty, sorted(_VALID_DIFFICULTY_LEVELS),
             )
             difficulty = "standard"
@@ -109,12 +111,13 @@ class CurriculumStandard:
         ver = data.get("schema_version", "")
         if not ver:
             logger.warning(
-                "课标 %s 无 schema_version 字段, 按旧格式(v1.0)加载, 升级后可能字段缺失",
+                "curriculum standard %s has no schema_version field, loading as legacy format (v1.0); fields may be missing after upgrade",
                 data.get("id", "?"),
             )
             ver = "1.0"
-        # STD-7/E7: 已知版本走迁移函数显式转换; 未知版本无迁移路径抛 ValueError
-        # 让 loader 记失败文件显式暴露, 非整文件静默跳过课标消失无报错。
+        # STD-7/E7: known versions go through explicit migration functions; unknown versions with no
+        # migration path raise ValueError so the loader records the failed file explicitly, rather than
+        # silently skipping the whole file and the standard vanishing without a trace.
         data = _migrate_standard(data, ver)
         return cls(
             id=data.get("id", ""),

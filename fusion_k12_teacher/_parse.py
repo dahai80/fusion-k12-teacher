@@ -1,11 +1,12 @@
-"""LLM JSON 解析 — 单一实现 (E1)。
+"""LLM JSON parsing — single implementation (E1).
 
-原 7 引擎各抄一份 _parse_json, 已分叉两种实现 (split-based / regex-based),
-CLAUDE.md 标注"intentional per-module isolation"掩盖了 DRY 违反与副本漂移。
-此处收敛为单一实现, 各引擎导入此函数, 杜绝一处改忘别处。
+The 7 engines used to each carry a copy of _parse_json, already diverged into two
+implementations (split-based / regex-based); the CLAUDE.md note "intentional per-module
+isolation" masked the DRY violation and copy drift. Consolidated here into a single
+implementation imported by all engines, eliminating fix-here-forget-there.
 
-实现取 analytics 的平衡括号扫描 (最稳健, 不被多对象文本跨界抓取),
-辅以 ```json``` 围栏提取与有界长度保护。
+Implementation uses analytics' balanced-brace scan (most robust, not fooled by multiple
+objects across text boundaries), plus ```json``` fence extraction and bounded length protection.
 """
 
 from __future__ import annotations
@@ -22,8 +23,9 @@ _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
 def _extract_first_json(text: str) -> str:
-    """平衡括号扫描, 取首个完整 JSON 对象/数组。
-    贪婪正则 \{.*\} 在多对象文本会跨界抓到无效串, 此法按括号深度精确截取。"""
+    """Balanced-brace scan, returns the first complete JSON object/array.
+    The greedy regex \{.*\} crosses object boundaries in multi-object text and grabs invalid
+    spans; this method slices precisely by brace depth."""
     start = -1
     close_ch = ""
     depth = 0
@@ -55,17 +57,17 @@ def _extract_first_json(text: str) -> str:
 
 
 def parse_json(text: Any) -> Any:
-    """解析 LLM 返回的 JSON — 容忍 None/空串/代码块围栏/超长 (ENG-5/6/7/20)。
+    """Parse JSON returned by the LLM — tolerates None/empty/code fences/overlong input (ENG-5/6/7/20).
 
-    E1: 单一实现, 各引擎导入。返回 dict/list 或 None (解析失败)。
+    E1: single implementation, imported by all engines. Returns dict/list or None (parse failure).
     """
     if not isinstance(text, str) or not text.strip():
         return None
     if len(text) > _MAX_PARSE_LEN:
-        logger.warning("LLM 返回过长(%d 字符), 截断后再解析", len(text))
+        logger.warning("LLM response too long (%d chars), truncating before parse", len(text))
         text = text[:_MAX_PARSE_LEN]
     text = text.strip()
-    # 优先取 ```json``` 代码块, 否则平衡括号扫描取首个完整 JSON
+    # Prefer the ```json``` code block, otherwise balanced-brace scan takes the first complete JSON
     match = _FENCE_RE.search(text)
     if match:
         candidate = match.group(1).strip()

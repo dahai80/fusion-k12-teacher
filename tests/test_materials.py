@@ -1,4 +1,4 @@
-"""materials 资源库测试 — 保存/列表/详情/删除。"""
+"""materials resource library tests — save/list/detail/delete."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ def repo(tmp_path):
     r.close()
 
 
+# i18n: user-facing
 def _make_material(teacher_id: str, mtype: str = "lesson_plan", title: str = "测试教案", mid: str = "mat_test1") -> dict:
     return {
         "id": mid,
@@ -38,6 +39,7 @@ class TestSaveMaterial:
         assert rid == "mat_test1"
         got = repo.get_material("mat_test1")
         assert got is not None
+        # i18n: user-facing
         assert got["title"] == "测试教案"
         assert got["teacher_id"] == "t_a"
 
@@ -57,6 +59,7 @@ class TestSaveMaterial:
         assert items[0]["type"] == "quiz"
 
     def test_list_filter_subject(self, repo):
+        # i18n: user-facing
         repo.save_material(_make_material("t_a", title="m1", mid="m1"))
         m2 = _make_material("t_a", title="y1", mid="m2")
         m2["subject"] = "语文"
@@ -82,9 +85,10 @@ class TestDeleteMaterial:
 
 
 class TestPurgeMaterials:
-    """issue #17: 资源保留策略 — 按天数 + 每教师上限清理。"""
+    """issue #17: resource retention policy — purge by age + per-teacher cap."""
 
     def test_purge_by_age(self, repo):
+        # i18n: user-facing
         repo.save_material(_make_material("t_a", mid="old1", title="旧"))
         old = _make_material("t_a", mid="old2", title="更旧")
         old["created_at"] = "2020-01-01 00:00:00"

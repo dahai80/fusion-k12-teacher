@@ -1,8 +1,9 @@
-"""SxS 双盲 LLM 裁判 — 苏格拉底教学质量评估 (PRD §769-799, issue #23 A4)。
+"""SxS double-blind LLM judge — Socratic teaching quality evaluation (PRD §769-799, issue #23 A4).
 
-仅靠硬断言无法评估 <thinking> 内部教学质量。
-引入强模型做 SxS 对比打分: 随机打乱 A/B 位置避免偏见,
-3 维度 1-5 分: 启发性/错因针对性/DSL 可行性, 判胜/负/平。
+Hard assertions alone cannot evaluate teaching quality inside <thinking>.
+A stronger model scores the SxS comparison: A/B positions are shuffled randomly to avoid bias,
+3 dimensions scored 1-5: Socratic guidance / misconception targeting / DSL feasibility,
+with a win/loss/tie verdict.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from ..ai_client import MLXClient
 
 logger = logging.getLogger(__name__)
 
+# i18n: user-facing
 JUDGE_PROMPT = """You are an expert K-12 Pedagogy Evaluator specializing in the Beijing Normal University Press (BNUP) Mathematics Curriculum.
 Your task is to compare two model outputs (Model A and Model B) for a given math word problem.
 
@@ -131,6 +133,7 @@ class SxSAggregate:
 
     def summary_str(self) -> str:
         avg = lambda lst: round(sum(lst) / len(lst), 2) if lst else 0.0  # noqa: E731
+        # i18n: user-facing
         lines = [
             "",
             "==================== SxS 双盲裁判报告 ====================",
@@ -147,9 +150,9 @@ class SxSAggregate:
 
 
 class SxSJudge:
-    """SxS 双盲裁判 (PRD §769-799)。
+    """SxS double-blind judge (PRD §769-799).
 
-    用 MLXClient 做裁判模型, 随机打乱 base/ft 位置避免偏见。
+    Uses MLXClient as the judge model; shuffles base/ft positions randomly to avoid bias.
     """
 
     def __init__(self, mlx: MLXClient, judge_model: str = "") -> None:

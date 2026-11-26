@@ -1,8 +1,8 @@
-"""Prometheus 风格指标 — v2.0 M3-T16。
+"""Prometheus-style metrics — v2.0 M3-T16.
 
-stdlib 实现 (零外部依赖): 计数器 + 直方图 + gauge, 线程安全。
-/api/metrics 输出 Prometheus exposition format。
-6 核心指标 (§4.5):
+stdlib implementation (zero external deps): counters + histograms + gauges, thread-safe.
+/api/metrics outputs Prometheus exposition format.
+6 core metrics (§4.5):
   k12_request_total{route,status}
   k12_request_duration_seconds{route} (histogram)
   k12_llm_call_total{model,status}
@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import threading
 
-# 直方图桶 (秒) — 覆盖 10ms~30s
+# Histogram buckets (seconds) — covering 10ms~30s
 _HIST_BUCKETS = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 
 
 class _Counter:
-    """带 label 的计数器。"""
+    """Counter with labels."""
 
     def __init__(self, name: str, help: str, labels: tuple[str, ...] = ()):
         self.name = name
@@ -49,7 +49,7 @@ class _Counter:
 
 
 class _Histogram:
-    """直方图 — 累计桶计数 + 总和 + 计数。"""
+    """Histogram — cumulative bucket counts + sum + count."""
 
     def __init__(self, name: str, help: str, labels: tuple[str, ...] = ()):
         self.name = name
@@ -96,7 +96,7 @@ class _Histogram:
 
 
 class _Gauge:
-    """带 label 的仪表。"""
+    """Gauge with labels."""
 
     def __init__(self, name: str, help: str, labels: tuple[str, ...] = ()):
         self.name = name
@@ -125,7 +125,7 @@ class _Gauge:
 
 
 class MetricsRegistry:
-    """指标注册表 — 6 核心指标 + render Prometheus exposition format。"""
+    """Metrics registry — 6 core metrics + render Prometheus exposition format."""
 
     def __init__(self):
         self.request_total = _Counter(
@@ -177,7 +177,7 @@ _registry: MetricsRegistry | None = None
 
 
 def get_metrics() -> MetricsRegistry:
-    """单例指标注册表。"""
+    """Singleton metrics registry."""
     global _registry
     if _registry is None:
         _registry = MetricsRegistry()
@@ -185,5 +185,5 @@ def get_metrics() -> MetricsRegistry:
 
 
 def render_prometheus() -> str:
-    """输出 Prometheus exposition format 文本。"""
+    """Render the Prometheus exposition format text."""
     return get_metrics().render()

@@ -1,9 +1,9 @@
-"""E4/E5/E6 会话管理 + 判分 + 报告。
+"""E4/E5/E6 session management + grading + reporting.
 
-E4 判分: 复用 AssessmentEngine.grade_math 或 course checkpoint judge。
-E5 会话: K1 文字版, 仅落库 (无 LiveKit token 签发)。
-E6 报告: 对齐 lesson_report 字段 (attendance/pages_viewed/quiz_stat/question_stat/weak_points)。
-异常会话不写快照 (脏数据字段=null), 沿 LinguaKids 约束。
+E4 grading: reuses AssessmentEngine.grade_math or the course checkpoint judge.
+E5 sessions: K1 text version, persistence only (no LiveKit token issuance).
+E6 report: aligned with lesson_report fields (attendance/pages_viewed/quiz_stat/question_stat/weak_points).
+Abnormal sessions write no snapshot (dirty-data fields=null), following the LinguaKids constraint.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ class SessionManager:
             student_id=student_id, status="active", started_at=now_ts(),
         )
         self.store.save_session(sess.to_dict())
-        logger.info("session: 建 session=%s class=%s student=%s", sess.session_id, class_id, student_id)
+        logger.info("session: created session=%s class=%s student=%s", sess.session_id, class_id, student_id)
         return sess
 
     def get_session(self, session_id: str) -> ClassSession | None:
@@ -48,7 +48,7 @@ class SessionManager:
         if sess:
             sess.answers.append(rec)
             self.store.save_session(sess.to_dict())
-        logger.info("session: 作答 session=%s q=%s correct=%s", session_id, question_id, correct)
+        logger.info("session: answer session=%s q=%s correct=%s", session_id, question_id, correct)
         return rec
 
     def record_page_view(self, session_id: str, page_index: int) -> None:
@@ -71,17 +71,19 @@ class SessionManager:
         sess.finished_at = now_ts()
         sess.abandoned = abandoned
         self.store.save_session(sess.to_dict())
-        logger.info("session: 结束 session=%s status=%s", session_id, sess.status)
+        logger.info("session: finished session=%s status=%s", session_id, sess.status)
         return sess
 
     def build_report(self, session_id: str) -> ClassReport:
         sess = self.get_session(session_id)
         if not sess:
+            # i18n: user-facing
             return ClassReport(
                 session_id=session_id, class_id="", student_id="", error="会话不存在",
             )
-        # 异常会话不写脏数据: abandoned 时 quiz_stat/question_stat 留空
+        # Abnormal sessions write no dirty data: abandoned keeps quiz_stat/question_stat empty
         if sess.abandoned:
+            # i18n: user-facing
             return ClassReport(
                 session_id=session_id, class_id=sess.class_id, student_id=sess.student_id,
                 attendance=self._attendance(sess),

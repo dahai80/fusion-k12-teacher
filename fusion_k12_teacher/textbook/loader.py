@@ -12,8 +12,9 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
 
-# subject 别名: 数据文件里 subject 是中文("数学"), API/前端用英文 id("math") —
-# 查询时双向归一, 否则 get_units("beishi","math","2") 永远查空
+# i18n: user-facing
+# subject aliases: data files use Chinese subject values ("数学"), API/frontend use English ids ("math") —
+# normalize both ways on lookup, otherwise get_units("beishi","math","2") always returns empty
 _SUBJECT_ALIAS = {"数学": "math", "math": "数学", "语文": "chinese",
                   "chinese": "语文", "英语": "english", "english": "英语"}
 
@@ -23,10 +24,10 @@ def _norm_subject(s: str) -> str:
 
 
 class TextbookLoader:
-    """教材目录加载器 — 从 JSON 文件加载教材目录到内存。
+    """Textbook catalog loader — loads textbook catalogs from JSON files into memory.
 
-    照抄 StandardsLoader 模式: 线程锁懒加载, 预建索引免全量扫描。
-    索引: (edition, subject, grade) -> list[Unit]
+    Follows the StandardsLoader pattern: thread-locked lazy load, prebuilt index avoids full scans.
+    Index: (edition, subject, grade) -> list[Unit]
     """
 
     def __init__(self, data_dir: Path | None = None):
@@ -45,7 +46,7 @@ class TextbookLoader:
             if self._loaded:
                 return dict(self._editions)
             if not self._data_dir.exists():
-                logger.warning("教材数据目录不存在: %s", self._data_dir)
+                logger.warning("textbook data directory does not exist: %s", self._data_dir)
                 self._loaded = True
                 return dict(self._editions)
             for json_file in sorted(self._data_dir.glob("*.json")):
@@ -53,15 +54,15 @@ class TextbookLoader:
                     self._load_file(json_file)
                 except Exception as e:
                     self._failed_files.append(str(json_file))
-                    logger.error("加载教材文件失败 %s: %s", json_file, e)
+                    logger.error("failed to load textbook file %s: %s", json_file, e)
             self._rebuild_esg_index()
             self._loaded = True
             logger.info(
-                "教材加载完成: %d 个版本, %d 个索引项",
+                "textbook loading complete: %d editions, %d index entries",
                 len(self._editions), len(self._esg_index),
             )
             if self._failed_files:
-                logger.warning("以下教材文件加载失败(已跳过): %s", self._failed_files)
+                logger.warning("the following textbook files failed to load (skipped): %s", self._failed_files)
             return dict(self._editions)
 
     def _rebuild_esg_index(self) -> None:
@@ -110,7 +111,7 @@ class TextbookLoader:
         ed = self._editions.get(edition)
         if not ed:
             return []
-        # 兼容中/英 subject (数据="数学", API/前端="math") — 原文或别名任一匹配
+        # Accept both Chinese/English subject (data files store the Chinese name, API/frontend use "math") — match raw value or alias
         if ed.subject != subject and ed.subject != _norm_subject(subject):
             return []
         return sorted(ed.grades.keys(), key=_grade_sort_key)
@@ -118,8 +119,9 @@ class TextbookLoader:
     def get_units(self, edition: str, subject: str, grade: str) -> list[Unit]:
         if not self._loaded:
             self.load_all()
-        # 兼容中/英 subject: 索引键是数据原文("数学"), 调用方可能传英文 id("math")
-        # 或原文 — 归一后命中不了时再试原文, 任一命中即返回 (test 用中文, API 用英文)
+        # Accept both Chinese/English subject: index keys use the raw (Chinese) data value,
+        # callers may pass the English id ("math") or the raw value — try normalized first,
+        # then raw; either hit returns (tests use Chinese, API uses English)
         key = (edition, _norm_subject(subject), grade)
         units = self._esg_index.get(key)
         if units is None and _norm_subject(subject) != subject:
@@ -129,7 +131,7 @@ class TextbookLoader:
     def get_lesson(
         self, edition: str, subject: str, grade: str, lesson_id: str
     ) -> tuple[Unit, Lesson] | None:
-        # lesson_id 格式 "{unit}-{lesson}", 单元内课号不跨单元唯一, 故用复合 id。
+        # lesson_id format "{unit}-{lesson}"; lesson numbers are only unique within a unit, hence the composite id.
         try:
             unit_num, lesson_num = lesson_id.split("-")
             unit_num, lesson_num = int(unit_num), int(lesson_num)

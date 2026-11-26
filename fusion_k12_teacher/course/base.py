@@ -1,9 +1,11 @@
-"""学科模块协议 — SubjectModule + 各能力基类。
+"""Subject module protocol — SubjectModule + capability base classes.
 
-学科 (math/physics/...) 实现 SubjectModule, 声明自己支持哪些能力并返回实例。
-平台通过 SubjectRegistry 取学科模块, 再取能力, 全程不 import 学科具体类。
+Subjects (math/physics/...) implement SubjectModule, declaring which capabilities they
+support and returning instances. The platform fetches the subject module via SubjectRegistry,
+then the capability — never importing concrete subject classes.
 
-未实现的能力返回 None, 平台/serve 路由返回 501 NotSupported — 学科可渐进实现。
+Unimplemented capabilities return None; platform/serve routes return 501 NotSupported —
+subjects can be implemented incrementally.
 """
 
 from __future__ import annotations
@@ -28,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 
 class KnowledgeGraphBase(ABC):
-    """学科知识图谱基类。"""
+    """Subject knowledge graph base class."""
 
     @abstractmethod
     def load(self, standards_query: StandardsQuery | None = None) -> None:
-        """加载图谱数据 (从课标/增强文件)。fail-fast: 环依赖拒启。"""
+        """Load graph data (from curriculum standards/augmentation files). Fail-fast: cyclic dependencies refuse startup."""
 
     @abstractmethod
     def get_node(self, node_id: str) -> GraphNode | None: ...
@@ -51,7 +53,7 @@ class KnowledgeGraphBase(ABC):
 
 
 class VerifierBase(ABC):
-    """学科严谨性校验基类 — 数值权威覆写, 防学科幻觉。"""
+    """Subject rigor verification base class — authoritative numeric override, prevents subject hallucination."""
 
     @abstractmethod
     def verify_scene(self, scenario: str, entities: dict[str, Any]) -> VerifyResult: ...
@@ -61,14 +63,14 @@ class VerifierBase(ABC):
 
 
 class SceneCompilerBase(ABC):
-    """题目→场景 DSL 编译器基类。"""
+    """Problem-to-scene DSL compiler base class."""
 
     @abstractmethod
     async def compile(self, problem_text: str, knowledge_node_id: str = "") -> SceneDSL: ...
 
 
 class SocraticTutorBase(ABC):
-    """5E 苏格拉底课稿生成基类。"""
+    """5E Socratic lesson script generation base class."""
 
     @abstractmethod
     async def generate_lesson_script(
@@ -83,17 +85,17 @@ class SocraticTutorBase(ABC):
 
 
 class SubjectModule(ABC):
-    """学科模块 — 声明学科元信息 + 支持的能力。平台只依赖此协议。"""
+    """Subject module — declares subject metadata + supported capabilities. The platform depends only on this protocol."""
 
     @property
     @abstractmethod
     def subject_id(self) -> str:
-        """学科 ID: math / physics / chemistry / english / chinese。"""
+        """Subject ID: math / physics / chemistry / english / chinese."""
 
     @property
     @abstractmethod
     def display_name(self) -> str:
-        """中文显示名: 数学 / 物理 / 化学 / 英语 / 语文。"""
+        """Display name in the product locale (Chinese, e.g. the subject's native name)."""
 
     @property
     def supported_grades(self) -> tuple[int, ...]:
@@ -123,7 +125,7 @@ class SubjectModule(ABC):
         self, mlx: MLXClient, content_filter: ContentFilter,
         standards_query: StandardsQuery | None = None,
     ) -> None:
-        """注入共享依赖 (mlx/安全过滤器/课标查询)。学科按需保存。"""
+        """Inject shared dependencies (mlx/safety filter/standards query). Subjects persist as needed."""
         self._mlx = mlx
         self._content_filter = content_filter
         self._standards_query = standards_query
