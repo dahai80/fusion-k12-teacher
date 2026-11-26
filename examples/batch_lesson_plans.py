@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Example: batch-generate lesson plans for different subjects"""
+# Example: batch-generate lesson plans for different subjects
 import asyncio
 import json
 import logging

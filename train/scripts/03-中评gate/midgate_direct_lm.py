@@ -1,15 +1,14 @@
 #!/usr/bin/env python
-"""Mid-eval gate runner — engine-external direct load (mlx_lm) of the 32B base
-model + LoRA adapter, bypassing the engine service layer.
-
-Background: fusion-mlx v0.10.12 service layer emits garbled output for long
-generations on the 32B base (tokenizer verified fine externally; mlx_lm direct
-base load output is fine), and the 28-question smoke batch via the service
-layer failed repeatedly. This runner uses mlx_lm to load the base +
-adapters.safetensors (step 500 weights) directly and runs per-question
-inference, reusing the e2e EVAL_SYSTEM_PROMPT + BNUPEvaluator five-step
-waterfall gating (tag/json/schema/eval_exec/math).
-"""
+# Mid-eval gate runner — engine-external direct load (mlx_lm) of the 32B base
+# model + LoRA adapter, bypassing the engine service layer.
+#
+# Background: fusion-mlx v0.10.12 service layer emits garbled output for long
+# generations on the 32B base (tokenizer verified fine externally; mlx_lm direct
+# base load output is fine), and the 28-question smoke batch via the service
+# layer failed repeatedly. This runner uses mlx_lm to load the base +
+# adapters.safetensors (step 500 weights) directly and runs per-question
+# inference, reusing the e2e EVAL_SYSTEM_PROMPT + BNUPEvaluator five-step
+# waterfall gating (tag/json/schema/eval_exec/math).
 import json
 import os
 import sys

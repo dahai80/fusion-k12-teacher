@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""T22: Cluster load-benchmark baseline script — stresses a running k12 instance
-and produces a performance baseline.
-
-Usage (requires fusion-mlx + gateway running, or pointing at a mock):
-    FUSION_K12_API_KEY=xxx FUSION_K12_BENCH_TARGET=http://127.0.0.1:11448 \
-        python deploy/benchmark.py --duration 60 --concurrency 20
-
-Output: stdout JSON baseline + writes deploy/bench-baseline.json (final artifact)
-"""
+# T22: Cluster load-benchmark baseline script — stresses a running k12 instance
+# and produces a performance baseline.
+#
+# Usage (requires fusion-mlx + gateway running, or pointing at a mock):
+#     FUSION_K12_API_KEY=xxx FUSION_K12_BENCH_TARGET=http://127.0.0.1:11448 \
+#         python deploy/benchmark.py --duration 60 --concurrency 20
+#
+# Output: stdout JSON baseline + writes deploy/bench-baseline.json (final artifact)
 
 from __future__ import annotations
 
