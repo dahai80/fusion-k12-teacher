@@ -158,8 +158,7 @@ class TestAgeChecker:
         with caplog.at_level(logging.WARNING, logger="fusion_k12_teacher.safety.age_checker"):
             rating = ac.get_rating("幼儿园")
         assert rating.max_abstraction == "concrete"
-        # i18n: user-facing — mirrors the log string emitted by age_checker.py, keep as is.
-        assert any("非法年级" in r.message for r in caplog.records)
+        assert any("Invalid grade value" in r.message for r in caplog.records)
 
     def test_save_and_load(self):
         with tempfile.TemporaryDirectory() as tmpdir:

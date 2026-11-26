@@ -92,8 +92,7 @@ class PersonalizationEngine:
             logger.error(f"Learning path generation failed: {e}")
             rethrow_if_fatal(e)
             return LearningPath(student_id=student, grade=grade, subject=subject, error=str(e))
-        # i18n: user-facing (shared cross-engine .error convention, compared in serve.py)
-        return LearningPath(student_id=student, grade=grade, subject=subject, error="LLM 返回空或无法解析")
+        return LearningPath(student_id=student, grade=grade, subject=subject, error="LLM returned empty or unparseable output")
 
     async def diagnose_skills(self, subject: str, grade: str, responses: list[dict]) -> dict[str, Any]:
         """Diagnose a student's skill level."""

@@ -596,8 +596,7 @@ class TestDigitalHumanManager:
             mgr = mod.DigitalHumanManager(_MockMlxClient(), _FakeRegistry(), None, None, max_sessions=1)
             await mgr.start()
             await mgr.create_session("math", "分数", "3")  # fill the only gate slot
-            # i18n: user-facing — mirrors the error string raised by manager.py, keep as is.
-            with pytest.raises(RuntimeError, match="并发已满"):
+            with pytest.raises(RuntimeError, match="concurrency full"):
                 await mgr.create_session("math", "另一题", "3")
         finally:
             mod._GATE_TIMEOUT = old

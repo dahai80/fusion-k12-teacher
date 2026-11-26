@@ -237,8 +237,8 @@ class MathSceneCompiler(SceneCompilerBase):
                         var_map["sides"] = 2.0
         verify = self.verifier.verify_scene(scenario, var_map) if scenario in _KNOWN_SCENARIOS else None
 
-        # i18n: user-facing (substring guard against legacy verifier "unknown scenario" error text; kept verbatim — no logic change)
-        if verify and verify.error and "未知场景" not in verify.error:
+        # Substring guard: skip re-extraction when the verifier simply does not know the scene
+        if verify and verify.error and "unknown scene" not in verify.error:
             logger.info("scene_compiler: first verification failed %s, re-extracting once", verify.error)
             try:
                 raw2 = await self.mlx.chat([{"role": "user", "content": prompt}], temperature=0.2, max_tokens=1024)
