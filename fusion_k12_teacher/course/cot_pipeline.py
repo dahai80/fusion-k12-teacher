@@ -1,16 +1,18 @@
-"""issue #20: 两阶段 CoT pipeline — <thinking> 自由推理 → <dsl> 约束 JSON。
+"""issue #20: two-stage CoT pipeline — <thinking> free reasoning → <dsl>
+constrained JSON.
 
-两阶段策略 (gateway#184 已支持 GBNF grammar 透传):
-  阶段 1: enable_thinking=True 流式推理, 产出 thinking 自由思考链
-  阶段 2: 基于思考链上下文, 产出结构化 DSL JSON (可用 GBNF grammar 约束)
+Two-stage strategy (gateway#184 already supports GBNF grammar passthrough):
+  Stage 1: enable_thinking=True streaming reasoning, produces a free thinking chain
+  Stage 2: based on the thinking chain context, produces structured DSL JSON
+  (can be constrained by a GBNF grammar)
 
-本模块提供:
-  - cot_enabled(): 读 FUSION_K12_COT_ENABLED 环境变量
-  - stream_thinking(): 流式获取 thinking tokens, 逐块回调
-  - extract_thinking(): 从混合输出中隔离 thinking 与正文
-  - extract_dsl(): 从混合输出中提取 <dsl> 标签内 JSON (issue #20 gap 1)
-  - DSL_GBNF_GRAMMAR: GBNF 语法, 经 chat_stream(grammar=) 透传 (issue #20 gap 2)
-  - COT_THINKING_PROMPT / COT_DSL_PROMPT: 两阶段 prompt 模板
+This module provides:
+  - cot_enabled(): reads the FUSION_K12_COT_ENABLED env var
+  - stream_thinking(): streams thinking tokens with per-chunk callbacks
+  - extract_thinking(): isolates thinking vs body from mixed output
+  - extract_dsl(): extracts JSON inside <dsl> tags from mixed output (issue #20 gap 1)
+  - DSL_GBNF_GRAMMAR: GBNF grammar, passed through via chat_stream(grammar=) (issue #20 gap 2)
+  - COT_THINKING_PROMPT / COT_DSL_PROMPT: two-stage prompt templates
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def cot_enabled() -> bool:
-    """issue #20: 两阶段 CoT 是否启用 — env FUSION_K12_COT_ENABLED=true。"""
+    """issue #20: whether two-stage CoT is enabled — env FUSION_K12_COT_ENABLED=true."""
     return os.environ.get("FUSION_K12_COT_ENABLED", "").lower() in ("1", "true", "yes", "on")
 
 
@@ -41,10 +43,10 @@ _DSL_CLOSE = re.compile(r"</dsl>", re.IGNORECASE)
 
 
 def extract_thinking(raw: str) -> tuple[str, str]:
-    """从模型输出中隔离 thinking 与正文。
+    """Isolate thinking vs body text from model output.
 
-    返回 (thinking_text, content_text)。
-    Qwen3 thinking 模式输出 <thinking>...</thinking> 块 + 正文。
+    Returns (thinking_text, content_text).
+    Qwen3 thinking mode outputs a <thinking>...</thinking> block + body text.
     """
     if not raw:
         return "", ""
@@ -67,11 +69,12 @@ def extract_thinking(raw: str) -> tuple[str, str]:
 
 
 def extract_dsl(raw: str) -> str | None:
-    """issue #20 gap 1: 从混合输出中提取 <dsl> 标签内 JSON。
+    """issue #20 gap 1: extract JSON inside <dsl> tags from mixed output.
 
-    模型两阶段输出: <thinking>推理</thinking> + <dsl>{"steps":[...]}</dsl>。
-    提取 dsl 标签内容, 去除前后空白。无标签时尝试从正文找 JSON 块。
-    返回 dsl_json 字符串或 None。
+    Model two-stage output: <thinking>reasoning</thinking> + <dsl>{"steps":[...]}</dsl>.
+    Extracts the dsl tag content, trimming surrounding whitespace. When no tag
+    is present, tries to find a JSON block in the body.
+    Returns the dsl_json string or None.
     """
     if not raw:
         return None
@@ -121,6 +124,7 @@ bool ::= "true" | "false"
 """
 
 
+# i18n: user-facing — LLM prompt template (product content), keep Chinese.
 COT_THINKING_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_COT_FORMAT_PROMPT + """
 
 请深度分析以下课题的教学路径, 自由推理。
@@ -140,6 +144,7 @@ COT_THINKING_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_COT_FORMAT_PROMPT + """
 
 自由推理, 不需要格式化输出。"""
 
+# i18n: user-facing — LLM prompt template (product content), keep Chinese.
 COT_DSL_PROMPT = """基于以上教学分析, 生成结构化课稿 DSL JSON。
 
 课题: {topic} (年级 {grade})
@@ -163,9 +168,11 @@ async def stream_thinking(
     temperature: float = 0.5,
     max_tokens: int = 2048,
 ) -> str:
-    """issue #20: 流式获取 thinking tokens, 逐块回调 on_chunk (支持 sync/async 回调)。
+    """issue #20: stream thinking tokens with per-chunk on_chunk callbacks
+    (supports sync/async callbacks).
 
-    返回完整 thinking 文本。出错返回空字符串 (降级, 不阻断 DSL 生成)。
+    Returns the full thinking text. Returns an empty string on error
+    (degrade, do not block DSL generation).
     """
     import inspect
     try:
@@ -198,12 +205,13 @@ async def stream_thinking(
         logger.info("stream_thinking: got %d chars", len(thinking))
         return thinking
     except Exception as exc:
-        logger.warning("stream_thinking 失败 (降级): %s", exc)
+        logger.warning("stream_thinking failed (degraded): %s", exc)
         return ""
 
 
 async def iter_sse_tokens(resp: Any) -> AsyncIterator[str]:
-    """从 chat_stream 的 httpx Response 中逐 token 产出 (content + reasoning_content)。"""
+    """Yield tokens one by one from a chat_stream httpx Response
+    (content + reasoning_content)."""
     async with resp as stream:
         async for line in stream.aiter_lines():
             if not line.startswith("data: "):

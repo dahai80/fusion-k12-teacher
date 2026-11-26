@@ -1,9 +1,14 @@
-"""数学苏格拉底课稿生成 — FusionSocratic DSL v3.0 (PRD §5, issue #19)。
+"""Math Socratic lesson-script generation — FusionSocratic DSL v3.0
+(PRD §5, issue #19).
 
-按 5E 生成 TeachingStep[]: speech_narration + animation segment + checkpoint + visual_state。
-苏格拉底式: 分步揭示, 连错 2 次降层 (B→A) + 回放前置节点 (PRD §5.3)。
-数值字段经 MathSympyVerifier 校验。课稿供学生端逐页播放。
-v3.0: meta.visual_type (8 基元路由) + meta.fallback_type + step.visual_state.action。
+Generates TeachingStep[] per 5E: speech_narration + animation segment +
+checkpoint + visual_state.
+Socratic style: step-by-step reveal, demote a layer after 2 consecutive
+errors (B→A) + replay prerequisite nodes (PRD §5.3).
+Numeric fields are verified by MathSympyVerifier. The script is played back
+page by page on the student client.
+v3.0: meta.visual_type (8-primitive routing) + meta.fallback_type +
+step.visual_state.action.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from .sympy_verifier import MathSympyVerifier
 
 logger = logging.getLogger(__name__)
 
+# i18n: user-facing — LLM prompt template (product content), keep Chinese.
 _SCRIPT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是 K12 数学苏格拉底课稿生成器。按 5E 教学法生成分步课稿 DSL。
 
 课题: {topic} (年级 {grade})
@@ -81,7 +87,7 @@ _SCRIPT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" +
 
 
 class MathSocraticTutor(SocraticTutorBase):
-    """数学苏格拉底课稿生成器 — 5E + checkpoint + 分层。"""
+    """Math Socratic lesson-script generator — 5E + checkpoint + layering."""
 
     def __init__(self, mlx: MLXClient, verifier: MathSympyVerifier, content_filter=None) -> None:
         self.mlx = mlx
@@ -96,13 +102,15 @@ class MathSocraticTutor(SocraticTutorBase):
         layer: str = "B",
     ) -> FusionSocraticDSL:
         topic_s = sanitize_input(topic)[:200]
+        # i18n: user-facing — prompt fill values fed to the LLM, keep Chinese.
         pre = ", ".join(prerequisites or []) or "无"
         misc = ", ".join(misconceptions or []) or "无"
         prompt = _SCRIPT_PROMPT.format(
             topic=topic_s, grade=grade, node_id=knowledge_node_id or "未指定",
             prerequisites=pre, misconceptions=misc, layer=layer,
         )
-        # issue #20 gap 2: CoT 模式下用 GBNF grammar 约束 stage-2 DSL 输出为合法 JSON
+        # issue #20 gap 2: in CoT mode use the GBNF grammar to constrain the
+        # stage-2 DSL output to valid JSON
         from ...cot_pipeline import DSL_GBNF_GRAMMAR, cot_enabled
         grammar = DSL_GBNF_GRAMMAR if cot_enabled() else None
         try:
@@ -111,23 +119,27 @@ class MathSocraticTutor(SocraticTutorBase):
                 temperature=0.3, max_tokens=4096, grammar=grammar,
             )
         except Exception as exc:
-            logger.warning("socratic_tutor: LLM 生成失败 %s", exc)
+            logger.warning("socratic_tutor: LLM generation failed %s", exc)
             rethrow_if_fatal(exc)
-            return FusionSocraticDSL(subject="math", meta={"title": topic_s}, error=f"LLM 生成失败: {exc}")
+            return FusionSocraticDSL(subject="math", meta={"title": topic_s}, error=f"LLM generation failed: {exc}")
 
         data = parse_json(raw)
         if not data or not isinstance(data, dict):
-            # issue #20 gap 1: 尝试 <dsl> 标签提取 (CoT 模式下模型可能输出 <dsl>...</dsl>)
+            # issue #20 gap 1: try <dsl> tag extraction (in CoT mode the model
+            # may output <dsl>...</dsl>)
             from ...cot_pipeline import extract_dsl
             dsl_text = extract_dsl(raw)
             if dsl_text:
                 data = parse_json(dsl_text)
-                logger.info("socratic_tutor: extract_dsl 成功 (%d chars)", len(dsl_text))
+                logger.info("socratic_tutor: extract_dsl succeeded (%d chars)", len(dsl_text))
         if not data or not isinstance(data, dict):
-            # 小模型常见失败: 输出被截断/夹带非 JSON 前后缀 — 重试一次再降级,
-            # 避免一次抖动直接打空讲稿 (上层回退兜底)
-            logger.warning("socratic_tutor: 首次输出非 JSON (len=%d), 重试一次", len(raw or ""))
+            # Common small-model failure: output truncated / wrapped in
+            # non-JSON prefix or suffix — retry once before degrading,
+            # avoiding a single jitter wiping the lesson script (upper layer
+            # falls back)
+            logger.warning("socratic_tutor: first output is not JSON (len=%d), retrying once", len(raw or ""))
             try:
+                # i18n: user-facing — retry instruction appended to the LLM prompt, keep Chinese.
                 raw2 = await self.mlx.chat(
                     [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
                     temperature=0.2, max_tokens=4096, grammar=grammar,
@@ -138,10 +150,10 @@ class MathSocraticTutor(SocraticTutorBase):
                     if dsl_text2:
                         data = parse_json(dsl_text2)
             except Exception as exc:
-                logger.warning("socratic_tutor: 重试失败 %s", exc)
+                logger.warning("socratic_tutor: retry failed %s", exc)
                 rethrow_if_fatal(exc)
         if not data or not isinstance(data, dict):
-            return FusionSocraticDSL(subject="math", meta={"title": topic_s}, error="LLM 输出非 JSON")
+            return FusionSocraticDSL(subject="math", meta={"title": topic_s}, error="LLM output is not JSON")
 
         dsl = self._build_dsl(data, topic_s, knowledge_node_id)
         logger.info("socratic_tutor: topic=%s steps=%d checkpoints=%d", topic_s, len(dsl.steps), sum(1 for s in dsl.steps if s.checkpoint))
@@ -162,10 +174,10 @@ class MathSocraticTutor(SocraticTutorBase):
             meta_raw = {}
         visual_type = str(meta_raw.get("visual_type", data.get("visual_type", "")))
         if visual_type and visual_type not in VISUAL_TYPES:
-            logger.warning("socratic_tutor: visual_type 非法 %s -> flow_card", visual_type)
+            logger.warning("socratic_tutor: invalid visual_type %s -> flow_card", visual_type)
             visual_type = VisualType.FLOW_CARD.value
         if not visual_type:
-            # issue #22: LLM 未指定时按题型关键词自动路由
+            # issue #22: auto-route by topic keywords when the LLM did not specify
             visual_type = route_visual_type(title)
             logger.info("socratic_tutor: auto-route visual_type=%s", visual_type)
         fallback_type = str(meta_raw.get("fallback_type", data.get("fallback_type", "")))
