@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "Fusion-K12-Teacher 变更记录", en: "Fusion-K12-Teacher changelog" }
 audience: engineer
 status: draft
-version: 2.2.9
+version: 2.2.10
 updated: 2026-11-26
 owner: "@dahai"
 source_of_truth:
@@ -16,6 +16,10 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 2.2.10
+
+- chore: ban docstrings with an AST-based CI gate (PR #47) — `ci/check_docstrings.py` fails on any module/class/function docstring across tracked `.py` files (triple-quoted string literals exempt), wired into the CI lint job; converted the last 13 residual docstrings to `#` comments.
 
 ## 2.2.9
 

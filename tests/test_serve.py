@@ -128,7 +128,7 @@ class TestHealth:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "2.2.9"
+        assert data["version"] == "2.2.10"
 
 
 # i18n: user-facing (request fixture data below uses Chinese sample subjects/topics)

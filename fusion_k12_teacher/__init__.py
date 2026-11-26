@@ -8,5 +8,5 @@
 # - Educational content generation
 # 100% local offline, powered by fusion-mlx.
 
-__version__ = "2.2.9"
+__version__ = "2.2.10"
 __app_name__ = "Fusion-K12-Teacher"
