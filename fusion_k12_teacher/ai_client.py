@@ -1,7 +1,7 @@
-"""Fusion-K12-Teacher AI 客户端 — 所有 AI 推理的唯一接口。
+"""Fusion-K12-Teacher AI client — the single entry point for all AI inference.
 
 All LLM calls go through fusion-mlx's OpenAI-compatible HTTP API.
-优先使用 fusion-core 的 FusionMLXClient；fusion-core 缺失时回退 httpx 直连。
+Prefers fusion-core's FusionMLXClient; falls back to direct httpx when fusion-core is missing.
 No direct mlx or mlx-lm imports — every call is routed via fusion-mlx.
 """
 
@@ -33,11 +33,11 @@ def _env_model() -> str:
 
 
 def _cloud_mode() -> bool:
-    """云端形态开关 (#28 迁移评估): FUSION_MLX_CLOUD=1 时所有请求走标准 OpenAI 兼容语义。
+    """Cloud-mode switch (#28 migration review): when FUSION_MLX_CLOUD=1, all requests use strict OpenAI-compatible semantics.
 
-    差异: ① 不注入 chat_template_kwargs (严格云厂商会 4xx 拒绝未知字段)
-    ② 不传 GBNF grammar (mlx 专属受限解码, 云端无对应) ③ auto-select 关闭
-    (云模型名与本地库无关, 必须显式 FUSION_MLX_MODEL)。
+    Differences: 1) no chat_template_kwargs injected (strict cloud vendors 4xx-reject unknown fields)
+    2) no GBNF grammar (mlx-only constrained decoding, no cloud equivalent) 3) auto-select disabled
+    (cloud model names are unrelated to the local model library, FUSION_MLX_MODEL must be explicit).
     """
     return os.environ.get("FUSION_MLX_CLOUD", "").strip().lower() in ("1", "true", "yes")
 
@@ -45,8 +45,9 @@ def _cloud_mode() -> bool:
 _PREFERRED_CHAT_MODELS = (
     "Qwen3.5-9B-4bit", "Qwen3.5-9B", "Qwen3.5-4B", "Qwen3-4B",
     "Qwen3.5-4B-bf16", "Qwen3.5-4B-4bit", "Qwen3-0.6B",
-    # 本地 mlx 库实测存在的 chat 模型 (Llama-3.2-1B) — 无更强模型时兜底,
-    # 精确单横线名: 双横线变体 (--Llama) 在 mlx 实体未注册, 选中即 404 空流
+    # Chat model verified to exist in the local mlx library (Llama-3.2-1B) — fallback when
+    # no stronger model is available. Exact single-hyphen name: the double-hyphen variant
+    # (--Llama) is not registered as an mlx entity and selecting it yields a 404 empty stream
     "mlx-community-Llama-3.2-1B-Instruct-4bit",
 )
 _NON_CHAT_KEYWORDS = (
@@ -66,14 +67,16 @@ class _ModelNotFound(Exception):
     pass
 
 
-# P1-19: 全局 LLM 并发信号量 — 限制同时 in-flight 的推理请求数, 防本地单卡 OOM/排队雪崩。
-# scheduler._concurrency 仅覆盖 agent 任务, 普通引擎并发无界。env 可调。
+# P1-19: global LLM concurrency semaphore — caps simultaneously in-flight inference requests,
+# preventing local single-device OOM / queue avalanche. scheduler._concurrency only covers
+# agent tasks; ordinary engine concurrency is unbounded. Tunable via env.
 _LLM_MAX_CONCURRENCY = int(os.environ.get("FUSION_MLX_MAX_CONCURRENCY", "4"))
 _llm_semaphore: asyncio.Semaphore | None = None
 
 
 def _llm_sem() -> asyncio.Semaphore:
-    # 惰性建, 绑当前 running loop (同 _ensure_locks 理由 — 跨 loop 复用锁/信号量会 RuntimeError)
+    # Created lazily, bound to the current running loop (same rationale as _ensure_locks —
+    # reusing a lock/semaphore across loops raises RuntimeError)
     global _llm_semaphore
     if _llm_semaphore is None:
         _llm_semaphore = asyncio.Semaphore(_LLM_MAX_CONCURRENCY)
@@ -86,28 +89,31 @@ try:
     from fusion_core.mlx_client import FusionMLXClient as _FusionMLXClient
 
     _HAS_FUSION_CORE = True
-    logger.info("fusion_core 可用，使用 FusionMLXClient")
+    logger.info("fusion_core available, using FusionMLXClient")
 except ImportError:
-    logger.info("fusion_core 不可用，回退 httpx 直连 fusion-mlx")
+    logger.info("fusion_core unavailable, falling back to direct httpx against fusion-mlx")
 
 
 class MLXClient:
-    """fusion-mlx HTTP 客户端 — 所有 AI 推理的唯一接口。
+    """fusion-mlx HTTP client — the single entry point for all AI inference.
 
-    优先 fusion-core 的 FusionMLXClient；缺失时 httpx 直连 /v1/chat/completions。
-    base_url/model/超时在 __init__ 读环境变量，支持 import 后改 env 再重建生效。
+    Prefers fusion-core's FusionMLXClient; when absent, hits /v1/chat/completions directly via httpx.
+    base_url/model/timeouts are read from environment variables in __init__; changing env after
+    import and re-instantiating takes effect.
     """
 
     def __init__(self, model: str = "", base_url: str = ""):
         self.base_url = (base_url or _env_url()).rstrip("/")
-        # issue #18: __init__ 读 FUSION_MLX_MODEL env — 原仅 model="" 留空,
-        # env 模型只到 _auto_select_model 首次 chat 时才赋值, health 探测前 self.model
-        # 仍空 → 报 "auto" 误导运维。此处 init 即读 env, health 可显示有效模型。
+        # issue #18: read FUSION_MLX_MODEL env in __init__ — previously only model="" left it
+        # empty, the env model was only assigned at first chat via _auto_select_model, so
+        # self.model stayed empty before health probes and reported "auto", misleading ops.
+        # Reading env at init lets health show the effective model.
         self.model = model or os.environ.get("FUSION_MLX_MODEL", "")
         self._inner: Any = None
         self._httpx_client: Any = None
-        # LLM-5: 锁不在 __init__ 创建 — __init__ 常在无运行循环时被调(CLI 组解析期),
-        # 3.14 前跨 asyncio.run 复用已绑死循环的锁会 RuntimeError。改惰性建, 绑当前 loop。
+        # LLM-5: locks are not created in __init__ — __init__ often runs without a live loop
+        # (CLI group parsing); before 3.14 reusing a lock bound to a closed loop across
+        # asyncio.run raises RuntimeError. Create lazily, bound to the current loop.
         self._auto_select_lock: asyncio.Lock | None = None
         self._cache_lock: asyncio.Lock | None = None
         self._models_cache: list[dict[str, Any]] | None = None
@@ -117,11 +123,13 @@ class MLXClient:
         self._max_retries = int(os.environ.get("FUSION_MLX_MAX_RETRIES", "2"))
         self._models_cache_ttl = float(os.environ.get("FUSION_MLX_MODELS_TTL", "30"))
         if _HAS_FUSION_CORE and _FusionMLXClient is not None:
-            # fusion_core 构造默认 timeout=120s 硬编码, 不读 env — 4B 模型长推理
-            # (4096 token 讲稿) 必超时 → k12 的 FUSION_MLX_READ_TIMEOUT 透传下去
+            # fusion_core constructor hardcodes default timeout=120s and ignores env — long
+            # inference with a 4B model (4096-token lecture script) would always time out,
+            # so pass k12's FUSION_MLX_READ_TIMEOUT through
             self._inner = _FusionMLXClient(base_url=self.base_url, timeout=self._read_timeout)
-        # R8: httpx client eager 构造 — 原 httpx_client property 惰性 init 无锁,
-        # 多协程首调同时触发 double-build, 短暂泄漏一个连接池实例。__init__ 构造免竞态。
+        # R8: eager httpx client construction — the old lazy httpx_client property had no lock,
+        # so concurrent first calls triggered a double-build and briefly leaked a pool instance.
+        # Building in __init__ removes the race.
         self._httpx_client = self._build_httpx_client()
         logger.info(
             "MLXClient init base_url=%s model=%s fusion_core=%s max_concurrency=%d",
@@ -129,12 +137,13 @@ class MLXClient:
         )
 
     def _ensure_locks(self) -> None:
-        """LLM-5/R9: 惰性创建 loop-bound 锁 — 首次使用时绑定当前 running loop。
+        """LLM-5/R9: lazily create loop-bound locks — bind to the current running loop on first use.
 
-        R9: 3.14 前 asyncio.Lock 在 __init__(无循环) 创建后, 跨 asyncio.run 复用绑死旧
-        (已关)循环的锁会 RuntimeError (跨 loop 死锁)。惰性建绑当前 loop, 但本实例
-        禁止跨 loop 复用 — cli/serve 各自 loop, 共享 client 须各自独立实例或同 loop。
-        此约束已文档化于 docstring, 不在代码层强制跨 loop 复用。
+        R9: before 3.14, an asyncio.Lock created in __init__ (no loop yet) and reused across
+        asyncio.run binds to the old (closed) loop and raises RuntimeError (cross-loop deadlock).
+        Create lazily bound to the current loop; this instance must not be reused across loops —
+        cli/serve each have their own loop, a shared client needs separate instances or one loop.
+        This constraint is documented here, not enforced in code.
         """
         if self._cache_lock is None:
             self._cache_lock = asyncio.Lock()
@@ -149,7 +158,7 @@ class MLXClient:
 
     @property
     def httpx_client(self):
-        # R8: eager 构造后此 property 仅直返, 无竞态。
+        # R8: after eager construction this property just returns, no race.
         return self._httpx_client
 
     def _build_httpx_client(self) -> httpx.AsyncClient:
@@ -159,9 +168,12 @@ class MLXClient:
         )
 
     def _auth_headers(self) -> dict[str, str]:
-        # LLM-4: 每次请求读 env, 运行期换 key 即时生效, 不在客户端创建时固化。
-        # P1-20: 无 key 时不发 Bearer 头 (原默认 Bearer local 对需认证网关必 401)。
-        # #34: client key 经 fusion_core.config 单点解析 (见 _keys.gateway_client_key)。
+        # LLM-4: read env on every request so rotating the key at runtime takes effect
+        # immediately, instead of being frozen at client construction.
+        # P1-20: send no Bearer header when no key is set (the old default "Bearer local"
+        # always got 401 from auth-required gateways).
+        # #34: client key resolved via fusion_core.config as the single source
+        # (see _keys.gateway_client_key).
         key = gateway_client_key()
         if key:
             return {"Authorization": f"Bearer {key}"}
@@ -176,13 +188,13 @@ class MLXClient:
         grammar: str | None = None,
         adapters: str | None = None,
     ) -> str:
-        """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx。
+        """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx.
 
-        统一重试预算覆盖 fusion-core + httpx 双路径的瞬态错误；
-        模型 404 时失效缓存并强制重新选择。
-        model: 覆盖默认模型 (如图片提问临时切 VLM: Qwen2.5-VL-7B)。
-        grammar: issue #20 GBNF 语法, 经 gateway#184 透传约束输出格式。
-        adapters: LoRA/DoRA adapter 目录路径, fusion-mlx 原位挂载 (lora-inplace-swap)。
+        A unified retry budget covers transient errors on both the fusion-core and httpx paths;
+        a model 404 invalidates the cache and forces a re-select.
+        model: override the default model (e.g. temporarily switch to a VLM for image Q&A: Qwen2.5-VL-7B).
+        grammar: issue #20 GBNF grammar, passed through via gateway#184 to constrain output format.
+        adapters: LoRA/DoRA adapter directory path, mounted in place by fusion-mlx (lora-inplace-swap).
         """
         self._ensure_locks()
         if not self.model:
@@ -203,12 +215,12 @@ class MLXClient:
             except _RETRYABLE_ERRORS as e:
                 last_exc = e
                 if attempt < self._max_retries:
-                    logger.warning("chat 瞬态错误/超时重试 %d/%d: %s", attempt + 1, self._max_retries, e)
+                    logger.warning("chat transient error/timeout, retry %d/%d: %s", attempt + 1, self._max_retries, e)
                     await asyncio.sleep(0.5 * (attempt + 1))
                     continue
                 raise
             except _ModelNotFound as e:
-                logger.warning("模型未加载(404)，失效缓存并重新选择: %s", e)
+                logger.warning("model not loaded (404), invalidating cache and re-selecting: %s", e)
                 async with self._cache_lock:
                     self._models_cache = None
                     self._models_cache_ts = 0.0
@@ -233,10 +245,12 @@ class MLXClient:
         _ok = False
         think_kwargs = self._think_kwargs()
         try:
-            # fusion_core chat_text 不支持 adapters — 有 adapter 时直走 httpx (fusion-mlx 原位挂载)
+            # fusion_core chat_text does not support adapters — go straight to httpx when an
+            # adapter is present (fusion-mlx mounts it in place)
             if adapters is None and _HAS_FUSION_CORE and self._inner is not None:
                 try:
-                    # 云端形态不传 GBNF grammar (mlx 专属受限解码, 云 API 无对应字段会被拒)
+                    # cloud mode sends no GBNF grammar (mlx-only constrained decoding; cloud
+                    # APIs have no such field and would reject it)
                     if grammar and not _cloud_mode():
                         extra_kwargs: dict[str, Any] = {"grammar": grammar}
                     else:
@@ -255,12 +269,12 @@ class MLXClient:
                 except NonDegradableError:
                     raise
                 except Exception as e:
-                    logger.warning("fusion_core chat_text 失败，回退 httpx: %s", e)
+                    logger.warning("fusion_core chat_text failed, falling back to httpx: %s", e)
             r = await self._chat_httpx(messages, model, temperature, max_tokens, think_kwargs, grammar, adapters)
             _ok = True
             return r
         finally:
-            # M3-T16: LLM 调用指标 — 计数 + 延迟
+            # M3-T16: LLM call metrics — count + latency
             try:
                 from .metrics import get_metrics
                 get_metrics().record_llm(model or "", _ok, _time.monotonic() - _t0)
@@ -285,32 +299,35 @@ class MLXClient:
         }
         if think_kwargs:
             payload["chat_template_kwargs"] = think_kwargs
-        # 云端形态不传 GBNF grammar (mlx 专属受限解码, 云 API 无对应字段)
+        # cloud mode sends no GBNF grammar (mlx-only constrained decoding; no cloud field for it)
         if grammar and not _cloud_mode():
             payload["grammar"] = grammar
-        # LoRA/DoRA 原位挂载 (fusion-mlx lora-inplace-swap), 同为 mlx 专属
+        # LoRA/DoRA in-place mount (fusion-mlx lora-inplace-swap), also mlx-specific
         if adapters and not _cloud_mode():
             payload["adapters"] = adapters
         resp = await self.httpx_client.post("/chat/completions", json=payload, headers=self._auth_headers())
         if resp.status_code == 404:
-            raise _ModelNotFound(f"模型未加载: {model}")
-        # A12: 认证错(401/403)/服务端硬错(5xx)不可降级 — 须上抛暴露, 不被引擎 blanket except 吞成空对象。
-        # classify 在 raise_for_status 前先判, 命中则抛 NonDegradableError (EngineError 子类)。
+            raise _ModelNotFound(f"model not loaded: {model}")
+        # A12: auth errors (401/403) and hard server errors (5xx) are non-degradable — must
+        # propagate, never be swallowed into empty objects by engine blanket excepts.
+        # classify runs before raise_for_status; on hit it raises NonDegradableError
+        # (an EngineError subclass).
         if classify_http_status(resp.status_code):
-            # P2: 不内嵌响应正文 (可能含学生 PII), 只报状态码 + 短由
+            # P2: do not embed the response body (may contain student PII); report status code only
             raise NonDegradableError(f"LLM HTTP {resp.status_code}")
         resp.raise_for_status()
-        # LLM-3: 网关非标结构无 KeyError/IndexError 防御会直接崩, 降级空串并记日志
-        # P2: 不记响应正文 (PII 风险), 只记解析异常类型
+        # LLM-3: non-standard gateway payloads would crash on KeyError/IndexError without a
+        # guard; degrade to empty string and log
+        # P2: do not log the response body (PII risk), only the parse exception type
         try:
             body = resp.json()
             return body["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError, ValueError) as e:
-            logger.error("LLM 响应结构异常, 无法解析 content: %s", type(e).__name__)
+            logger.error("unexpected LLM response structure, cannot parse content: %s", type(e).__name__)
             return ""
 
     async def list_models(self) -> list[dict[str, Any]]:
-        """列出 fusion-mlx 可用模型 — 带 TTL 缓存与并发锁。"""
+        """List available fusion-mlx models — with TTL cache and concurrency lock."""
         self._ensure_locks()
         now = time.monotonic()
         if self._models_cache is not None and (now - self._models_cache_ts) < self._models_cache_ttl:
@@ -329,7 +346,7 @@ class MLXClient:
             try:
                 return await self._inner.list_models()
             except Exception as e:
-                logger.warning("fusion_core list_models 失败，回退 httpx: %s", e)
+                logger.warning("fusion_core list_models failed, falling back to httpx: %s", e)
         resp = await self.httpx_client.get("/models", headers=self._auth_headers())
         resp.raise_for_status()
         return resp.json().get("data", [])
@@ -340,7 +357,7 @@ class MLXClient:
         response_format: str = "wav",
         speed: float = 1.0,
     ) -> bytes:
-        """fusion-mlx /v1/audio/speech — Kokoro TTS。返回音频 bytes (wav/mp3/pcm)。"""
+        """fusion-mlx /v1/audio/speech — Kokoro TTS. Returns audio bytes (wav/mp3/pcm)."""
         import time as _time
         _t0 = _time.monotonic()
         payload: dict[str, Any] = {
@@ -351,9 +368,9 @@ class MLXClient:
         }
         if voice:
             payload["voice"] = voice
-        # TTS 直连: gateway 可能把 /audio/speech 路由到不可用的 Cloud backend
-        # (实测 503 "Cloud backend not available"), 用独立 env 让 TTS 绕过 gateway
-        # 直连 fusion-mlx。未设置时维持原 gateway 路径。
+        # Direct TTS: the gateway may route /audio/speech to an unavailable Cloud backend
+        # (observed 503 "Cloud backend not available"); a dedicated env lets TTS bypass the
+        # gateway and hit fusion-mlx directly. Falls back to the original gateway path when unset.
         tts_url = os.environ.get("FUSION_MLX_TTS_URL", "").strip()
         if tts_url:
             client = self.httpx_client
@@ -362,7 +379,7 @@ class MLXClient:
             client = self.httpx_client
             url = "/audio/speech"
         try:
-            # 直连 mlx 时用 TTS 专属 key (mlx 的 api_key ≠ gateway key, 带错 401)
+            # use the TTS-specific key for direct mlx calls (mlx api_key != gateway key; wrong one gets 401)
             headers = self._auth_headers()
             tts_key = os.environ.get("FUSION_MLX_TTS_KEY", "").strip()
             if tts_url and tts_key:
@@ -371,10 +388,10 @@ class MLXClient:
             if resp.status_code >= 400:
                 logger.error("TTS HTTP %d: %s", resp.status_code, resp.text[:200])
                 raise RuntimeError(f"TTS HTTP {resp.status_code}")
-            logger.info("TTS ok text=%d字节 format=%s 耗时=%.1fs", len(text), response_format, _time.monotonic() - _t0)
+            logger.info("TTS ok text=%d bytes format=%s took=%.1fs", len(text), response_format, _time.monotonic() - _t0)
             return resp.content
         except httpx.HTTPError as e:
-            logger.error("TTS 请求失败: %s", e)
+            logger.error("TTS request failed: %s", e)
             raise
 
     async def transcribe(
@@ -382,10 +399,11 @@ class MLXClient:
         model: str = "",
         language: str = "zh",
     ) -> str:
-        """ASR — 默认走 gateway/直连端点的 /v1/audio/transcriptions (Whisper 协议)。
+        """ASR — uses the gateway/direct endpoint /v1/audio/transcriptions (Whisper protocol) by default.
 
-        云端形态: FUSION_MLX_ASR_URL/KEY/MODEL 三个 env 让 ASR 独立指向云厂商端点
-        (照搬 TTS 的 FUSION_MLX_TTS_URL/KEY/MODEL 模式); 未设置时行为与原先一致。
+        Cloud mode: the three envs FUSION_MLX_ASR_URL/KEY/MODEL point ASR independently at a
+        cloud vendor endpoint (mirroring the TTS FUSION_MLX_TTS_URL/KEY/MODEL pattern);
+        behavior is unchanged when unset.
         """
         import time as _time
         _t0 = _time.monotonic()
@@ -394,7 +412,8 @@ class MLXClient:
         files = {"file": ("audio.wav", audio, "audio/wav")}
         data: dict[str, Any] = {"model": model, "language": language, "word_timestamps": "false"}
         try:
-            # ASR 独立端点: 云厂商的 /audio/transcriptions 与主 base_url 不同源时启用
+            # dedicated ASR endpoint: enabled when the vendor's /audio/transcriptions
+            # lives on a different origin than the main base_url
             asr_url = os.environ.get("FUSION_MLX_ASR_URL", "").strip()
             asr_key = os.environ.get("FUSION_MLX_ASR_KEY", "").strip()
             if asr_url:
@@ -411,16 +430,17 @@ class MLXClient:
                 raise RuntimeError(f"ASR HTTP {resp.status_code}")
             body = resp.json()
             text = body.get("text", "")
-            logger.info("ASR ok 文本=%d字 耗时=%.1fs", len(text), _time.monotonic() - _t0)
+            logger.info("ASR ok text=%d chars took=%.1fs", len(text), _time.monotonic() - _t0)
             return text
         except httpx.HTTPError as e:
-            logger.error("ASR 请求失败: %s", e)
+            logger.error("ASR request failed: %s", e)
             raise
 
     def _think_kwargs(self) -> dict[str, Any]:
-        # Qwen3 系列默认开 thinking (reasoning) 模式, 复杂 prompt 生成数分钟 reasoning_content。
-        # 教学场景需快速响应, env FUSION_MLX_ENABLE_THINKING=true 可开 (默认关)。
-        # 云端形态 (FUSION_MLX_CLOUD=1): 不注入 — 严格云厂商会 4xx 拒绝未知字段。
+        # Qwen3 models default to thinking (reasoning) mode; complex prompts can generate minutes
+        # of reasoning_content. Teaching scenes need fast responses; set env
+        # FUSION_MLX_ENABLE_THINKING=true to enable (default off).
+        # Cloud mode (FUSION_MLX_CLOUD=1): not injected — strict cloud vendors 4xx-reject unknown fields.
         if _cloud_mode():
             return {}
         if os.environ.get("FUSION_MLX_ENABLE_THINKING", "").lower() in ("1", "true", "yes"):
@@ -432,20 +452,23 @@ class MLXClient:
         enable_thinking: bool | None = None,
         grammar: str | None = None,
     ) -> Any:
-        """fusion-mlx /v1/chat/completions stream — SSE token 流。返回 httpx.Response (流式)。
+        """fusion-mlx /v1/chat/completions stream — SSE token stream. Returns an httpx.Response (streaming).
 
-        P1-19: 流式不纳入 chat 信号量 — _answer 流式答疑中 TTS 须与 LLM 流并发 (同 sem 死锁)。
-        流式推理单 DH 会话内串行 (fsm 保证), 跨会话并发由 chat() 信号量间接限流。
-        issue #20: enable_thinking 参数 — None 走 _think_kwargs() (env 控制),
-        True/False 显式覆盖 (两阶段 CoT pipeline 用)。
-        issue #20 gap 2: grammar 参数 — GBNF 语法透传 (gateway#184 已支持),
-        约束 stage-2 DSL 输出为合法 JSON, 消除 parse 失败。
+        P1-19: streaming is not subject to the chat semaphore — in _answer streaming Q&A, TTS must
+        run concurrently with the LLM stream (same semaphore would deadlock). Streaming inference is
+        serialized within a single DH session (guaranteed by the fsm); cross-session concurrency is
+        indirectly limited by the chat() semaphore.
+        issue #20: enable_thinking parameter — None uses _think_kwargs() (env-controlled),
+        True/False override explicitly (used by the two-stage CoT pipeline).
+        issue #20 gap 2: grammar parameter — GBNF grammar passthrough (supported by gateway#184),
+        constraining stage-2 DSL output to valid JSON, eliminating parse failures.
         """
         self._ensure_locks()
         if not self.model:
             self.model = await self._auto_select_model()
-        # 模型名优先 env: auto-select 可能从列表选中双横线变体(mlx-community--X),
-        # mlx 实体只注册单横线名 → stream 404 → 空流(答疑0字)。env 是实测可用的名字。
+        # Model name prefers env: auto-select may pick a double-hyphen variant from the list
+        # (mlx-community--X) while mlx entities only register the single-hyphen name, causing a
+        # stream 404 and an empty stream (zero-word answers). The env name is verified to work.
         if enable_thinking is None:
             think_kwargs = self._think_kwargs()
         elif enable_thinking:
@@ -468,36 +491,38 @@ class MLXClient:
         )
 
     async def _auto_select_model(self, force: bool = False) -> str:
-        """自动选择可用聊天模型 — 优先匹配已知聊天模型，跳过非聊天模型。
+        """Auto-select an available chat model — prefer known chat models, skip non-chat models.
 
-        云端形态 (FUSION_MLX_CLOUD=1) 禁用: 云模型名与本地 mlx 库无关,
-        扫 /v1/models 匹配 _PREFERRED_CHAT_MODELS 只会误选 — 必须显式 FUSION_MLX_MODEL。
+        Disabled in cloud mode (FUSION_MLX_CLOUD=1): cloud model names are unrelated to the local
+        mlx library, so scanning /v1/models against _PREFERRED_CHAT_MODELS would mis-select —
+        FUSION_MLX_MODEL must be explicit.
         """
         async with self._auto_select_lock:
             if self.model and not force:
                 return self.model
             if _cloud_mode():
-                # 云端: 不扫描模型列表, 直接用 env 显式模型名 (缺失则报错暴露, 不静默兜底)
+                # cloud: do not scan the model list, use the explicit env model name
+                # (surface an error when missing, never silently fall back)
                 env_model = _env_model()
-                logger.info("云端形态: 跳过 auto-select, 使用显式模型 %s", env_model or "(未设置!)")
+                logger.info("cloud mode: skipping auto-select, using explicit model %s", env_model or "(not set!)")
                 self.model = env_model
                 return self.model
             try:
                 models = await self.list_models()
             except Exception:
-                logger.warning("list_models 失败，回退默认模型 %s", _env_model())
+                logger.warning("list_models failed, falling back to default model %s", _env_model())
                 return _env_model()
             if not models:
                 return _env_model()
             ids = {m.get("id", m.get("model", "")) for m in models}
             env_model = _env_model()
             if env_model and env_model in ids:
-                logger.info("自动选择聊天模型 (env 指定): %s", env_model)
+                logger.info("auto-selected chat model (env-specified): %s", env_model)
                 self.model = env_model
                 return env_model
             for pref in _PREFERRED_CHAT_MODELS:
                 if pref in ids:
-                    logger.info("自动选择聊天模型: %s", pref)
+                    logger.info("auto-selected chat model: %s", pref)
                     self.model = pref
                     return pref
             for mid in sorted(ids):
@@ -505,19 +530,19 @@ class MLXClient:
                 if any(k in low for k in _NON_CHAT_KEYWORDS):
                     continue
                 if "qwen" in low or "llama" in low or "gemma" in low or "deepseek" in low:
-                    logger.info("自动选择聊天模型(模糊): %s", mid)
+                    logger.info("auto-selected chat model (fuzzy): %s", mid)
                     self.model = mid
                     return mid
-            logger.warning("未找到聊天模型，回退默认 %s", _env_model())
+            logger.warning("no chat model found, falling back to default %s", _env_model())
             return _env_model()
 
     async def close(self) -> None:
-        # LLM-1: 走 fusion-core 路径时 _inner 持有内部 httpx 客户端, 须一并释放
+        # LLM-1: on the fusion-core path _inner holds an internal httpx client, release it too
         if self._inner is not None and hasattr(self._inner, "close"):
             try:
                 await self._inner.close()
             except Exception as exc:
-                logger.warning("FusionMLXClient.close 失败: %s", exc)
+                logger.warning("FusionMLXClient.close failed: %s", exc)
         if self._httpx_client is not None:
             await self._httpx_client.aclose()
             self._httpx_client = None

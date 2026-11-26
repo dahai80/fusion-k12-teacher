@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher 全覆盖测试 — 补齐 CLI、AI、评估、课程、学科、内容、个性化。"""
+"""Fusion-K12-Teacher full-coverage tests — CLI, AI, assessment, curriculum, subjects, content, personalization."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ from fusion_k12_teacher.personalization import LearningPath, PersonalizationEngi
 from fusion_k12_teacher.subjects import SubjectExercise, SubjectExpert
 
 
-# TEST-6: 捕获发往 LLM 的 prompt, 断言关键内容 — 引擎构造错 prompt 测试即失败
+# TEST-6: capture the prompt sent to the LLM and assert key content — a wrongly built prompt fails the test
 def _capturing_mock(response_text: str):
     captured: list[str] = []
 
     async def chat(messages, temperature=0.7, max_tokens=4096, **kwargs):
-        # 取 user 消息内容拼成完整 prompt 文本
+        # join user message contents into the full prompt text
         parts = [m.get("content", "") for m in messages if m.get("role") == "user"]
         system = [m.get("content", "") for m in messages if m.get("role") == "system"]
         captured.append("\n".join(system + parts))
@@ -27,45 +27,46 @@ def _capturing_mock(response_text: str):
 
 
 def _assert_prompt(captured: list[str], *must_contain: str) -> None:
-    assert captured, "mock 未被调用, prompt 未捕获 — 引擎可能未发请求"
+    assert captured, "mock not called, prompt not captured — engine may not have sent a request"
     full = captured[-1]
     for token in must_contain:
-        assert token in full, f"prompt 缺关键内容 {token!r}: {full[:200]}"
+        assert token in full, f"prompt missing required content {token!r}: {full[:200]}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AI Client 深度覆盖
+# AI Client deep coverage
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestMLXClientDeep:
     @pytest.mark.asyncio
     async def test_chat_with_model(self):
-        """测试指定模型的 chat 调用。"""
+        """Test chat call with an explicit model."""
         client = MLXClient(model="test-model")
         assert client.model == "test-model"
-        # fusion-mlx 不可用时抛出异常
+        # raises when fusion-mlx is unavailable
         with pytest.raises(Exception):
             await client.chat([{"role": "user", "content": "hi"}])
 
     def test_inner_client(self):
-        """测试 _inner 客户端初始化。"""
+        """Test _inner client initialization."""
         client = MLXClient()
         assert (client._inner is not None) or (not _HAS_FUSION_CORE)
 
     def test_inner_client_custom_base_url(self):
-        """测试自定义 base_url 传入 _inner。"""
+        """Test passing a custom base_url into _inner."""
         client = MLXClient(base_url="http://localhost:18000/v1")
         assert (client._inner is not None) or (not _HAS_FUSION_CORE)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Curriculum Engine 深度覆盖
+# Curriculum Engine deep coverage
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestCurriculumDeep:
     def test_lesson_plan_all_fields(self):
-        """测试 LessonPlan 全部字段。"""
+        """Test all LessonPlan fields."""
         import time
         plan = LessonPlan(
+            # i18n: user-facing
             id="lp_test", title="分数加减", subject="数学", grade="4",
             duration_minutes=40, objectives=["理解分数", "掌握加减"],
             materials=["课本", "练习册"],
@@ -76,18 +77,20 @@ class TestCurriculumDeep:
         )
         d = plan.to_dict()
         assert d["id"] == "lp_test"
+        # i18n: user-facing
         assert d["objectives"] == ["理解分数", "掌握加减"]
 
     def test_lesson_plan_to_dict_empty(self):
-        """测试空 LessonPlan 的 to_dict。"""
+        """Test to_dict on an empty LessonPlan."""
         plan = LessonPlan()
         d = plan.to_dict()
-        # 空值字段被过滤
+        # empty fields are filtered out
         assert "id" not in d or d["id"] == ""
 
     def test_quiz_with_questions(self):
-        """测试带题目的 Quiz。"""
+        """Test Quiz with questions."""
         quiz = Quiz(
+            # i18n: user-facing
             title="单元测试", subject="数学", grade="3",
             questions=[{"q": "1+1=?", "type": "multiple_choice"}],
             total_points=100, time_limit_minutes=30,
@@ -97,59 +100,64 @@ class TestCurriculumDeep:
 
     @pytest.mark.asyncio
     async def test_generate_lesson_plan_with_standards(self):
-        """测试带课程标准的教案生成。"""
+        """Test lesson plan generation with curriculum standards."""
         engine = CurriculumEngine()
         plan = await engine.generate_lesson_plan(
+            # i18n: user-facing
             "数学", "3", "分数", duration=45, standards=["CCSS.MATH.3.NF"]
         )
         assert plan.grade == "3"
 
     @pytest.mark.asyncio
     async def test_generate_unit_plan(self):
-        """测试单元计划生成。"""
+        """Test unit plan generation."""
         engine = CurriculumEngine()
+        # i18n: user-facing
         result = await engine.generate_unit_plan("数学", "3", "分数运算", weeks=4)
         assert isinstance(result, dict)
 
     def test_parse_json_valid(self):
-        """测试 JSON 解析。"""
+        """Test JSON parsing."""
         engine = CurriculumEngine()
         result = engine._parse_json('{"key": "value"}')
         assert result == {"key": "value"}
 
     def test_parse_json_codeblock(self):
-        """测试代码块中的 JSON 解析。"""
+        """Test JSON parsing inside a code block."""
         engine = CurriculumEngine()
         result = engine._parse_json('```json\n{"a": 1}\n```')
         assert result == {"a": 1}
 
     def test_parse_json_invalid(self):
-        """测试无效 JSON 解析。"""
+        """Test invalid JSON parsing."""
         engine = CurriculumEngine()
         result = engine._parse_json("not json")
         assert result is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Assessment Engine 深度覆盖
+# Assessment Engine deep coverage
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestAssessmentDeep:
     def test_grading_result_all_fields(self):
-        """测试 GradingResult 全部字段。"""
+        """Test all GradingResult fields."""
         result = GradingResult(
             score=85, total=100, percentage=85.0, feedback="Good work!",
+            # i18n: user-facing
             strengths=["语法正确", "结构清晰"],
             improvements=["增加细节"],
             rubric_scores={"内容": 40, "语言": 45},
         )
         assert result.score == 85
+        # i18n: user-facing
         assert result.strengths == ["语法正确", "结构清晰"]
         assert result.rubric_scores["内容"] == 40
 
     def test_student_report_all_fields(self):
-        """测试 StudentReport 全部字段。"""
+        """Test all StudentReport fields."""
         report = StudentReport(
+            # i18n: user-facing
             student_name="张三", subject="数学", grade="3",
             period="2026春", overall_score=90.0,
             skills={"运算": 95, "几何": 85},
@@ -157,14 +165,16 @@ class TestAssessmentDeep:
             areas_to_improve=["应用题"],
             teacher_notes="继续努力！",
         )
+        # i18n: user-facing
         assert report.skills["运算"] == 95
         assert report.teacher_notes == "继续努力！"
 
     @pytest.mark.asyncio
     async def test_grade_essay_with_rubric(self):
-        """测试带评分标准的作文批改。"""
+        """Test essay grading with a rubric."""
         engine = AssessmentEngine()
         result = await engine.grade_essay(
+            # i18n: user-facing
             "今天天气真好。",
             rubric={"内容": 50, "语言": 50},
         )
@@ -172,58 +182,65 @@ class TestAssessmentDeep:
 
     @pytest.mark.asyncio
     async def test_grade_math_with_solution(self):
-        """测试带参考答案的数学批改。"""
+        """Test math grading with a reference answer."""
         engine = AssessmentEngine()
         result = await engine.grade_math("2+2=?", "4", "4")
         assert result.total == 10
 
     @pytest.mark.asyncio
     async def test_generate_report_with_history(self):
-        """测试带学习记录的学期报告。"""
+        """Test term report generation with learning history."""
         engine = AssessmentEngine()
         report = await engine.generate_report(
+            # i18n: user-facing
             "张三", "数学", "3",
             [{"score": 90, "date": "2026-01"}, {"score": 85, "date": "2026-02"}],
         )
+        # i18n: user-facing
         assert report.student_name == "张三"
 
     @pytest.mark.asyncio
     async def test_generate_rubric_with_criteria(self):
-        """测试带自定义维度的评分标准。"""
+        """Test rubric generation with custom criteria."""
         engine = AssessmentEngine()
         result = await engine.generate_rubric(
+            # i18n: user-facing
             "写作", "4", criteria=["内容", "结构", "语法", "创意"]
         )
         assert isinstance(result, dict)
 
     def test_parse_json_invalid(self):
-        """测试无效 JSON。"""
+        """Test invalid JSON."""
         engine = AssessmentEngine()
         assert engine._parse_json("bad") is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Subject Expert 深度覆盖
+# Subject Expert deep coverage
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestSubjectDeep:
     def test_exercise_all_fields(self):
-        """测试 SubjectExercise 全部字段。"""
+        """Test all SubjectExercise fields."""
         ex = SubjectExercise(
+            # i18n: user-facing
             question="1+1=?", difficulty="easy", subject="数学", grade="1",
             hints=["数一数"], answer="2", explanation="1个加1个等于2个",
             topic="加法", skills=["计数", "加法运算"],
         )
+        # i18n: user-facing
         assert ex.hints == ["数一数"]
         assert ex.skills == ["计数", "加法运算"]
 
     @pytest.mark.asyncio
     async def test_explain_concept(self):
-        # TEST-2: 注入 mock chat, 严格断言解析出的真实字段 (成功路径覆盖, 非 isinstance 兜底)
+        # TEST-2: inject a mock chat and strictly assert the parsed real fields (success-path coverage, not isinstance fallback)
         expert = SubjectExpert()
         async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            # i18n: user-facing
             return '{"simple_explanation": "植物利用阳光制造养分", "example": "树叶在阳光下变绿", "visualization": "画阳光箭头照向叶子", "common_misconceptions": ["植物吃土"], "extension": "光合作用与呼吸作用的关系"}'
         expert.mlx.chat = mock_chat
+        # i18n: user-facing
         result = await expert.explain_concept("科学", "5", "光合作用")
         assert isinstance(result, dict)
         assert result.get("simple_explanation")
@@ -231,185 +248,206 @@ class TestSubjectDeep:
 
     @pytest.mark.asyncio
     async def test_generate_exercise_with_difficulty(self):
-        # TEST-2: mock chat + 严格断言 question/answer/difficulty 真实解析
+        # TEST-2: mock chat + strictly assert real parsing of question/answer/difficulty
         expert = SubjectExpert()
         async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            # i18n: user-facing
             return '{"question": "3×4=?", "hints": ["想3个4相加"], "answer": "12", "explanation": "3乘4等于12", "skills": ["乘法"]}'
         expert.mlx.chat = mock_chat
+        # i18n: user-facing
         ex = await expert.generate_exercise("数学", "3", "乘法", difficulty="hard")
         assert ex.topic == "乘法"
         assert ex.question == "3×4=?"
         assert ex.answer == "12"
         assert ex.difficulty == "hard"
+        # i18n: user-facing
         assert "失败" not in ex.question
 
     @pytest.mark.asyncio
     async def test_stem_project_with_duration(self):
-        # TEST-2: mock chat + 严格断言 title/driving_question 真实解析
+        # TEST-2: mock chat + strictly assert real parsing of title/driving_question
         expert = SubjectExpert()
         async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            # i18n: user-facing
             return '{"title": "水循环探究", "driving_question": "水去哪了", "objectives": ["理解蒸发"], "materials": ["杯子"], "procedure": ["观察"], "expected_outcomes": ["能画出循环图"], "rubric": "参与度评分"}'
         expert.mlx.chat = mock_chat
+        # i18n: user-facing
         result = await expert.stem_project("5", "水循环", duration="4课时")
         assert isinstance(result, dict)
+        # i18n: user-facing
         assert result.get("title") == "水循环探究"
         assert result.get("driving_question")
         assert "error" not in result
 
     @pytest.mark.asyncio
     async def test_language_activity(self):
-        # TEST-2: mock chat + 严格断言 title/objective 真实解析
+        # TEST-2: mock chat + strictly assert real parsing of title/objective
         expert = SubjectExpert()
         async def mock_chat(messages, temperature=0.7, max_tokens=4096):
+            # i18n: user-facing
             return '{"title": "动物听力游戏", "objective": "辨动物叫声", "materials": ["音频"], "procedure": ["听辨"], "differentiation": {"beginner": "看图选", "intermediate": "听音选", "advanced": "听写"}}'
         expert.mlx.chat = mock_chat
+        # i18n: user-facing
         result = await expert.language_activity("3", "英语", "听力", "动物")
         assert isinstance(result, dict)
+        # i18n: user-facing
         assert result.get("title") == "动物听力游戏"
         assert result.get("objective")
         assert "error" not in result
 
     def test_parse_json_invalid(self):
-        """测试无效 JSON。"""
+        """Test invalid JSON."""
         expert = SubjectExpert()
         assert expert._parse_json("bad") is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Personalization Engine 深度覆盖
+# Personalization Engine deep coverage
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestPersonalizationDeep:
     def test_learning_path_all_fields(self):
-        """测试 LearningPath 全部字段。"""
+        """Test all LearningPath fields."""
         path = LearningPath(
+            # i18n: user-facing
             student_id="s1", grade="3", subject="数学",
             units=[{"title": "分数入门"}],
             estimated_duration="4周",
             prerequisites=["整数运算"],
             goals=["理解分数概念"],
         )
+        # i18n: user-facing
         assert path.units[0]["title"] == "分数入门"
         assert path.prerequisites == ["整数运算"]
 
     @pytest.mark.asyncio
     async def test_create_learning_path(self):
-        """测试学习路径创建。"""
+        """Test learning path creation."""
         engine = PersonalizationEngine()
+        # i18n: user-facing
         path = await engine.create_learning_path("张三", "3", "数学", "掌握分数")
         assert path.student_id == "张三"
 
     @pytest.mark.asyncio
     async def test_diagnose_skills(self):
-        """测试能力诊断。"""
+        """Test skill diagnosis."""
         engine = PersonalizationEngine()
+        # i18n: user-facing
         result = await engine.diagnose_skills("数学", "3", [])
         assert isinstance(result, dict)
 
     @pytest.mark.asyncio
     async def test_recommend_resources(self):
-        """测试资源推荐。"""
+        """Test resource recommendation."""
         engine = PersonalizationEngine()
+        # i18n: user-facing
         result = await engine.recommend_resources("张三", "3", "数学", "分数")
         assert isinstance(result, dict)
 
     def test_parse_json_invalid(self):
-        """测试无效 JSON。"""
+        """Test invalid JSON."""
         engine = PersonalizationEngine()
         assert engine._parse_json("bad") is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Content Generator 深度覆盖
+# Content Generator deep coverage
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestContentDeep:
     def test_worksheet_all_fields(self):
-        """测试 Worksheet 全部字段。"""
+        """Test all Worksheet fields."""
         ws = Worksheet(
+            # i18n: user-facing
             title="分数练习", subject="数学", grade="3",
             sections=[{"title": "选择题", "questions": [{"q": "1/2+1/2=?"}]}],
             answer_key="1", instructions="认真答题",
         )
+        # i18n: user-facing
         assert ws.sections[0]["title"] == "选择题"
         assert ws.instructions == "认真答题"
 
     @pytest.mark.asyncio
     async def test_generate_worksheet(self):
-        """测试工作纸生成。"""
+        """Test worksheet generation."""
         gen = ContentGenerator()
+        # i18n: user-facing
         ws = await gen.generate_worksheet("数学", "3", "分数", num_questions=5)
         assert ws.subject == "数学"
 
     @pytest.mark.asyncio
     async def test_generate_flashcards(self):
-        """测试闪卡生成。"""
+        """Test flashcard generation."""
         gen = ContentGenerator()
+        # i18n: user-facing
         cards = await gen.generate_flashcards("数学", "3", "分数", count=5)
         assert isinstance(cards, list)
 
     @pytest.mark.asyncio
     async def test_generate_lesson_slides(self):
-        """测试课件生成。"""
+        """Test lesson slides generation."""
         gen = ContentGenerator()
+        # i18n: user-facing
         slides = await gen.generate_lesson_slides("数学", "3", "分数", num_slides=5)
         assert isinstance(slides, list)
 
     @pytest.mark.asyncio
     async def test_generate_educational_game(self):
-        """测试教育游戏生成。"""
+        """Test educational game generation."""
         gen = ContentGenerator()
+        # i18n: user-facing
         result = await gen.generate_educational_game("数学", "3", "分数", game_type="board")
         assert isinstance(result, dict)
 
     @pytest.mark.asyncio
     async def test_generate_parent_communication(self):
-        """测试家校沟通信生成。"""
+        """Test parent communication letter generation."""
         gen = ContentGenerator()
+        # i18n: user-facing
         result = await gen.generate_parent_communication("张三", "3", "数学", "分数")
         assert isinstance(result, str)
 
     def test_parse_json_invalid(self):
-        """测试无效 JSON。"""
+        """Test invalid JSON."""
         gen = ContentGenerator()
         assert gen._parse_json("bad") is None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CLI 测试
+# CLI tests
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestCLICoverage:
     @staticmethod
     def _assert_cli_not_crashed(result, success_marker: str = ""):
-        """TEST-7: 不再盲目接受 exit_code in (0,1) — 那会把成功与引擎降级混为一谈, 掩盖真实失败。
+        """TEST-7: no longer blindly accept exit_code in (0,1) — that conflates success with engine degradation and masks real failures.
 
-        - exit_code==2 是 Click 用法错误/参数解析失败, 绝不接受;
-        - result.exception 非 SystemExit 表示未捕获崩溃, 绝不接受
-          (Click 的 ClickException 以 SystemExit(n) 退出属正常优雅降级, 可接受);
-        - 后端(fusion-mlx+聊天模型)在线时断言成功路径(exit 0 + success_marker 在输出);
-        - 后端不可用时断言优雅降级(exit 1, 无崩溃), 且输出非空(CLI 有反馈)。
+        - exit_code==2 is a Click usage error/argument parsing failure, never accepted;
+        - result.exception that is not SystemExit means an uncaught crash, never accepted
+          (Click's ClickException exiting via SystemExit(n) is normal graceful degradation, acceptable);
+        - when the backend (fusion-mlx + chat model) is online, assert the success path (exit 0 + success_marker in output);
+        - when the backend is unavailable, assert graceful degradation (exit 1, no crash) with non-empty output (CLI gave feedback).
         """
-        assert result.exit_code != 2, f"CLI 用法错误(exit 2): {result.output}"
-        # Click 的 ClickException → SystemExit(1) 是正常降级, 勿当崩溃;
-        # 仅非 SystemExit 的异常才是真崩溃(未处理)。
+        assert result.exit_code != 2, f"CLI usage error (exit 2): {result.output}"
+        # Click's ClickException -> SystemExit(1) is normal degradation, not a crash;
+        # only non-SystemExit exceptions are real crashes (unhandled).
         if result.exception is not None and not isinstance(result.exception, SystemExit):
-            raise AssertionError(f"CLI 未捕获异常: {result.exception!r}")
+            raise AssertionError(f"CLI uncaught exception: {result.exception!r}")
         if result.exit_code == 0:
             assert success_marker in result.output, (
-                f"成功路径但缺标记 {success_marker!r}: {result.output[:300]}"
+                f"success path but marker missing {success_marker!r}: {result.output[:300]}"
             )
         else:
-            assert result.output.strip(), f"失败路径无任何输出: exit={result.exit_code}"
+            assert result.output.strip(), f"failure path produced no output: exit={result.exit_code}"
 
     def test_cli_import(self):
-        """测试 CLI 可导入。"""
+        """Test CLI importability."""
         from fusion_k12_teacher import cli
         assert cli is not None
         assert cli.main is not None
 
     def test_cli_help(self):
-        """测试 CLI 帮助信息。"""
+        """Test CLI help output."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -419,7 +457,7 @@ class TestCLICoverage:
         assert "Fusion-K12-Teacher" in result.output
 
     def test_cli_version(self):
-        """测试 CLI 版本信息。"""
+        """Test CLI version output."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -428,7 +466,7 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_lesson_plan_help(self):
-        """测试子命令帮助。"""
+        """Test subcommand help."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -437,7 +475,7 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_lesson_quiz_help(self):
-        """测试 quiz 子命令帮助。"""
+        """Test quiz subcommand help."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -446,7 +484,7 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_assess_essay_help(self):
-        """测试 assess essay 帮助。"""
+        """Test assess essay help."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -455,7 +493,7 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_subject_explain_help(self):
-        """测试 subject explain 帮助。"""
+        """Test subject explain help."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -464,7 +502,7 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_personalize_path_help(self):
-        """测试 personalize path 帮助。"""
+        """Test personalize path help."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -473,7 +511,7 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_content_worksheet_help(self):
-        """测试 content worksheet 帮助。"""
+        """Test content worksheet help."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -482,62 +520,68 @@ class TestCLICoverage:
         assert result.exit_code == 0
 
     def test_cli_lesson_plan_run(self, tmp_path):
-        """测试 lesson plan 命令执行。"""
+        """Test lesson plan command execution."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
+        # i18n: user-facing
         result = runner.invoke(cli, ["lesson", "plan", "数学", "3", "分数"])
-        # TEST-7: 区分成功/降级, 拒用法错误与崩溃; 成功须见 📚 标记
+        # TEST-7: distinguish success/degradation, reject usage errors and crashes; success must show the 📚 marker
         self._assert_cli_not_crashed(result, "📚")
 
     def test_cli_lesson_quiz_run(self, tmp_path):
-        """测试 lesson quiz 命令执行。"""
+        """Test lesson quiz command execution."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
+        # i18n: user-facing
         result = runner.invoke(cli, ["lesson", "quiz", "数学", "3", "分数"])
-        # TEST-7: 成功须见 📝 标记
+        # TEST-7: success must show the 📝 marker
         self._assert_cli_not_crashed(result, "📝")
 
     def test_cli_subject_explain_run(self, tmp_path):
-        """测试 subject explain 命令执行。"""
+        """Test subject explain command execution."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
+        # i18n: user-facing
         result = runner.invoke(cli, ["subject", "explain", "科学", "5", "光合作用"])
-        # TEST-7: 成功须见 📖 标记
+        # TEST-7: success must show the 📖 marker
         self._assert_cli_not_crashed(result, "📖")
 
     def test_cli_content_worksheet_run(self, tmp_path):
-        """测试 content worksheet 命令执行。"""
+        """Test content worksheet command execution."""
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
         runner = CliRunner()
+        # i18n: user-facing
         result = runner.invoke(cli, ["content", "worksheet", "数学", "3", "分数"])
-        # TEST-7: 成功须见 📄 标记
+        # TEST-7: success must show the 📄 marker
         self._assert_cli_not_crashed(result, "📄")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Mock 测试 — 模拟 fusion-mlx 成功响应，覆盖成功路径
+# Mock tests — simulate fusion-mlx success responses, covering success paths
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestMockSuccess:
-    """模拟 fusion-mlx 成功响应，覆盖 try 块中的成功代码路径。"""
+    """Simulate fusion-mlx success responses, covering success paths inside try blocks."""
 
     @pytest.mark.asyncio
     async def test_curriculum_parse_json_success(self):
-        """测试 curriculum 的 JSON 解析成功路径。"""
+        """Test curriculum JSON parsing success path."""
         engine = CurriculumEngine()
-        # TEST-6: 捕获 prompt 断言 subject/grade/topic 关键内容
+        # TEST-6: capture the prompt and assert subject/grade/topic key content
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"title": "分数", "objectives": ["理解分数"], "materials": ["课本"], "procedures": [{"step": 1, "activity": "导入"}], "assessment": "提问", "homework": "练习"}'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         plan = await engine.generate_lesson_plan("数学", "3", "分数")
         _assert_prompt(captured, "数学", "3", "分数")
         assert plan.title == "分数"
@@ -545,45 +589,50 @@ class TestMockSuccess:
 
     @pytest.mark.asyncio
     async def test_curriculum_parse_json_none(self):
-        """测试 JSON 解析失败时的兜底。"""
+        """Test the fallback when JSON parsing fails."""
         engine = CurriculumEngine()
         async def mock_chat(messages, temperature=0.7, max_tokens=4096):
             return "invalid json"
         engine.mlx.chat = mock_chat
+        # i18n: user-facing
         plan = await engine.generate_lesson_plan("数学", "3", "分数")
         assert plan.title == "分数"
         assert plan.grade == "3"
 
     @pytest.mark.asyncio
     async def test_curriculum_quiz_success(self):
-        """测试测验生成成功路径。"""
+        """Test quiz generation success path."""
         engine = CurriculumEngine()
         chat, captured = _capturing_mock(
             '[{"question": "1+1=?", "type": "multiple_choice", "options": ["1","2","3"], "answer": "2", "points": 5, "difficulty": "easy"}]'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         quiz = await engine.generate_quiz("数学", "3", "加法", num_questions=1)
         _assert_prompt(captured, "数学", "3", "加法")
         assert len(quiz.questions) == 1
 
     @pytest.mark.asyncio
     async def test_assessment_essay_success(self):
-        """测试作文批改成功路径。"""
+        """Test essay grading success path."""
         engine = AssessmentEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"score": 85, "total": 100, "feedback": "Good", "strengths": ["清晰"], "improvements": ["细节"], "rubric_scores": {"内容": 40}}'
         )
         engine.mlx.chat = chat
         result = await engine.grade_essay("test essay")
         _assert_prompt(captured, "test essay")
         assert result.score == 85
+        # i18n: user-facing
         assert "清晰" in result.strengths
 
     @pytest.mark.asyncio
     async def test_assessment_math_success(self):
-        """测试数学批改成功路径。"""
+        """Test math grading success path."""
         engine = AssessmentEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"score": 10, "total": 10, "correct": true, "feedback": "正确", "mistakes": []}'
         )
         engine.mlx.chat = chat
@@ -593,37 +642,44 @@ class TestMockSuccess:
 
     @pytest.mark.asyncio
     async def test_assessment_report_success(self):
-        """测试报告生成成功路径。"""
+        """Test report generation success path."""
         engine = AssessmentEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"overall_score": 90, "skills": {"运算": 95}, "strengths": ["计算"], "areas_to_improve": ["应用"], "teacher_notes": "好"}'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         report = await engine.generate_report("张三", "数学", "3", [])
         _assert_prompt(captured, "张三", "数学", "3")
         assert report.overall_score == 90
+        # i18n: user-facing
         assert "计算" in report.strengths
 
     @pytest.mark.asyncio
     async def test_subject_explain_success(self):
-        """测试概念解释成功路径。"""
+        """Test concept explanation success path."""
         expert = SubjectExpert()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"simple_explanation": "光合作用就是植物用阳光制造食物", "example": "阳光照在叶子上", "common_misconceptions": ["植物不需要阳光"]}'
         )
         expert.mlx.chat = chat
+        # i18n: user-facing
         result = await expert.explain_concept("科学", "5", "光合作用")
         _assert_prompt(captured, "科学", "5", "光合作用")
         assert "光合作用" in result.get("simple_explanation", "")
 
     @pytest.mark.asyncio
     async def test_personalization_path_success(self):
-        """测试学习路径创建成功路径。"""
+        """Test learning path creation success path."""
         engine = PersonalizationEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"goals": ["掌握分数"], "units": [{"title": "分数入门", "duration": "2周", "activities": ["练习"], "mastery_criteria": "80%"}], "prerequisites": ["整数"], "estimated_duration": "4周"}'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         path = await engine.create_learning_path("张三", "3", "数学", "掌握分数")
         _assert_prompt(captured, "张三", "3", "数学", "掌握分数")
         assert "掌握分数" in path.goals
@@ -631,12 +687,14 @@ class TestMockSuccess:
 
     @pytest.mark.asyncio
     async def test_content_worksheet_success(self):
-        """测试工作纸生成成功路径。"""
+        """Test worksheet generation success path."""
         gen = ContentGenerator()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"title": "分数练习", "instructions": "认真答题", "sections": [{"title": "选择题", "questions": [{"question": "1/2=?", "type": "choice", "points": 5}]}], "answer_key": "0.5"}'
         )
         gen.mlx.chat = chat
+        # i18n: user-facing
         ws = await gen.generate_worksheet("数学", "3", "分数", num_questions=1)
         _assert_prompt(captured, "数学", "3", "分数")
         assert ws.title == "分数练习"
@@ -644,83 +702,96 @@ class TestMockSuccess:
 
     @pytest.mark.asyncio
     async def test_content_flashcards_success(self):
-        """测试闪卡生成成功路径。"""
+        """Test flashcard generation success path."""
         gen = ContentGenerator()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '[{"front": "1/2", "back": "0.5", "hint": "一半"}, {"front": "1/4", "back": "0.25", "hint": "四分之一"}]'
         )
         gen.mlx.chat = chat
+        # i18n: user-facing
         cards = await gen.generate_flashcards("数学", "3", "分数", count=2)
         _assert_prompt(captured, "数学", "3", "分数")
         assert len(cards) == 2
 
     @pytest.mark.asyncio
     async def test_content_slides_success(self):
-        """测试课件生成成功路径。"""
+        """Test lesson slides generation success path."""
         gen = ContentGenerator()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '[{"slide_number": 1, "title": "引言", "content": "什么是分数", "teacher_notes": "举例说明"}]'
         )
         gen.mlx.chat = chat
+        # i18n: user-facing
         slides = await gen.generate_lesson_slides("数学", "3", "分数", num_slides=1)
         _assert_prompt(captured, "数学", "3", "分数")
         assert len(slides) == 1
 
     @pytest.mark.asyncio
     async def test_content_game_success(self):
-        """测试教育游戏生成成功路径。"""
+        """Test educational game generation success path."""
         gen = ContentGenerator()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"title": "分数大冒险", "type": "board", "objective": "掌握分数", "rules": ["掷骰子前进"], "materials": ["骰子"], "duration": "15分钟", "setup": "打印棋盘", "variations": ["难度升级"], "debrief": "学到了什么"}'
         )
         gen.mlx.chat = chat
+        # i18n: user-facing
         result = await gen.generate_educational_game("数学", "3", "分数")
         _assert_prompt(captured, "数学", "3", "分数")
         assert result["title"] == "分数大冒险"
 
     @pytest.mark.asyncio
     async def test_diagnose_skills_success(self):
-        """测试能力诊断成功路径。"""
+        """Test skill diagnosis success path."""
         engine = PersonalizationEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"mastered_skills": ["加法"], "developing_skills": ["减法"], "needs_support": ["乘法"], "overall_level": "developing", "recommendations": ["多练习"]}'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         result = await engine.diagnose_skills("数学", "3", [])
         _assert_prompt(captured, "数学", "3")
         assert result["overall_level"] == "developing"
 
     @pytest.mark.asyncio
     async def test_recommend_resources_success(self):
-        """测试资源推荐成功路径。"""
+        """Test resource recommendation success path."""
         engine = PersonalizationEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"resources": [{"type": "视频", "title": "分数入门", "description": "动画教学", "duration": "5分钟", "difficulty": "easy"}], "practice_plan": "每天10题", "parent_tips": "鼓励孩子"}'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         result = await engine.recommend_resources("张三", "3", "数学", "分数")
-        # prompt 含 grade/student/weakness, 不含 subject
+        # prompt contains grade/student/weakness, not subject
+        # i18n: user-facing
         _assert_prompt(captured, "张三", "3", "分数")
         assert len(result["resources"]) >= 1
 
     @pytest.mark.asyncio
     async def test_rubric_success(self):
-        """测试评分标准生成成功路径。"""
+        """Test rubric generation success path."""
         engine = AssessmentEngine()
         chat, captured = _capturing_mock(
+            # i18n: user-facing
             '{"criteria": [{"name": "内容", "points": 40, "levels": {"优秀": "内容丰富", "良好": "基本完整"}}]}'
         )
         engine.mlx.chat = chat
+        # i18n: user-facing
         result = await engine.generate_rubric("作文", "5")
         _assert_prompt(captured, "作文", "5")
         assert "criteria" in result
 
     @pytest.mark.asyncio
     async def test_ai_client_chat_success(self):
-        """测试 AI 客户端 _inner 初始化。"""
+        """Test AI client _inner initialization."""
         from fusion_k12_teacher.ai_client import _HAS_FUSION_CORE, MLXClient
         client = MLXClient(model="test")
         assert (client._inner is not None) or (not _HAS_FUSION_CORE)
-        # 测试 chat 失败（fusion-mlx 不可用）
+        # test chat failure (fusion-mlx unavailable)
         with pytest.raises(Exception):
             await client.chat([{"role": "user", "content": "hi"}])
