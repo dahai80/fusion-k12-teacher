@@ -1,11 +1,11 @@
-"""数学知识图谱 — networkx DAG + Tarjan 环校验 + GraphRAG 逆向归因 (PRD §3, §8)。
+"""Math knowledge graph — networkx DAG + Tarjan cycle validation + GraphRAG reverse attribution (PRD §3, §8).
 
-替代 Neo4j (上游不可改, 提 issue): networkx 纯 Python 离线, 原生 Tarjan SCC
-校验 DAG, 杜绝环形追溯 UI 卡死 (PRD §3.4 环依赖防护)。
+Replaces Neo4j (upstream untouchable, issue filed): networkx is pure-Python offline, with native
+Tarjan SCC validating the DAG, preventing UI freezes from circular tracing (PRD §3.4 cycle protection).
 
-数据源: standards/data/math_g*.json knowledge_points → PRE_REQUIRES 边 (prerequisites)
-+ progression_next (DERIVES_FROM)。增强节点 (Concept/Theorem/Misconception + EXEMPLIFIES/
-CROSS 边) 从 data/math_enhanced.json 叠加。
+Data sources: standards/data/math_g*.json knowledge_points → PRE_REQUIRES edges (prerequisites)
++ progression_next (DERIVES_FROM). Enhanced nodes (Concept/Theorem/Misconception + EXEMPLIFIES/
+CROSS edges) are overlaid from data/math_enhanced.json.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ _EDGE_CROSS = "CROSS_DISCIPLINE"
 
 
 class MathKnowledgeGraph(KnowledgeGraphBase):
-    """数学知识图谱 — 加载/校验/查询/逆向归因。fail-fast: 环依赖拒启 (PRD M6-E05)。"""
+    """Math knowledge graph — load/validate/query/reverse attribution. Fail-fast: cycles reject startup (PRD M6-E05)."""
 
     def __init__(self) -> None:
         try:
@@ -37,7 +37,7 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
             self._nx_ok = True
         except ImportError:
             self._nx_ok = False
-            logger.warning("math_knowledge_graph: networkx 未安装, 图谱功能不可用")
+            logger.warning("math_knowledge_graph: networkx not installed, graph features unavailable")
             return
         import networkx as nx
         self._nx = nx
@@ -51,7 +51,7 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
         return self._nx_ok and self._loaded
 
     def load(self, standards_query: StandardsQuery | None = None) -> None:
-        """从 StandardsLoader 的 knowledge_points 构建底座图 + 叠加增强节点。"""
+        """Builds the base graph from StandardsLoader knowledge_points + overlays enhanced nodes."""
         if not self._nx_ok:
             return
         kps: list[dict[str, Any]] = []
@@ -65,13 +65,13 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
                 for std in stds:
                     kps.extend(self._extract_kps(std))
         if not kps:
-            logger.warning("math_knowledge_graph: 无课标知识点可加载")
+            logger.warning("math_knowledge_graph: no curriculum knowledge points to load")
         self.load_standards(kps)
         self._load_enhanced()
         self._loaded = True
         if not self.is_dag():
-            raise ValueError("MathKnowledgeGraph: 检测到环形依赖, 拒绝启动 (PRD M6-E05) — 请修复 DAG")
-        logger.info("math_knowledge_graph: 加载完成 nodes=%d edges=%d", self.node_count(), self.edge_count())
+            raise ValueError("MathKnowledgeGraph: circular dependency detected, refusing to start (PRD M6-E05) — fix the DAG")
+        logger.info("math_knowledge_graph: load complete nodes=%d edges=%d", self.node_count(), self.edge_count())
 
     def load_standards(self, knowledge_points: list[dict[str, Any]]) -> None:
         for kp in knowledge_points:
@@ -114,18 +114,18 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
     def _load_enhanced(self) -> None:
         p = Path(__file__).parent / "data" / "math_enhanced.json"
         if not p.exists():
-            logger.debug("math_knowledge_graph: 无增强文件 %s", p)
+            logger.debug("math_knowledge_graph: no enhanced file %s", p)
             return
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
         except Exception as exc:
-            logger.warning("math_knowledge_graph: 增强 JSON 解析失败 %s: %s", p, exc)
+            logger.warning("math_knowledge_graph: enhanced JSON parse failed %s: %s", p, exc)
             return
         for item in data.get("nodes", []):
             nid = str(item.get("id", ""))
             if nid:
                 self._enhanced_ids.add(nid)
-            # issue #21: 优先读 visual_type, 兼容旧 visual_engine 字段
+            # issue #21: prefer visual_type, backward compatible with the old visual_engine field
             vt = str(item.get("visual_type", "") or item.get("visual_engine", ""))
             node = GraphNode(
                 id=str(item.get("id", "")),
@@ -158,7 +158,7 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
 
     @staticmethod
     def _extract_kps(std: Any) -> list[dict[str, Any]]:
-        """从单个课标提取 knowledge_points — 兼容 dict 和 CurriculumStandard dataclass。"""
+        """Extracts knowledge_points from a single standard — supports both dict and CurriculumStandard dataclass."""
         if std is None:
             return []
         kps = getattr(std, "knowledge_points", None) if not isinstance(std, dict) else std.get("knowledge_points")
@@ -253,14 +253,16 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
 
     @staticmethod
     def _semester_for_grade(grade: str) -> str:
-        """issue #21: 标准节点无学期信息, 按 grade 推导默认学期。"""
+        """issue #21: standard nodes carry no semester info; derive a default semester from grade."""
         if not grade:
             return ""
+        # i18n: user-facing (Chinese curriculum semester label, matches standards data)
         return f"{grade}-上"
 
     @staticmethod
     def _default_misconceptions(title: str) -> list[str]:
-        """issue #21: 标准节点无易错点, 按 title 关键词推导常见易错点。"""
+        """issue #21: standard nodes carry no misconceptions; derive common ones from title keywords."""
+        # i18n: user-facing (Chinese misconception labels + keyword matching against Chinese titles, teaching content)
         if not title:
             return ["概念混淆"]
         misc: list[str] = []

@@ -1,15 +1,15 @@
-"""数学 SymPy 符号校验引擎 — 数值绝对权威覆写 (PRD §6 严谨性铁律)。
+"""Math SymPy symbolic verification engine — authoritative numeric override (PRD §6 rigor rule).
 
-双闸替代: PRD 原 GBNF Logits Masker 须改 fusion-mlx (上游不可改, 已提 issue),
-此处以 structured-output prompting + Pydantic/SymPy 后置校验近似 — SymPy 计算结果
-为 Single Source of Truth, 覆写 LLM 提取的任何数值字段。
+Dual-gate replacement: the PRD's original GBNF Logits Masker would require changing fusion-mlx (upstream untouchable, issue filed),
+so here it is approximated with structured-output prompting + Pydantic/SymPy post-validation — SymPy computation results
+are the Single Source of Truth, overriding any numeric fields extracted by the LLM.
 
-能力:
-- verify_scene: 按场景公式 (火车过桥 5 题型等) 计算路程/时间/相对速度, 覆写 entities。
-- judge_checkpoint: 代数式 SymPy 等价判定 / 数值容差 / 字符串兜底。
-- singularities: 函数间断点探测 (渲染断开假连线)。
-- 1.5s 硬超时: ThreadPool 熔断, 超时返回数值近似解 + 标注。
-- 降级: sympy 不可用/超时 → 字符串精确比对 + 标注「未经验算」, 绝不用 LLM 判数值。
+Capabilities:
+- verify_scene: computes distance/time/relative speed per scene formulas (train-crossing-bridge 5 problem types etc.), overrides entities.
+- judge_checkpoint: SymPy algebraic-equivalence judging / numeric tolerance / string fallback.
+- singularities: function discontinuity detection (renderer breaks fake connections).
+- 1.5s hard timeout: ThreadPool circuit breaker; on timeout returns numeric approximation + annotation.
+- Degradation: sympy unavailable/timeout → exact string comparison + "not verified" annotation; never lets the LLM judge numbers.
 """
 
 from __future__ import annotations
@@ -81,9 +81,9 @@ def _h_cutting_segments(v: dict[str, float]) -> dict[str, float]:
 
 
 def _h_queue_counting(v: dict[str, float]) -> dict[str, float]:
-    # 两种子题型 (G1 易错题): LLM 提取时以 extra 字段区分 —
-    #   位次型 (rank): "从前第a, 从后第b" → total = a + b - 1
-    #   人数型 (counts): "前面有a人, 后面有b人" → total = a + b + 1 (自己易漏算)
+    # Two sub-variants (G1 error-prone): LLM extraction distinguishes them via extra fields —
+    #   rank type: "a-th from front, b-th from back" → total = a + b - 1
+    #   counts type: "a people in front, b people behind" → total = a + b + 1 (self easily missed)
     if "front_count" in v or "behind_count" in v:
         front = v.get("front_count", 0.0)
         behind = v.get("behind_count", 0.0)
@@ -181,10 +181,10 @@ def _h_sprinkler_area(v: dict[str, float]) -> dict[str, float]:
 
 
 def _h_tree_planting(v: dict[str, float]) -> dict[str, float]:
-    # 三种变体 (LLM 提取时以字段区分):
-    #   标准型: length+spacing+mode_code → trees
-    #   两侧栽: extra sides=2 → trees = (单侧棵数) × 2
-    #   逆向型: trees+spacing (无 length) → length = (trees - 1) * spacing [两端栽逆向]
+    # Three variants (LLM extraction distinguishes them via fields):
+    #   standard: length+spacing+mode_code → trees
+    #   both sides: extra sides=2 → trees = (per-side count) × 2
+    #   inverse: trees+spacing (no length) → length = (trees - 1) * spacing [both-ends inverse]
     if "length" not in v and "trees" in v and "spacing" in v:
         spacing = v["spacing"]
         trees = v["trees"]
@@ -192,7 +192,7 @@ def _h_tree_planting(v: dict[str, float]) -> dict[str, float]:
         per_side = trees / sides if sides else trees
         length = (per_side - 1.0) * spacing
         return {**v, "length": length, "segments": length / spacing if spacing else 0.0, "trees": trees}
-    # 已知路长/周长 + 棵数 → 求间距 (封闭型: 间距 = length/trees; 直线两端栽: length/(trees-1))
+    # Known path length/perimeter + tree count → solve spacing (closed loop: spacing = length/trees; straight both-ends: length/(trees-1))
     if "spacing" not in v and "trees" in v and "length" in v:
         trees = v["trees"]
         length = v["length"]
@@ -213,7 +213,7 @@ def _h_tree_planting(v: dict[str, float]) -> dict[str, float]:
     else:
         trees = segments
     if v.get("sides", 1.0) == 2.0:
-        trees = trees * 2.0  # 两侧栽: 公路两旁, 易漏 ×2
+        trees = trees * 2.0  # both sides planted: road has two sides, x2 easily missed
     return {**v, "segments": segments, "trees": trees}
 
 
@@ -283,11 +283,11 @@ def _h_cuboid_combine_surface(v: dict[str, float]) -> dict[str, float]:
 
 
 def _h_cylinder_cone_cut(v: dict[str, float]) -> dict[str, float]:
-    # 圆柱削最大圆锥 (题面约定 π=3.14): 削去体积=圆柱×2/3, 剩下=×1/3。
-    # main_volume 按题目所问回填 ("削去"→removed, "剩下"→remaining), 默认削去。
+    # Cylinder cut into max cone (problem convention pi=3.14): removed volume = cylinder x 2/3, remaining = x 1/3.
+    # main_volume is filled back per what the problem asks ("removed"→removed, "remaining"→remaining), defaults to removed.
     import sympy as sp
     r, h = v["radius"], v["height"]
-    pi = sp.Rational(314, 100)  # 精确 3.14, 避免浮点误差
+    pi = sp.Rational(314, 100)  # exact 3.14, avoids float error
     cyl = pi * r ** 2 * h
     removed = sp.nsimplify(cyl * 2 / 3)
     remaining = cyl - removed
@@ -389,7 +389,7 @@ _SCENARIO_REQUIRED: dict[str, list[str]] = {
     "two_trains_overtake": ["L1", "L2", "v1", "v2"],
     "echo_problem": ["v_train", "v_sound", "t_echo"],
     "cutting_segments": ["n_segments", "time_per_cut"],
-    "queue_counting": ["rank_front", "rank_behind"],  # 人数型变体提取 front_count/behind_count, handler 内分支兼容
+    "queue_counting": ["rank_front", "rank_behind"],  # counts variant extracts front_count/behind_count, handler branches handle it
     "fence_against_wall": ["length", "perimeter"],
     "unitary_method": ["n_items", "total_value", "n_target"],
     "chicken_rabbit": ["heads", "legs"],
@@ -400,7 +400,7 @@ _SCENARIO_REQUIRED: dict[str, list[str]] = {
     "round_trip": ["distance", "trips"],
     "sum_multiple": ["sum", "multiple"],
     "sprinkler_area": ["speed", "width", "time"],
-    "tree_planting": ["length", "spacing"],  # 变体: 两侧栽加 sides=2; 逆向型仅 trees+spacing (handler 分支兼容)
+    "tree_planting": ["length", "spacing"],  # variants: both-sides adds sides=2; inverse only trees+spacing (handler branches handle it)
     "displacement_volume": ["length", "width", "rise"],
     "profit_loss": ["surplus", "deficit", "diff"],
     "simple_interest": ["principal", "rate", "years"],
@@ -436,7 +436,7 @@ def _to_float_dict(entities: dict[str, Any]) -> dict[str, float]:
         try:
             out[k] = float(val)
         except (TypeError, ValueError):
-            logger.warning("sympy_verifier: 变量 %s 非数值 %r, 跳过", k, val)
+            logger.warning("sympy_verifier: variable %s is not numeric %r, skipped", k, val)
     return out
 
 
@@ -446,15 +446,15 @@ def _run_with_timeout(fn: Callable[[], Any]) -> tuple[Any, str]:
             fut = ex.submit(fn)
             return fut.result(timeout=_HARD_TIMEOUT_S), ""
     except FuturesTimeout:
-        logger.warning("sympy_verifier: 求解 %.1fs 超时, 返回数值近似解", _HARD_TIMEOUT_S)
+        logger.warning("sympy_verifier: solve timed out after %.1fs, returning numeric approximation", _HARD_TIMEOUT_S)
         return None, "timeout"
     except Exception as exc:
-        logger.warning("sympy_verifier: 求解异常 %s", exc)
+        logger.warning("sympy_verifier: solve error %s", exc)
         return None, f"error:{type(exc).__name__}"
 
 
 class MathSympyVerifier(VerifierBase):
-    """数学 SymPy 符号校验 — 数值权威覆写 + checkpoint 判分。"""
+    """Math SymPy symbolic verification — authoritative numeric override + checkpoint judging."""
 
     def __init__(self) -> None:
         self._handlers = dict(_SCENARIO_HANDLERS)
@@ -464,24 +464,24 @@ class MathSympyVerifier(VerifierBase):
             self._sympy_ok = True
         except ImportError:
             self._sympy_ok = False
-            logger.warning("sympy_verifier: sympy 未安装, 判分退化为字符串比对 + 标注「未经验算」")
+            logger.warning("sympy_verifier: sympy not installed, judging degrades to string comparison + \"not verified\" annotation")
 
     def verify_scene(self, scenario: str, entities: dict[str, Any]) -> VerifyResult:
         handler = self._handlers.get(scenario)
         if handler is None:
-            return VerifyResult(error=f"未知场景: {scenario}", fallback=True)
+            return VerifyResult(error=f"unknown scene: {scenario}", fallback=True)
         required = self._required.get(scenario, [])
         vars_f = _to_float_dict(entities)
-        # 变体兼容: 次要字段缺失时放行, 交由 handler 内分支处理 —
-        # queue_counting 人数型 (front/behind_count)、tree_planting 逆向型 (trees+spacing 无 length)
+        # Variant compatibility: pass through when only secondary fields are missing, handler branches deal with it —
+        # queue_counting counts type (front/behind_count), tree_planting inverse type (trees+spacing without length)
         missing = [k for k in required if k not in vars_f]
         variant_ok = (
             any(k in vars_f for k in ("front_count", "behind_count"))
             or (scenario == "tree_planting" and "trees" in vars_f and "spacing" in vars_f)
-            or (scenario == "tree_planting" and "trees" in vars_f and "length" in vars_f)  # 已知周长+棵数求间距
+            or (scenario == "tree_planting" and "trees" in vars_f and "length" in vars_f)  # known perimeter + tree count, solve spacing
         )
         if missing and not variant_ok:
-            return VerifyResult(error=f"缺失变量: {missing}", fallback=True)
+            return VerifyResult(error=f"missing variables: {missing}", fallback=True)
         result, err = _run_with_timeout(lambda: handler(vars_f))
         if result is None:
             try:
@@ -504,13 +504,13 @@ class MathSympyVerifier(VerifierBase):
             try:
                 ans = float(student_answer)
             except (TypeError, ValueError):
-                return JudgeResult(correct=False, method="string_fallback", detail=f"非数值: {student_answer!r}", fallback=True, hint=checkpoint.hints[0] if checkpoint.hints else "")
+                return JudgeResult(correct=False, method="string_fallback", detail=f"non-numeric: {student_answer!r}", fallback=True, hint=checkpoint.hints[0] if checkpoint.hints else "")
             return self._judge_numeric(checkpoint.expected_value, ans, checkpoint.tolerance, checkpoint.hints)
         if checkpoint.type == CheckpointType.MULTIPLE_CHOICE:
             correct_opt = next((o for o in checkpoint.options if o.get("is_correct")), None)
             is_correct = bool(correct_opt and student_answer == correct_opt.get("id"))
             return JudgeResult(correct=is_correct, method="multiple_choice", detail=str(correct_opt.get("feedback", "")) if correct_opt else "", hint=checkpoint.hints[0] if (not is_correct and checkpoint.hints) else "")
-        return JudgeResult(correct=False, method="unsupported", detail=f"类型 {checkpoint.type.value} 暂不支持自动判分", fallback=True)
+        return JudgeResult(correct=False, method="unsupported", detail=f"type {checkpoint.type.value} does not support auto judging yet", fallback=True)
 
     def _judge_expression(self, expected: str, student: str, tolerance: float) -> JudgeResult:
         if not self._sympy_ok:
@@ -531,7 +531,7 @@ class MathSympyVerifier(VerifierBase):
             is_zero = diff == 0
             return JudgeResult(correct=bool(is_zero), method="verifier", detail=f"simplify(diff)={diff}")
         except Exception as exc:
-            logger.warning("sympy_verifier._judge_expression 异常: %s, 降级字符串", exc)
+            logger.warning("sympy_verifier._judge_expression error: %s, falling back to string", exc)
             return self._string_fallback(expected, student)
 
     def _judge_numeric(self, expected: float, student: float, tolerance: float, hints: list[str]) -> JudgeResult:
@@ -546,7 +546,7 @@ class MathSympyVerifier(VerifierBase):
                 sv = float(stu.subs(next(iter(stu.free_symbols)), sval)) if stu.free_symbols else float(stu)
                 if not math.isclose(ev, sv, rel_tol=tolerance, abs_tol=tolerance):
                     return JudgeResult(correct=False, method="numeric_sample", detail=f"sample {sval}: {ev}≠{sv}", fallback=True)
-            return JudgeResult(correct=True, method="numeric_sample", detail="6 样本全等", fallback=True)
+            return JudgeResult(correct=True, method="numeric_sample", detail="all 6 samples equal", fallback=True)
         except Exception as exc:
             return JudgeResult(correct=False, method="string_fallback", detail=f"{err}:{exc}", fallback=True)
 
@@ -554,7 +554,7 @@ class MathSympyVerifier(VerifierBase):
         def norm(s):
             return s.replace(" ", "").replace("*", "")
         ok = norm(expected) == norm(student)
-        return JudgeResult(correct=ok, method="string_fallback", detail="未经验算", fallback=True)
+        return JudgeResult(correct=ok, method="string_fallback", detail="not verified", fallback=True)
 
     def singularities(self, expr_str: str, var: str = "x") -> list[float]:
         if not self._sympy_ok:
@@ -580,7 +580,7 @@ class MathSympyVerifier(VerifierBase):
                     continue
             return out
         except Exception as exc:
-            logger.warning("sympy_verifier.singularities 异常: %s", exc)
+            logger.warning("sympy_verifier.singularities error: %s", exc)
             return []
 
     def register_scenario(self, scenario_id: str, handler: ScenarioHandler, required: list[str]) -> None:

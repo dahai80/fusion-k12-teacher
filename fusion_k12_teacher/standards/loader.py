@@ -13,37 +13,38 @@ DATA_DIR = Path(__file__).parent / "data"
 
 
 class StandardsLoader:
-    """课标数据加载器 — 从 JSON 文件加载课标知识点到内存。"""
+    """Curriculum standards loader — loads standards knowledge points from JSON files into memory."""
 
     def __init__(self, data_dir: Path | None = None):
         self._data_dir = data_dir or DATA_DIR
         self._standards: dict[str, CurriculumStandard] = {}
         self._points_index: dict[str, KnowledgePoint] = {}
-        # E6: (subject, grade) -> list[KnowledgePoint] 索引, get_knowledge_points 免全量扫描。
+        # E6: (subject, grade) -> list[KnowledgePoint] index, so get_knowledge_points skips the full scan.
         self._sg_index: dict[tuple[str, str], list[KnowledgePoint]] = {}
         self._loaded = False
         self._failed_files: list[str] = []
-        # R11: threading.Lock 保护懒加载临界区 — 异步服务器首请求并发触发时
-        # 多协程同时 _load_file/_register 会重复加载 + 临时双注册。
+        # R11: threading.Lock guards the lazy-load critical section — when an async server's first
+        # requests fire concurrently, multiple coroutines calling _load_file/_register would
+        # double-load and transiently double-register.
         self._load_lock = threading.Lock()
 
     def load_all(self) -> dict[str, CurriculumStandard]:
-        """加载 data 目录下所有 JSON 课标文件。
+        """Loads all JSON curriculum standards files under the data directory.
 
-        STD-8: 返 dict 快照(浅拷贝) — 防调用方改可变内部 _standards。
-        与 STD-6 all_points/all_standards 同策略, 不用 MappingProxyType(活视图)。
-        R11: 加锁保护检查-置位, 避免并发首加载重复加载。
+        STD-8: returns a dict snapshot (shallow copy) — prevents callers from mutating the internal _standards.
+        Same strategy as STD-6 all_points/all_standards, no MappingProxyType (live view).
+        R11: lock guards the check-then-set, avoiding duplicate loading on concurrent first load.
         """
         if self._loaded:
             return dict(self._standards)
 
         with self._load_lock:
-            # double-check: 持锁后他线程可能已加载完
+            # double-check: another thread may have finished loading while we waited for the lock
             if self._loaded:
                 return dict(self._standards)
 
             if not self._data_dir.exists():
-                logger.warning(f"课标数据目录不存在: {self._data_dir}")
+                logger.warning(f"standards data directory does not exist: {self._data_dir}")
                 self._loaded = True
                 return dict(self._standards)
 
@@ -52,22 +53,22 @@ class StandardsLoader:
                     self._load_file(json_file)
                 except Exception as e:
                     self._failed_files.append(str(json_file))
-                    logger.error(f"加载课标文件失败 {json_file}: {e}")
+                    logger.error(f"failed to load standards file {json_file}: {e}")
 
-            # E6: 扫描完后建 (subject,grade) 索引
+            # E6: build the (subject, grade) index after the scan
             self._rebuild_sg_index()
 
             self._loaded = True
             logger.info(
-                f"课标加载完成: {len(self._standards)} 个标准, {len(self._points_index)} 个知识点"
-                + (f", 失败文件: {len(self._failed_files)}" if self._failed_files else "")
+                f"standards load complete: {len(self._standards)} standards, {len(self._points_index)} knowledge points"
+                + (f", failed files: {len(self._failed_files)}" if self._failed_files else "")
             )
             if self._failed_files:
-                logger.warning("以下课标文件加载失败(已跳过): %s", self._failed_files)
+                logger.warning("the following standards files failed to load (skipped): %s", self._failed_files)
             return dict(self._standards)
 
     def _rebuild_sg_index(self) -> None:
-        """E6: 构建 (subject, grade) -> list[KnowledgePoint] 索引。"""
+        """E6: builds the (subject, grade) -> list[KnowledgePoint] index."""
         self._sg_index.clear()
         for kp in self._points_index.values():
             key = (kp.subject, kp.grade)
@@ -80,7 +81,7 @@ class StandardsLoader:
         return list(self._failed_files)
 
     def _load_file(self, path: Path) -> None:
-        """加载单个 JSON 课标文件。"""
+        """Loads a single JSON standards file."""
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
 
@@ -110,16 +111,16 @@ class StandardsLoader:
                 self._register(std)
 
     def _register(self, std: CurriculumStandard) -> None:
-        """注册课标及其知识点到索引。"""
+        """Registers a standard and its knowledge points into the indexes."""
         self._standards[std.id] = std
         for kp in std.knowledge_points:
             self._points_index[kp.id] = kp
 
     def get_knowledge_points(self, subject: str, grade: str) -> list[KnowledgePoint]:
-        """E6: 按 (subject, grade) 索引取知识点, 返快照 list 免全量扫描。
+        """E6: fetches knowledge points by (subject, grade) index, returns a snapshot list, no full scan.
 
-        供 StandardsQuery.get_knowledge_points 复用 — 原每次 all_points() 浅拷贝整 dict
-        再 O(N) 过滤, 现走预建索引, 已按 id 排序。
+        Reused by StandardsQuery.get_knowledge_points — previously each call shallow-copied the whole
+        all_points() dict and filtered O(N); now goes through the prebuilt index, sorted by id.
         """
         if not self._loaded:
             self.load_all()
@@ -127,41 +128,42 @@ class StandardsLoader:
         return list(pts)
 
     def get_standard(self, std_id: str) -> CurriculumStandard | None:
-        """按 ID 获取课标。"""
+        """Fetches a standard by ID."""
         if not self._loaded:
             self.load_all()
         return self._standards.get(std_id)
 
     def get_point(self, point_id: str) -> KnowledgePoint | None:
-        """按 ID 获取知识点。"""
+        """Fetches a knowledge point by ID."""
         if not self._loaded:
             self.load_all()
         return self._points_index.get(point_id)
 
     def all_points(self) -> dict[str, KnowledgePoint]:
-        """返回所有知识点的快照(dict 浅拷贝, STD-6)。
+        """Returns a snapshot of all knowledge points (dict shallow copy, STD-6).
 
-        MappingProxyType 是活视图非快照 — reload()/迟注册 _register 改底层字典时,
-        持有视图的消费者会见到突变或在迭代中 RuntimeError。快照隔离调用方。
+        MappingProxyType is a live view, not a snapshot — when reload()/late _register mutates the
+        underlying dict, consumers holding the view see mutations or hit RuntimeError during
+        iteration. Snapshots isolate callers.
         """
         if not self._loaded:
             self.load_all()
         return dict(self._points_index)
 
     def all_standards(self) -> dict[str, CurriculumStandard]:
-        """返回所有课标的快照(dict 浅拷贝, STD-6)。见 all_points 说明。"""
+        """Returns a snapshot of all standards (dict shallow copy, STD-6). See all_points."""
         if not self._loaded:
             self.load_all()
         return dict(self._standards)
 
     def list_subjects(self) -> list[str]:
-        """列出已加载的学科。"""
+        """Lists loaded subjects."""
         if not self._loaded:
             self.load_all()
         return sorted({std.subject for std in self._standards.values() if std.subject})
 
     def list_grades(self, subject: str = "") -> list[str]:
-        """列出已加载的年级。"""
+        """Lists loaded grades."""
         if not self._loaded:
             self.load_all()
         grades = set()
@@ -173,11 +175,12 @@ class StandardsLoader:
         return sorted(grades, key=_grade_sort_key)
 
     def reload(self) -> dict[str, CurriculumStandard]:
-        """强制重新加载。"""
+        """Force-reloads all standards."""
         self._standards.clear()
         self._points_index.clear()
-        # R10: 清失败文件列表 — 原 reload 不清, 跨 reload 累积陈旧失败条目,
-        # 已修复文件仍报失败, failed_files 永久失真。
+        # R10: clear the failed-files list — the old reload did not clear it, so stale failure
+        # entries accumulated across reloads; fixed files kept reporting failures and
+        # failed_files stayed permanently wrong.
         self._failed_files.clear()
         self._sg_index.clear()
         self._loaded = False
@@ -185,7 +188,7 @@ class StandardsLoader:
 
 
 def _grade_sort_key(grade: str) -> int:
-    """年级排序键。"""
+    """Grade sort key."""
     try:
         return int(grade)
     except ValueError:

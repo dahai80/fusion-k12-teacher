@@ -175,16 +175,14 @@ class TestSympyVerifier:
         assert r.variables["ways"]["value"] == 15.0
 
     def test_unknown_scenario_fallback(self):
-        # i18n: user-facing (asserts Chinese error text produced by sympy_verifier.py, owned outside this batch)
         r = self.v.verify_scene("unknown_scene", {})
         assert r.fallback is True
-        assert "未知场景" in r.error
+        assert "unknown scene" in r.error
 
     def test_missing_variable(self):
-        # i18n: user-facing (asserts Chinese error text produced by sympy_verifier.py, owned outside this batch)
         r = self.v.verify_scene("train_crossing_bridge", {"L_bridge": 800})
         assert r.fallback is True
-        assert "缺失变量" in r.error
+        assert "missing variables" in r.error
 
     def test_judge_expression_equivalent(self):
         cp = Checkpoint(id="cp1", type=CheckpointType.EXPRESSION, prompt="", expected_expression="(800-200)/20")

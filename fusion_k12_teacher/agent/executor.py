@@ -1,4 +1,4 @@
-"""任务执行器 — 按步骤链调度引擎方法。"""
+"""Task executor — dispatches engine methods along the step chain."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _STEP_TIMEOUT = float(os.environ["FUSION_STEP_TIMEOUT"]) if "FUSION_STEP_TIMEOUT" in os.environ else 180.0
 
-# AGT-1: 每引擎可调方法白名单 — 杜绝 getattr 任意方法(__init__/close/_private 等)
+# AGT-1: per-engine callable method whitelist — blocks getattr on arbitrary methods (__init__/close/_private etc.)
 _ALLOWED_METHODS: dict[str, set[str]] = {
     "curriculum": {"generate_lesson_plan", "generate_quiz", "generate_unit_plan"},
     "assessment": {"grade_essay", "grade_math", "generate_report", "generate_rubric"},
@@ -42,14 +42,14 @@ _ALLOWED_METHODS: dict[str, set[str]] = {
 
 
 class EngineRegistry:
-    """引擎注册表 — 按名称查找引擎实例。"""
+    """Engine registry — looks up engine instances by name."""
 
     def __init__(self):
         self._engines: dict[str, Any] = {}
 
     def register(self, name: str, engine: Any) -> None:
         self._engines[name] = engine
-        logger.info(f"引擎注册: {name}")
+        logger.info(f"engine registered: {name}")
 
     def get(self, name: str) -> Any | None:
         return self._engines.get(name)
@@ -73,12 +73,12 @@ def register_all_engines(
     analytics=None,
     standards_query=None,
 ) -> EngineRegistry:
-    """注册所有引擎到全局注册表。
+    """Registers all engines into the global registry.
 
-    A14: 工厂(build_engines)纯构造, 注册由调用方显式调用本函数。
-    bundle 优先(传 EngineBundle 一键注册), 否则按具名参数注册。
+    A14: the factory (build_engines) is pure construction; callers explicitly call this function to register.
+    bundle takes priority (pass an EngineBundle to register in one shot), otherwise registers via named params.
     """
-    # A14: 传 bundle 时一键取字段, 否则用具名参数
+    # A14: when a bundle is passed, pull fields in one shot; otherwise use named params
     if bundle is not None:
         curriculum = getattr(bundle, "curriculum", None)
         assessment = getattr(bundle, "assessment", None)
@@ -108,7 +108,7 @@ def register_all_engines(
 
 
 def _resolve_params(step: TaskStep, context: dict[str, Any]) -> dict[str, Any]:
-    """解析步骤参数 — $ref 引用须已产出或在 depends_on 中声明，否则报错不静默。"""
+    """Resolves step params — $ref references must already be produced or declared in depends_on, otherwise error out loudly."""
     resolved = {}
     for k, v in step.params.items():
         if isinstance(v, str) and v.startswith("$"):
@@ -116,29 +116,29 @@ def _resolve_params(step: TaskStep, context: dict[str, Any]) -> dict[str, Any]:
             if ref_key in context:
                 resolved[k] = context[ref_key]
             elif ref_key in step.depends_on:
-                raise ValueError(f"步骤引用未解析: {ref_key} (参数 {k})")
+                raise ValueError(f"step reference unresolved: {ref_key} (param {k})")
             else:
-                raise ValueError(f"步骤引用未声明依赖: ${ref_key} (参数 {k})，须加入 depends_on")
+                raise ValueError(f"step reference missing dependency declaration: ${ref_key} (param {k}), must be added to depends_on")
         else:
             resolved[k] = v
     return resolved
 
 
 async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
-    """执行单个步骤 — 带超时与协程安全。"""
+    """Executes a single step — with timeout and coroutine safety."""
     engine = registry.get(step.engine)
     if not engine:
-        raise ValueError(f"引擎未注册: {step.engine}")
+        raise ValueError(f"engine not registered: {step.engine}")
 
-    # AGT-1: 方法须在白名单内, 否则拒绝 — 防止调用 __init__/close/_private
+    # AGT-1: method must be whitelisted, otherwise rejected — prevents calling __init__/close/_private
     allowed = _ALLOWED_METHODS.get(step.engine)
     if allowed is None or step.method not in allowed:
-        logger.error("引擎方法未授权: %s.%s", step.engine, step.method)
-        raise ValueError(f"引擎 {step.engine} 方法 {step.method} 未授权, 不在白名单内")
+        logger.error("engine method not authorized: %s.%s", step.engine, step.method)
+        raise ValueError(f"engine {step.engine} method {step.method} not authorized, not in whitelist")
 
     method = getattr(engine, step.method, None)
     if not method or not callable(method):
-        raise ValueError(f"引擎 {step.engine} 无方法 {step.method}")
+        raise ValueError(f"engine {step.engine} has no method {step.method}")
 
     resolved_params = _resolve_params(step, context)
 
@@ -147,10 +147,12 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     )
     try:
         if is_coro:
-            # R13: 超时取消协程本体 — asyncio.wait_for 到点抛 TimeoutError 并取消被等协程,
-            # 但底层 httpx 请求可能不响应取消, 后端 fusion-mlx 仍在跑(长任务超时堆积)。
-            # 不用 asyncio.shield (shield 会阻止取消信号到达 method, 反而无法超时取消)。
-            # 此处诚实文档: 超时不保证后端终止, 仅取消本地等待; 后端长任务须靠其自身超时。
+            # R13: timeout cancels the coroutine itself — asyncio.wait_for raises TimeoutError on schedule
+            # and cancels the awaited coroutine, but the underlying httpx request may not respond to
+            # cancellation and the backend fusion-mlx keeps running (long-task timeout pile-up).
+            # No asyncio.shield (shield blocks the cancel signal from reaching the method, defeating the timeout).
+            # Honest documentation here: timeout does not guarantee backend termination, it only cancels the
+            # local wait; long backend tasks must rely on their own timeout.
             raw = await asyncio.wait_for(method(**resolved_params), timeout=_STEP_TIMEOUT)
         else:
             raw = method(**resolved_params)
@@ -158,18 +160,18 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
                 raw = await asyncio.wait_for(raw, timeout=_STEP_TIMEOUT)
         result = raw
     except TimeoutError:
-        logger.warning("步骤超时, 协程已取消(后端请求可能仍在跑): %s.%s", step.engine, step.method)
-        raise RuntimeError(f"步骤超时({int(_STEP_TIMEOUT)}s): {step.engine}.{step.method}")
+        logger.warning("step timed out, coroutine cancelled (backend request may still be running): %s.%s", step.engine, step.method)
+        raise RuntimeError(f"step timed out ({int(_STEP_TIMEOUT)}s): {step.engine}.{step.method}")
 
     if step.output_key:
         context[step.output_key] = result
 
-    logger.info(f"步骤完成: {step.engine}.{step.method} → {step.output_key}")
+    logger.info(f"step completed: {step.engine}.{step.method} → {step.output_key}")
     return result
 
 
 async def execute_task(task: TeachingTask) -> TaskResult:
-    """执行完整任务 — 按步骤链顺序执行。"""
+    """Executes the full task — running the step chain in order."""
     result = TaskResult(
         task_id=task.id,
         status="running",
@@ -182,19 +184,19 @@ async def execute_task(task: TeachingTask) -> TaskResult:
         for step in task.steps:
             for dep in step.depends_on:
                 if dep not in context:
-                    raise ValueError(f"步骤依赖未满足: {dep}")
+                    raise ValueError(f"step dependency not satisfied: {dep}")
 
             step_result = await execute_step(step, context)
             key = step.output_key or f"{step.engine}.{step.method}"
             if key in result.step_results:
-                logger.warning(f"步骤输出键重复: {key}，追加序号")
+                logger.warning(f"duplicate step output key: {key}, appending sequence number")
                 idx = 0
                 base = key
                 while key in result.step_results:
                     idx += 1
                     key = f"{base}_{idx}"
-            # AGT-8: 优先 to_dict; 无 to_dict 时尝试 dataclasses.asdict; 都不行才降级 str
-            # 并标记 _non_serializable, 避免历史把 dataclass 列表 str 成 "[<obj>,...]" 丢结构
+            # AGT-8: prefer to_dict; without to_dict try dataclasses.asdict; degrade to str only as last resort
+            # and mark _non_serializable, so history does not str() dataclass lists into "[<obj>,...]" losing structure
             if hasattr(step_result, "to_dict") and callable(getattr(step_result, "to_dict")):
                 result.step_results[key] = step_result.to_dict()
             else:
@@ -207,18 +209,18 @@ async def execute_task(task: TeachingTask) -> TaskResult:
                             asdict(x) if is_dataclass(x) else str(x) for x in step_result
                         ]
                     else:
-                        logger.warning("步骤结果不可序列化, 降级 str: %s", type(step_result).__name__)
+                        logger.warning("step result not serializable, degrading to str: %s", type(step_result).__name__)
                         result.step_results[key] = {"_non_serializable": str(step_result)[:500]}
                 except Exception as se:
-                    logger.warning("步骤结果序列化失败, 降级 str: %s", se)
+                    logger.warning("step result serialization failed, degrading to str: %s", se)
                     result.step_results[key] = {"_non_serializable": str(step_result)[:500]}
 
         result.status = "success"
-        result.summary = f"完成 {len(task.steps)} 步"
+        result.summary = f"completed {len(task.steps)} steps"
     except Exception as e:
         result.status = "failed"
-        result.summary = f"失败: {e}"
-        logger.error(f"任务执行失败 {task.id}: {e}", exc_info=True)
+        result.summary = f"failed: {e}"
+        logger.error(f"task execution failed {task.id}: {e}", exc_info=True)
 
     result.completed_at = datetime.now().isoformat()
 

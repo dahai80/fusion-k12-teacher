@@ -1,8 +1,8 @@
-"""DigitalHumanSession — 数字人会话。
+"""DigitalHumanSession — digital human session.
 
-聚合 FSM + BargeInBus + Memory + ContentInjector + 4 插件 + Simulation + LiveKitAdapter。
-生命周期: start() 加载讲稿并发布 idle; narrate_page(idx) TTS+Avatar 讲课;
-on_student_speech(pcm) barge-in 转人工应答; idle_timeout 释放 MLX; finish() 收尾落库。
+Aggregates FSM + BargeInBus + Memory + ContentInjector + 4 plugins + Simulation + LiveKitAdapter.
+Lifecycle: start() loads the script and publishes idle; narrate_page(idx) teaches via TTS+Avatar;
+on_student_speech(pcm) handles barge-in into QA answering; idle_timeout releases MLX; finish() finalizes and persists.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class DigitalHumanSession:
         self.code = code
         self.student_id = student_id
         self.layer = layer
-        # 会话模式: topic=自由主题 | course=按教案讲 | expand=举一反三 | qa=纯问答
+        # Session mode: topic=free topic | course=follow lesson plan | expand=variant practice | qa=pure Q&A
         self.mode = mode
         self.knowledge_node_id = knowledge_node_id
         self.idle_timeout = idle_timeout
@@ -81,7 +81,7 @@ class DigitalHumanSession:
         self._class_session_id: str | None = None
         self._bg_tasks: set[asyncio.Task[None]] = set()
         self._finished = False
-        # issue #16: 空闲超时自动 finish 回调 — 由 manager 注入 (须释放并发闸门)
+        # issue #16: idle-timeout auto-finish callback — injected by manager (must release the concurrency gate)
         self._idle_finish_cb: Callable[[], Awaitable[None]] | None = None
 
         self._wire_barge_in()
@@ -110,7 +110,7 @@ class DigitalHumanSession:
 
     def _wire_hooks(self) -> None:
         async def _on_error(reason: str) -> None:
-            logger.error("session[%s]: 进入 ERROR reason=%s", self.session_id, reason)
+            logger.error("session[%s]: entering ERROR reason=%s", self.session_id, reason)
             await self.livekit.publish_state("error", reason)
 
         async def _on_enter_idle(reason: str) -> None:
@@ -144,10 +144,10 @@ class DigitalHumanSession:
                 cs = self.session_manager.create_session(
                     class_id=self.code, code=self.code, student_id=self.student_id or "dh")
                 self._class_session_id = cs.session_id
-                logger.info("session[%s]: 落库课堂会话 %s", self.session_id, self._class_session_id)
+                logger.info("session[%s]: classroom session persisted %s", self.session_id, self._class_session_id)
             except Exception as exc:
-                logger.warning("session[%s]: 课堂会话落库失败 %s", self.session_id, exc)
-        logger.info("session[%s]: 启动 段数=%d idle帧=%d", self.session_id, len(self.segments), len(idle))
+                logger.warning("session[%s]: classroom session persist failed %s", self.session_id, exc)
+        logger.info("session[%s]: started segments=%d idle_frames=%d", self.session_id, len(self.segments), len(idle))
         self._idle_task = asyncio.create_task(self._idle_watchdog())
         return len(self.segments)
 
@@ -178,8 +178,8 @@ class DigitalHumanSession:
                 try:
                     self.session_manager.record_page_view(self._class_session_id, idx)
                 except Exception as exc:
-                    logger.warning("session[%s]: 记录翻页失败 %s", self.session_id, exc)
-            logger.info("session[%s]: 讲解 %d frames=%d pcm=%d", self.session_id, idx, len(frames), len(pcm))
+                    logger.warning("session[%s]: record page view failed %s", self.session_id, exc)
+            logger.info("session[%s]: narrate %d frames=%d pcm=%d", self.session_id, idx, len(frames), len(pcm))
             await self.fsm.transition(SessionState.IDLE, reason="narrate_done")
             self._narrate_task = None
             return {"idx": idx, "emotion": tag, "text": clean, "frames": len(frames),
@@ -187,11 +187,11 @@ class DigitalHumanSession:
                     "checkpoint": seg.checkpoint, "question": seg.question,
                     "title": seg.title, "phase": seg.phase}
         except asyncio.CancelledError:
-            logger.info("session[%s]: 讲解 %d 被中断", self.session_id, idx)
+            logger.info("session[%s]: narrate %d interrupted", self.session_id, idx)
             await self.fsm.transition(SessionState.IDLE, reason="narrate_cancelled")
             raise
         except Exception as exc:
-            logger.error("session[%s]: 讲解 %d 异常 %s", self.session_id, idx, exc)
+            logger.error("session[%s]: narrate %d error %s", self.session_id, idx, exc)
             await self.fsm.transition(SessionState.ERROR, reason=str(exc))
             return {"error": str(exc), "idx": idx}
 
@@ -209,7 +209,7 @@ class DigitalHumanSession:
             return None
 
     def _on_livekit_data(self, data: bytes, topic: str) -> None:
-        # DataChannel 学生事件: raise_hand (JSON) / mic pcm (binary, topic=lk.mic)
+        # DataChannel student events: raise_hand (JSON) / mic pcm (binary, topic=lk.mic)
         if topic == "lk.mic":
             self._track_bg(asyncio.create_task(self.on_student_speech(data)))
         else:
@@ -219,16 +219,16 @@ class DigitalHumanSession:
                 if msg.get("action") == "raise_hand":
                     self._track_bg(asyncio.create_task(self.raise_hand(msg.get("text", ""))))
             except Exception as exc:
-                logger.warning("session[%s]: livekit data 解析失败 %s", self.session_id, exc)
+                logger.warning("session[%s]: livekit data parse failed %s", self.session_id, exc)
 
     async def _publish_media(self, frames: list[bytes], pcm: bytes) -> None:
-        # LiveKit 轨发布: 音频一次性 (24kHz PCM), 视频按 25fps 节奏解码 JPEG→BGR→RGBA。
-        # WS 降级时 (livekit._room None) 跳过, 音频仍走 WS binary (serve.py)。
-        # _speaking=False 时立即中止 (barge-in 触发)。
+        # LiveKit track publishing: audio in one shot (24kHz PCM), video decoded JPEG→BGR→RGBA at a 25fps pace.
+        # Skipped on WS degradation (livekit._room None); audio still goes over WS binary (serve.py).
+        # Aborts immediately when _speaking=False (barge-in triggered).
         if self.livekit is None or self.livekit._room is None:
             return
         if not self._speaking:
-            logger.debug("session[%s]: _publish_media 跳过 (barge-in)", self.session_id)
+            logger.debug("session[%s]: _publish_media skipped (barge-in)", self.session_id)
             return
         if pcm:
             await self.livekit.publish_audio_pcm(pcm)
@@ -247,7 +247,7 @@ class DigitalHumanSession:
                 if i < len(frames) - 1:
                     await asyncio.sleep(frame_interval)
         except Exception as exc:
-            logger.warning("session[%s]: LiveKit 媒体发布异常 %s", self.session_id, exc)
+            logger.warning("session[%s]: LiveKit media publish error %s", self.session_id, exc)
 
     async def on_student_speech(self, pcm: bytes) -> dict[str, Any]:
         self._last_active = time.monotonic()
@@ -283,8 +283,9 @@ class DigitalHumanSession:
         if not text and not image_b64:
             await self.fsm.transition(SessionState.IDLE, reason="empty_hand")
             return {"error": "empty_text"}
-        # 图片提问 (模式3): 有图先走 VLM 看图 → 描述并入问题文本 (失败降级纯文字)
+        # Image question (mode 3): with an image, run VLM first → merge the description into the question text (degrade to text-only on failure)
         if image_b64 and self.llm is not None and hasattr(self.llm, "describe_image"):
+            # i18n: user-facing (LLM prompt text, Chinese teaching content)
             desc = await self.llm.describe_image(image_b64, text)
             if desc:
                 text = f"{text}（学生上传了图片，图片内容: {desc}）" if text else f"请讲解图片中的题目: {desc}"
@@ -303,6 +304,7 @@ class DigitalHumanSession:
             await self.fsm.transition(SessionState.AI_SPEAKING, reason="qa_stream")
             self._speaking = True
             buf = ""
+            # i18n: user-facing (Chinese sentence-end punctuation for streaming TTS split)
             sentence_ends = set("。！？!?；")
             async for tok in self.llm.stream(self.memory.build_messages()):
                 if self._closed or not self._speaking:
@@ -348,6 +350,7 @@ class DigitalHumanSession:
                 s_frames = self.avatar.cached_frames(s_clean) if self.avatar else []
                 await self._publish_media(s_frames, s_pcm)
         else:
+            # i18n: user-facing (spoken fallback answer to the student)
             answer_parts.append("我还需要想想这个问题。")
             clean, tag = self.emotion.strip("".join(answer_parts))
             if self.tts is not None and self.tts.available:
@@ -366,11 +369,11 @@ class DigitalHumanSession:
             try:
                 self.session_manager.record_question(self._class_session_id)
             except Exception as exc:
-                logger.warning("session[%s]: 记录提问失败 %s", self.session_id, exc)
+                logger.warning("session[%s]: record question failed %s", self.session_id, exc)
         await self.fsm.transition(SessionState.IDLE, reason="qa_done")
-        logger.info("session[%s]: 答疑 q=%s answer=%d字 pcm=%d", self.session_id, text[:20], len(clean), len(total_pcm))
-        # 场景动画不在答疑链路同步生成 (LLM 提取耗时分钟级, 会拖慢语音答复) —
-        # 前端拿到答案后异步调 /api/course/{subject}/scene-compile 加载动画
+        logger.info("session[%s]: qa q=%s answer=%d chars pcm=%d", self.session_id, text[:20], len(clean), len(total_pcm))
+        # Scene animation is not generated synchronously in the QA path (LLM extraction takes minutes, would lag the voice answer) —
+        # the frontend calls /api/course/{subject}/scene-compile asynchronously after receiving the answer to load the animation
         return {"question": text, "answer": clean, "emotion": tag,
                 "has_audio": bool(total_pcm), "audio_len": len(total_pcm)}
 
@@ -380,28 +383,28 @@ class DigitalHumanSession:
             if self._closed:
                 break
             if time.monotonic() - self._last_active > self.idle_timeout:
-                logger.info("session[%s]: 空闲超时, 释放 MLX 资源", self.session_id)
+                logger.info("session[%s]: idle timeout, releasing MLX resources", self.session_id)
                 await self._release_mlx()
                 self._last_active = time.monotonic()
-                # issue #16: 自动结束会话并释放并发闸门, 防僵尸会话永久占用配额
+                # issue #16: auto-finish the session and release the concurrency gate, preventing zombie sessions from holding quota forever
                 cb = self._idle_finish_cb
                 if cb is not None:
                     try:
                         await cb()
                     except Exception as exc:
-                        logger.warning("session[%s]: 空闲自动 finish 失败 %s", self.session_id, exc)
+                        logger.warning("session[%s]: idle auto-finish failed %s", self.session_id, exc)
                     return
 
     async def _release_mlx(self) -> None:
         try:
             import mlx.core as mx
             mx.clear_cache()
-            logger.debug("session[%s]: mx.clear_cache 完成", self.session_id)
+            logger.debug("session[%s]: mx.clear_cache done", self.session_id)
         except Exception:
             pass
 
     async def finish(self) -> dict[str, Any]:
-        # issue #16: 幂等 — watchdog 自动 finish 与显式 finish 可能并发/先后触发
+        # issue #16: idempotent — watchdog auto-finish and explicit finish may trigger concurrently/in sequence
         if self._finished:
             return {"session_id": self.session_id, "finished": True,
                     "class_session_id": self._class_session_id}
@@ -415,14 +418,14 @@ class DigitalHumanSession:
                 try:
                     await p.close()
                 except Exception as exc:
-                    logger.warning("session[%s]: 插件 close 异常 %s", self.session_id, exc)
+                    logger.warning("session[%s]: plugin close error %s", self.session_id, exc)
         if self._class_session_id and self.session_manager is not None:
             try:
                 self.session_manager.finish_session(self._class_session_id, abandoned=False)
             except Exception as exc:
-                logger.warning("session[%s]: 课堂会话结束落库失败 %s", self.session_id, exc)
+                logger.warning("session[%s]: classroom session finish persist failed %s", self.session_id, exc)
         await self.livekit.aclose()
-        logger.info("session[%s]: 结束", self.session_id)
+        logger.info("session[%s]: finished", self.session_id)
         return {"session_id": self.session_id, "finished": True,
                 "class_session_id": self._class_session_id}
 

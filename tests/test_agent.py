@@ -125,10 +125,9 @@ class TestExecuteStep:
             registry._engines.pop("curriculum", None)
 
     def test_execute_step_missing_engine(self):
-        # i18n: user-facing (asserts Chinese error text produced by agent/executor.py, owned outside this batch)
         step = TaskStep(engine="_missing", method="foo", params={}, output_key="out")
         context = {}
-        with pytest.raises(ValueError, match="引擎未注册"):
+        with pytest.raises(ValueError, match="engine not registered"):
             asyncio.run(execute_step(step, context))
 
 
