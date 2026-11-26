@@ -25,6 +25,8 @@ jobs:
           cache-dependency-path: pyproject.toml
       - run: pip install ruff
       - run: ruff check .
+      - name: No-docstring convention gate (refs dahai80/fusion#9)
+        run: python ci/check_docstrings.py
 
   # P2: offline 套件 — mock 全覆盖, CI (ubuntu, 无 fusion-mlx) 可跑。
   # live 套件 (test_core 真实 LLM) 标 @pytest.mark.live, 默认 skip,

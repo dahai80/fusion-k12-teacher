@@ -1,8 +1,7 @@
-"""BNUP grades 1-6 end-to-end eval — real model inference + four-dimension evaluation.
-
-Validates: whether all textbook/misconception questions produce correct solution steps and answers.
-Usage: python scripts/e2e_bnup_eval.py [--max N] [--category in_domain]
-"""
+# BNUP grades 1-6 end-to-end eval — real model inference + four-dimension evaluation.
+#
+# Validates: whether all textbook/misconception questions produce correct solution steps and answers.
+# Usage: python scripts/e2e_bnup_eval.py [--max N] [--category in_domain]
 
 from __future__ import annotations
 

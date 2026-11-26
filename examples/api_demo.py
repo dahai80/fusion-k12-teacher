@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Example: using fusion-k12-teacher over the HTTP API.
-
-P1-18: aligned with real routes (/curriculum/plan etc.) + X-API-Key auth + actual request fields.
-Set FUSION_K12_API_KEY before starting serve; this script reads the same env and attaches the header automatically.
-"""
+# Example: using fusion-k12-teacher over the HTTP API.
+#
+# P1-18: aligned with real routes (/curriculum/plan etc.) + X-API-Key auth + actual request fields.
+# Set FUSION_K12_API_KEY before starting serve; this script reads the same env and attaches the header automatically.
 import json
 import logging
 import os
