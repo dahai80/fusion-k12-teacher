@@ -1,7 +1,9 @@
-"""Barge-in 事件总线 — TLive-Omni pattern 2。
+"""Barge-in event bus — TLive-Omni pattern 2.
 
-统一管理所有插件 abort 与 Task 生命周期。单次广播, 不散落各插件中断代码。
-fire(reason) 遍历注册插件 -> cancel_fn (abort asyncio task) + clear_fn (丢弃队列帧/PCM)。
+Centrally manages all plugin aborts and Task lifecycles. One broadcast, instead
+of interrupt code scattered across plugins.
+fire(reason) iterates registered plugins -> cancel_fn (abort asyncio task) +
+clear_fn (drop queued frames/PCM).
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ class BargeInBus:
         clear_fn: Callable[[], None] | None = None,
     ) -> None:
         self._plugins[name] = {"cancel": cancel_fn, "clear": clear_fn}
-        logger.debug("barge_in[%s]: 注册插件 %s", self.session_id, name)
+        logger.debug("barge_in[%s]: registered plugin %s", self.session_id, name)
 
     def unregister(self, name: str) -> None:
         self._plugins.pop(name, None)
@@ -45,12 +47,12 @@ class BargeInBus:
                     if asyncio.iscoroutine(res):
                         await res
                 except Exception as exc:
-                    logger.error("barge_in[%s]: 插件 %s cancel 异常: %s", self.session_id, name, exc)
+                    logger.error("barge_in[%s]: plugin %s cancel exception: %s", self.session_id, name, exc)
                 if entry.get("clear") is not None:
                     try:
                         entry["clear"]()
                     except Exception as exc:
-                        logger.error("barge_in[%s]: 插件 %s clear 异常: %s", self.session_id, name, exc)
+                        logger.error("barge_in[%s]: plugin %s clear exception: %s", self.session_id, name, exc)
             for task in list(self._tasks):
                 if not task.done():
                     task.cancel()

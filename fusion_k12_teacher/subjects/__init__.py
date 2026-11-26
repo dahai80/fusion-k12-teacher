@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher 学科知识库模块。"""
+"""Fusion-K12-Teacher subject knowledge-base module."""
 
 from .expert import SubjectExercise, SubjectExpert
 

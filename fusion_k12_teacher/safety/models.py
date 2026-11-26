@@ -1,4 +1,4 @@
-"""安全模块数据模型。"""
+"""Safety module data models."""
 
 from __future__ import annotations
 
@@ -8,9 +8,11 @@ from typing import Any
 
 from .._coerce import coerce_str, coerce_str_list
 
-# SEC-7/SEC-8: 统一分隔符绕过字符类。
-# 之前 wordlist/age_checker/filter 三处正则分叉, filter 漏 BOM, 三处均漏
-# 逗号/分号/冒号/感叹号/软连字符/全角/破折号, "杀,人" "杀;人" 可绕过敏感词检测。
+# SEC-7/SEC-8: unified separator bypass character class.
+# Previously wordlist/age_checker/filter had three divergent regexes; filter missed BOM, and all
+# three missed comma/semicolon/colon/exclamation/soft hyphen/full-width/dashes —
+# i18n: user-facing
+# e.g. "杀,人" "杀;人" could bypass sensitive-word detection.
 BYPASS_SEPARATORS = (
     r"\s"
     r"﻿"      # BOM
@@ -19,20 +21,20 @@ BYPASS_SEPARATORS = (
     r"‍"      # ZWJ
     r"⁠"      # WJ
     r"­"      # soft hyphen
-    r".．。、・"     # 点号 + 中式逗号 + 中点
-    r"\-–—−"       # 连字符/破折号
+    r".．。、・"     # dot + ideographic comma + middle dot
+    r"\-–—−"       # hyphen/dash variants
     r"_/|"
-    r",;:!，；：！"  # 标点分隔符 (半角 + 全角)
+    r",;:!，；：！"  # punctuation separators (half-width + full-width)
 )
-# 单分隔符: wordlist/age_checker 归一化用
+# Single separator: used by wordlist/age_checker normalization
 BYPASS_RE = re.compile(f"[{BYPASS_SEPARATORS}]")
-# 词间分隔符 (0..N): filter._bypass_pattern 用
+# Between-word separator (0..N): used by filter._bypass_pattern
 BYPASS_CLASS = f"[{BYPASS_SEPARATORS}]*"
 
 
 @dataclass
 class ContentCheckResult:
-    """内容检查结果。"""
+    """Content check result."""
 
     is_safe: bool = True
     risk_level: str = "safe"
@@ -69,12 +71,13 @@ class ContentCheckResult:
 
 @dataclass
 class AgeRating:
-    """适龄等级配置。"""
+    """Age rating configuration."""
 
     grade: str = ""
     max_abstraction: str = "concrete"
     allowed_topics: list[str] = field(default_factory=list)
     restricted_topics: list[str] = field(default_factory=list)
+    # i18n: user-facing
     vocabulary_level: str = "基础"
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,7 +92,7 @@ class AgeRating:
 
 @dataclass
 class FilterLevel:
-    """过滤等级配置。"""
+    """Filter level configuration."""
 
     level: str = "standard"
     sensitive_words: bool = True

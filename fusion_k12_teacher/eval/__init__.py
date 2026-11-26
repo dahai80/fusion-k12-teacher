@@ -1,12 +1,15 @@
-"""BNUP 评估 harness — 四维指标/前后对比/SxS 裁判 (issues #23 #24)。
+"""BNUP evaluation harness — four-dimension metrics / before-after comparison /
+SxS judge (issues #23 #24).
 
-模块:
-  eval_harness.BNUPEvaluator — 四维指标自动化评估 (tag/json/schema/eval/math)
-  compare_models.ModelComparator — baseline vs fine-tuned 前后对比
-  sxs_judge.SxSJudge — 双盲 LLM 裁判 (苏格拉底教学质量)
+Modules:
+  eval_harness.BNUPEvaluator — automated four-dimension metric evaluation
+  (tag/json/schema/eval/math)
+  compare_models.ModelComparator — baseline vs fine-tuned before/after comparison
+  sxs_judge.SxSJudge — double-blind LLM judge (Socratic teaching quality)
 
-数据:
-  data/bnup_benchmark.json — 300-500 题域内/域外/对抗测试集
+Data:
+  data/bnup_benchmark.json — 300-500 question in-domain/out-of-domain/adversarial
+  test set
 """
 
 from __future__ import annotations

@@ -1,1 +1,1 @@
-"""Fusion-K12-Teacher 测试。"""
+"""Fusion-K12-Teacher tests."""

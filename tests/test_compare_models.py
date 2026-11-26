@@ -1,4 +1,4 @@
-"""ModelComparator 前后对比测试 — issue #23 A4。"""
+"""ModelComparator before/after comparison tests — issue #23 A4."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from fusion_k12_teacher.eval.compare_models import (
     ModelStats,
 )
 
+# i18n: user-facing
 VALID_DSL = """<thinking>火车过桥: (800+200)/20=50</thinking>
 <dsl>
 {
@@ -27,6 +28,7 @@ VALID_DSL = """<thinking>火车过桥: (800+200)/20=50</thinking>
 }
 </dsl>"""
 
+# i18n: user-facing
 BAD_DSL = "<thinking>不会做</thinking>"
 
 
@@ -47,6 +49,7 @@ class MockMLX:
 
 
 def _make_testset(tmp_path: Path, count: int = 4) -> str:
+    # i18n: user-facing
     items = [
         {"id": f"s{i+1}", "question": f"火车过桥问题 {i+1}", "ground_truth": 50.0}
         for i in range(count)
@@ -95,6 +98,7 @@ class TestModelComparator:
         comp = ModelComparator(mlx, "base-model", "ft-model")
         report = await comp.run_comparison(testset)
         s = report.summary_str()
+        # i18n: user-facing
         assert "基座" in s
         assert "增训" in s
         assert "Delta" in s

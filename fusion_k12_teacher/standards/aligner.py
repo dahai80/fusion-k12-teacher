@@ -4,7 +4,7 @@ import logging
 import os
 
 from ..safety.filter import sanitize_input
-from ._cjk import _cjk_tokens, _word_match  # E4: 单一 CJK 实现, 不再各抄一份
+from ._cjk import _cjk_tokens, _word_match  # E4: single CJK implementation, no more per-file copies
 from .models import AlignmentContext
 from .query import StandardsQuery
 
@@ -12,36 +12,39 @@ logger = logging.getLogger(__name__)
 
 
 class StandardsAligner:
-    """课标对齐器 — 生成内容时自动注入课标上下文。"""
+    """Curriculum standards aligner — auto-injects standards context during content generation."""
 
     def __init__(self, query: StandardsQuery | None = None):
         self._query = query or StandardsQuery()
-        # A7: 按 (subject,grade,topic) 缓存 AlignmentContext — 单主题 lesson+quiz+worksheet
-        # 生成时 align() 对同三元组重复计算 3 次, 课标数据不变时缓存命中免重复扫描。
-        # P3: 缓存加上限 — 主题集实际有界, 但防异常输入(随机 topic)撑爆内存, 超 _MAX_CACHE 驱逐最旧。
+        # A7: cache AlignmentContext by (subject,grade,topic) — a single-topic lesson+quiz+worksheet
+        # generation calls align() 3 times on the same triple; with unchanged standards data the
+        # cache hit skips the repeated scan.
+        # P3: bounded cache — the topic set is bounded in practice, but this guards against abnormal
+        # input (random topics) blowing up memory; evicts oldest beyond _max_cache.
         self._cache: dict[tuple[str, str, str], AlignmentContext] = {}
         self._max_cache = int(os.environ.get("FUSION_K12_ALIGN_CACHE_MAX", "500"))
 
     def align(
         self, subject: str, grade: str, topic: str
     ) -> AlignmentContext:
-        """返回课标对齐上下文，注入到 engine prompt。"""
+        """Returns the standards alignment context, injected into engine prompts."""
         cache_key = (subject, grade, topic)
-        # A7: 命中缓存直接返回, 跳过 find_by_topic + fallback + 前置计算
+        # A7: return directly on cache hit, skipping find_by_topic + fallback + prerequisite computation
         cached = self._cache.get(cache_key)
         if cached is not None:
-            logger.debug(f"课标对齐缓存命中: {subject}/{grade}/{topic}")
+            logger.debug(f"standards alignment cache hit: {subject}/{grade}/{topic}")
             return cached
         points = self._query.find_by_topic(subject, grade, topic)
 
         if not points:
-            logger.info(f"课标未命中: {subject}/{grade}/{topic}，尝试宽泛匹配")
+            logger.info(f"standards miss: {subject}/{grade}/{topic}, trying broad match")
             all_points = self._query.get_knowledge_points(subject, grade)
             topic_lower = topic.lower()
             for kp in all_points:
-                # A10: fallback 复用 query._word_match — 与 find_by_topic 主路径一致,
-                # 杜绝裸子串重新引入"加"命中"加权/参加"过度命中 (STD-3 修复在 fallback 回归)。
-                # topic 字段子串 + description 整词命中, 与 find_by_topic L107 同策略。
+                # A10: fallback reuses query._word_match — consistent with the find_by_topic main path,
+                # so bare substring matching cannot re-introduce over-matching like "加" hitting
+                # "加权/参加" (the STD-3 fix regressing in the fallback).
+                # topic field substring + description whole-word hit, same strategy as find_by_topic L107.
                 if topic_lower in kp.topic.lower() or _word_match(topic_lower, kp.description.lower()):
                     points.append(kp)
 
@@ -66,22 +69,24 @@ class StandardsAligner:
         )
 
         logger.info(
-            f"课标对齐: {subject}/{grade}/{topic} → "
-            f"{len(points)} 知识点, {len(must_cover)} 必修, {len(optional_advanced)} 拓展"
+            f"standards alignment: {subject}/{grade}/{topic} → "
+            f"{len(points)} knowledge points, {len(must_cover)} basic, {len(optional_advanced)} advanced"
         )
-        # A7: 入缓存, 后续同三元组命中免重复计算
-        # P3: 超 _max_cache 驱逐最旧条目 (dict 保插入序, 弹首项), 防 random-topic 撑爆内存
+        # A7: store into cache, later hits on the same triple skip recomputation
+        # P3: evict the oldest entry beyond _max_cache (dict keeps insertion order, pop first item),
+        # preventing random topics from blowing up memory
         if len(self._cache) >= self._max_cache and cache_key not in self._cache:
             self._cache.pop(next(iter(self._cache)), None)
         self._cache[cache_key] = ctx
         return ctx
 
     def build_prompt_context(self, alignment: AlignmentContext) -> str:
-        """将 AlignmentContext 转为可注入 prompt 的文本。"""
+        """Converts an AlignmentContext into text injectable into prompts."""
         if not alignment.knowledge_points:
             return ""
 
-        # ENG-11: 课标文件可被篡改, topic/description/code 进 prompt 前脱敏防注入
+        # i18n: user-facing (Chinese prompt text injected into engine LLM prompts)
+        # ENG-11: standards files can be tampered with; topic/description/code are sanitized before entering the prompt to prevent injection
         lines = ["【课标对齐要求】"]
 
         if alignment.curriculum_codes:
@@ -112,19 +117,20 @@ class StandardsAligner:
     def validate_alignment(
         self, subject: str, grade: str, generated_objectives: list
     ) -> dict:
-        """验证生成内容是否覆盖课标必修(basic)知识点 — CJK 整词命中 (STD-7/E5)。"""
+        """Validates whether generated content covers the standards' basic knowledge points — CJK whole-word matching (STD-7/E5)."""
         all_points = self._query.get_knowledge_points(subject, grade)
         must_cover = [kp for kp in all_points if kp.difficulty_level == "basic"]
 
         if not must_cover:
-            logger.info(f"对齐验证: {subject}/{grade} 无必修知识点，视为已对齐")
+            logger.info(f"alignment validation: {subject}/{grade} has no basic knowledge points, treated as aligned")
             return {"aligned": True, "coverage": 1.0, "missing": []}
 
         covered = []
         missing = []
-        # E5: 在原始 objectives 文本上匹配, 不再 bigram-join 成 obj_blob。
-        # 原实现把 bigram 列表用空格拼成 blob, bigram 间被空格隔断,
-        # 3 字及以上 CJK 主题(如"加权法")永不子串命中, 必修知识点覆盖被静默低估。
+        # E5: match on the raw objectives text, no longer bigram-joining into an obj_blob.
+        # The old implementation joined the bigram list with spaces into a blob; bigrams were
+        # separated by spaces, so 3+ char CJK topics (like "加权法") never substring-matched,
+        # silently under-counting basic knowledge point coverage.
         obj_texts = [str(o).lower() for o in generated_objectives]
         obj_token_sets = [set(_cjk_tokens(o)) for o in obj_texts]
 
@@ -133,11 +139,11 @@ class StandardsAligner:
             kp_desc_lower = kp.description.lower()
             is_covered = False
             for obj_text, obj_set in zip(obj_texts, obj_token_sets):
-                # topic 走原始文本子串(教学目标常含完整主题名, 多字 CJK 不被空格截断)
+                # topic matches as raw-text substring (objectives usually contain the full topic name, multi-char CJK not split by spaces)
                 if kp_topic_lower and kp_topic_lower in obj_text:
                     is_covered = True
                     break
-                # description 走 bigram 整词命中 — 至少 1 个 kp_desc bigram 落在 obj token 集内
+                # description matches as bigram whole words — at least 1 kp_desc bigram lands in the obj token set
                 if kp_desc_lower and any(tok in obj_set for tok in _cjk_tokens(kp_desc_lower)):
                     is_covered = True
                     break
@@ -149,7 +155,7 @@ class StandardsAligner:
         total = len(must_cover)
         coverage = len(covered) / total if total > 0 else 1.0
 
-        logger.info(f"对齐验证: 覆盖 {len(covered)}/{total} 必修知识点")
+        logger.info(f"alignment validation: covered {len(covered)}/{total} basic knowledge points")
         return {
             "aligned": len(missing) == 0,
             "coverage": coverage,

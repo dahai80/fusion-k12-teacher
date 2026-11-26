@@ -14,13 +14,13 @@ from .password import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 
-_TOKEN_TTL = 7 * 24 * 3600  # 7 天
+_TOKEN_TTL = 7 * 24 * 3600  # 7 days
 
 
 def _auth_secret() -> bytes:
     raw = os.environ.get("FUSION_K12_AUTH_SECRET", "")
     if not raw:
-        # 未配独立密钥: 从 api key 派生 (同进程一致, 重启稳定)。
+        # No dedicated secret configured: derive from the api key (consistent within a process, stable across restarts).
         raw = "fusion-k12-auth::" + os.environ.get("FUSION_K12_API_KEY", "fallback")
     return hashlib.sha256(raw.encode("utf-8")).digest()
 
@@ -30,10 +30,10 @@ class AuthError(Exception):
 
 
 class AuthService:
-    """教师身份服务 — 注册/登录/令牌验证。
+    """Teacher identity service — register/login/token verification.
 
-    token = base64(teacher_id|expiry|hmac) — HMAC 校验防伪造, expiry 防过期。
-    session 行同步落 sessions 表 (可主动注销/可重启校验)。
+    token = base64(teacher_id|expiry|hmac) — HMAC verification prevents forgery, expiry prevents staleness.
+    The session row is written synchronously to the sessions table (supports explicit logout / restart-safe verification).
     """
 
     def __init__(self, repo: Repository):
@@ -50,12 +50,12 @@ class AuthService:
     ) -> TeacherProfile:
         username = (username or "").strip()
         if not username or not password:
-            raise AuthError("用户名和密码不能为空")
+            raise AuthError("username and password are required")
         if len(password) < 6:
-            raise AuthError("密码至少 6 位")
+            raise AuthError("password must be at least 6 characters")
         existing = self._repo.get_teacher_by_username(username)
         if existing:
-            raise AuthError("用户名已存在")
+            raise AuthError("username already exists")
         teacher_id = "t_" + uuid.uuid4().hex[:12]
         now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         record = {
@@ -69,7 +69,7 @@ class AuthService:
             "created_at": now,
         }
         self._repo.create_teacher(record)
-        logger.info("教师注册成功: id=%s username=%s", teacher_id, username)
+        logger.info("teacher registered: id=%s username=%s", teacher_id, username)
         return TeacherProfile(
             id=teacher_id, username=username, name=name, school=school,
             region=region, default_edition=default_edition, created_at=now,
@@ -79,12 +79,12 @@ class AuthService:
         username = (username or "").strip()
         record = self._repo.get_teacher_by_username(username)
         if not record or not verify_password(password, record.get("password_hash", "")):
-            raise AuthError("用户名或密码错误")
+            raise AuthError("invalid username or password")
         teacher = TeacherProfile.from_dict(record)
         token = self._make_token(teacher.id)
         expires_at = time.time() + _TOKEN_TTL
         self._repo.create_session(token, teacher.id, expires_at)
-        logger.info("教师登录: id=%s username=%s", teacher.id, username)
+        logger.info("teacher login: id=%s username=%s", teacher.id, username)
         return token, teacher
 
     def _make_token(self, teacher_id: str) -> str:
@@ -106,7 +106,7 @@ class AuthService:
             payload = f"{teacher_id}|{expiry_str}"
             expected = hmac.new(_auth_secret(), payload.encode("utf-8"), hashlib.sha256).hexdigest()
             if not hmac.compare_digest(sig, expected):
-                logger.warning("token HMAC 校验失败: teacher=%s", teacher_id)
+                logger.warning("token HMAC verification failed: teacher=%s", teacher_id)
                 return None
             if int(expiry_str) < time.time():
                 return None
@@ -115,7 +115,7 @@ class AuthService:
                 return None
             return teacher_id
         except Exception as e:
-            logger.warning("token 解析失败: %s", e)
+            logger.warning("token parsing failed: %s", e)
             return None
 
     def get_teacher(self, teacher_id: str) -> TeacherProfile | None:

@@ -1,4 +1,4 @@
-"""M2-T12 缓存后端测试 — LocalCache 行为 + get_cache 工厂。"""
+"""M2-T12 cache backend tests — LocalCache behavior + get_cache factory."""
 
 from __future__ import annotations
 
@@ -26,17 +26,17 @@ async def test_local_cache_missing():
 @pytest.mark.asyncio
 async def test_local_cache_ttl_expire():
     c = LC()
-    await c.set("k", "v")  # ttl=0 永久
+    await c.set("k", "v")  # ttl=0 persists forever
     assert await c.get("k") == "v"
     await c.expire("k", ttl=10)
-    assert await c.get("k") == "v"  # 续期后仍存在
+    assert await c.get("k") == "v"  # still present after renewal
 
 
 @pytest.mark.asyncio
 async def test_local_cache_ttl_actually_expires():
     c = LC()
     await c.set("k", "v", ttl=0)
-    await c.expire("k", ttl=0)  # ttl=0 → 立即过期
+    await c.expire("k", ttl=0)  # ttl=0 -> expires immediately
     assert await c.get("k") is None
 
 
@@ -70,7 +70,7 @@ async def test_local_cache_lru_evict():
     c = LC(max_entries=2)
     await c.set("a", "1")
     await c.set("b", "2")
-    await c.set("c", "3")  # 驱逐 a
+    await c.set("c", "3")  # evicts a
     assert await c.get("a") is None
     assert await c.get("c") == "3"
 

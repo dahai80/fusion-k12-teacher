@@ -1,8 +1,8 @@
-"""BNUP 前后对比 runner — baseline vs fine-tuned (PRD §570-768, issue #23 A4)。
+"""BNUP before/after comparison runner — baseline vs fine-tuned (PRD §570-768, issue #23 A4).
 
-通过 MLXClient HTTP 调用两个模型 (同一 gateway), 严格控制变量:
-temp=0.1, max_tokens=2048, 相同 system prompt + user query。
-逐题评估 4 维指标 + TPS, 输出 Δ 对比表。
+Calls both models via MLXClient HTTP (same gateway), strictly controlling variables:
+temp=0.1, max_tokens=2048, identical system prompt + user query.
+Per-question evaluation of 4-dimension metrics + TPS, outputs a Δ comparison table.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ CONTROLLED_MAX_TOKENS = 2048
 CONTROLLED_TOP_P = 0.95
 CONTROLLED_SEED = 42
 
+# i18n: user-facing (LLM system prompt, Chinese teaching product)
 _DEFAULT_SYSTEM_PROMPT = (
     "你是一名北师大版 K-12 数学苏格拉底讲师。"
     "请分析题目, 先在 <thinking> 标签内输出思考链, "
@@ -104,6 +105,7 @@ class ComparisonReport:
         }
 
     def summary_str(self) -> str:
+        # i18n: user-facing (Chinese BNUP acceptance comparison report)
         b, f = self.baseline, self.finetuned
         lines = [
             "",
@@ -131,10 +133,10 @@ class ComparisonReport:
 
 
 class ModelComparator:
-    """前后对比 runner (PRD §616-768)。
+    """Before/after comparison runner (PRD §616-768).
 
-    同一 MLXClient, 两个 model 名 (baseline / fine-tuned)。
-    逐题推理 + 评估 + 统计 Δ。
+    One MLXClient, two model names (baseline / fine-tuned).
+    Per-question inference + evaluation + Δ statistics.
     """
 
     def __init__(

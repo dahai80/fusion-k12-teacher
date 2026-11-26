@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher 评估模块。"""
+"""Fusion-K12-Teacher assessment module."""
 
 from .grader import AssessmentEngine, GradingResult, StudentReport
 

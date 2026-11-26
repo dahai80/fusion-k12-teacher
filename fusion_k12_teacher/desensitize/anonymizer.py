@@ -10,45 +10,45 @@ from .models import AnonymizeResult, DesensitizeConfig
 logger = logging.getLogger(__name__)
 
 _SALT_ENV = "FUSION_K12_SALT"
-# A4: salt 文件路径可跨节点统一指向共享挂载点 (env 覆盖), 非每节点本地随机。
+# A4: salt file path can uniformly point to a shared mount across nodes (env override), not per-node local random.
 _SALT_FILE_ENV = "FUSION_K12_SALT_FILE"
 _SALT_FILE = os.environ.get(_SALT_FILE_ENV, os.path.expanduser("~/.fusion-k12/salt"))
 
 
 def _hash_id(name: str, salt: str, prefix: str) -> str:
-    # SEC-3: 截断 8 hex(32bit)→16 hex(64bit), 降低碰撞与爆破
+    # SEC-3: truncated 8 hex (32bit) -> 16 hex (64bit), reduces collisions and brute force
     digest = hashlib.sha256(f"{salt}:{name}".encode()).hexdigest()
     return f"{prefix}{digest[:16]}"
 
 
 def _mask_phone(value: str, salt: str, mask_char: str) -> str:
-    # SEC-16: 末 4 位在小规模学校常唯一, 可再识别; 改全值 keyed 哈希, 不保留任何明文位
+    # SEC-16: last 4 digits are often unique in small schools, re-identifiable; switched to full-value keyed hash, no plaintext bits kept
     digest = hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
     return f"PH{digest[:10]}"
 
 
 def _mask_email(value: str, salt: str, mask_char: str) -> str:
-    # SEC-4: email 走 keyed 哈希(带 salt), 与姓名/id 路径一致, 不泄露域名
+    # SEC-4: email uses keyed hash (with salt), consistent with name/id path, no domain leak
     digest = hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
     return f"{mask_char * 3}@{digest[:8]}.invalid"
 
 
 def _mask_id_number(value: str, salt: str, mask_char: str) -> str:
-    # SEC-21: 全长 HMAC 不截断 — 身份证结构强(地域6+生辰8+序3+校1),
-    # 截断 10 hex(40bit) 在 salt 泄露后可枚举; 全长 256bit 杜绝枚举。
+    # SEC-21: full-length HMAC without truncation — ID card structure is strong (region 6 + birth 8 + order 3 + check 1),
+    # truncating to 10 hex (40bit) is enumerable after a salt leak; full 256bit rules out enumeration.
     digest = hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
     return f"ID{digest}"
 
 
 def _mask_generic(value: str, mask_char: str) -> str:
-    # SEC-3: 不保留长度, 固定掩码长度
+    # SEC-3: no length preserved, fixed mask length
     if not value:
         return value
     return mask_char * 8
 
 
 class DataAnonymizer:
-    # A5: 反匿名表持久化路径 env 覆盖 — 多节点指向共享挂载, 反匿名不随进程重启丢失。
+    # A5: deanonymization map persistence path env override — multi-node points to shared mount, so the map survives process restarts.
     _MAP_FILE_ENV = "FUSION_K12_NAME_MAP_FILE"
     _DEFAULT_MAP_FILE = os.path.expanduser("~/.fusion-k12/name_map.json")
 
@@ -58,18 +58,19 @@ class DataAnonymizer:
         map_file: str | None = None,
     ):
         self.config = config or DesensitizeConfig()
-        # M1-T7: salt 来源抽象为 SaltProvider, 替换内联 _resolve_salt。
+        # M1-T7: salt source abstracted as SaltProvider, replacing the inline _resolve_salt.
         self._salt_provider = get_salt_provider(self.config.salt)
         self.salt = self._salt_provider.get_salt()
         self._name_map: dict[str, str] = {}
         self._reverse_map: dict[str, str] = {}
-        # A5: 反匿名表持久化文件 — 显式 map_file 或 env 设置才持久化 (可逆场景)。
-        # 默认不落盘: 上传/单向脱敏 (R6) 不污染 home dir; 需反匿名持久化时显式传路径或设 env。
+        # A5: deanonymization map persistence file — persisted only with an explicit map_file or env (reversible scenario).
+        # Not written to disk by default: upload/one-way desensitization (R6) does not pollute home dir;
+        # pass a path or set the env explicitly when persistence is needed.
         self._map_file = map_file or os.environ.get(self._MAP_FILE_ENV) or None
 
     def _load_map(self) -> None:
-        # A5: 启动/反匿名前从持久化文件加载反匿名表, 重启后仍可还原。
-        # 反匿名表含 name->ID 双向, 文件须 0600 保护, 不与脱敏数据同处存放。
+        # A5: load the persisted map on startup/before deanonymization, so it survives restarts.
+        # The map holds bidirectional name->ID entries; the file must be 0600-protected and kept apart from desensitized data.
         if not self._map_file:
             return
         try:
@@ -82,14 +83,14 @@ class DataAnonymizer:
                 if isinstance(nm, dict) and isinstance(rv, dict):
                     self._name_map.update(nm)
                     self._reverse_map.update(rv)
-                    logger.info("加载反匿名表: %d 条", len(rv))
+                    logger.info("loaded deanonymization map: %d entries", len(rv))
         except FileNotFoundError:
             pass
         except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("加载反匿名表失败: %s", exc)
+            logger.warning("failed to load deanonymization map: %s", exc)
 
     def _save_map(self) -> None:
-        # A5: 反匿名表原子写盘 (tmp+os.replace), 0600 权限, 与脱敏数据生命周期绑定。
+        # A5: atomic write of the deanonymization map (tmp+os.replace), 0600 permission, lifecycle bound to the desensitized data.
         if not self._map_file:
             return
         try:
@@ -103,37 +104,38 @@ class DataAnonymizer:
                 )
             os.replace(tmp, self._map_file)
         except OSError as exc:
-            logger.warning("持久化反匿名表失败: %s", exc)
+            logger.warning("failed to persist deanonymization map: %s", exc)
 
     def anonymize_name(self, name: str, seq: str = "") -> str:
-        # SEC-15: 传入 seq(记录序号)时键含序号, 同名不同记录得到不同 ID, 避免合并串号;
-        # 不传 seq(独立调用)保持原行为。映射键用 (name, seq) 保证可逆。
+        # SEC-15: when seq (record index) is given, the key includes it so same-name records in different
+        # positions get different IDs, avoiding cross-merging; without seq (standalone call) behavior is unchanged.
+        # The map key uses (name, seq) to guarantee reversibility.
         map_key = f"{name}\x00{seq}" if seq else name
         if map_key in self._name_map:
             return self._name_map[map_key]
         if self.config.name_mode == "mask":
-            # SEC-6: mask 模式不可逆, 不入反匿名表, 避免同长度掩码覆写串号
+            # SEC-6: mask mode is irreversible, not entered into the map, avoiding same-length mask overwrite cross-merging
             return self.config.mask_char * len(name) or self.config.mask_char
         anon_id = _hash_id(f"{name}:{seq}" if seq else name, self.salt, self.config.id_prefix)
         self._name_map[map_key] = anon_id
         self._reverse_map[anon_id] = name
-        # A5: 每次新增映射即持久化, 防进程重启丢反匿名表。
+        # A5: persist on every new mapping, preventing map loss on process restart.
         self._save_map()
-        # SEC-1: 不记录原始姓名, 仅返回掩码 ID
+        # SEC-1: never log the original name, return the masked ID only
         return anon_id
 
     def deanonymize_name(self, anon_id: str) -> str:
-        # A5: 反匿名前懒加载持久化表 — 即使新进程实例也能还原历史脱敏 ID。
-        # SEC-20: 未知 ID 返原值并告警 — 调用方知反匿名不完整。
+        # A5: lazily load the persisted map before deanonymization — even a fresh process instance can restore historical IDs.
+        # SEC-20: unknown ID returns the original value with a warning — the caller learns the deanonymization is incomplete.
         if not self._reverse_map:
             self._load_map()
         if anon_id in self._reverse_map:
             return self._reverse_map[anon_id]
-        logger.warning("deanonymize 未知 ID, 映射缺失(可能映射已丢失): %s", anon_id)
+        logger.warning("deanonymize unknown ID, mapping missing (map may have been lost): %s", anon_id)
         return anon_id
 
     def mask_field(self, value: str, field_name: str = "") -> str:
-        # SEC-5: 非字符串 PII(int 手机号等)转 str 后脱敏, 不再原样穿透
+        # SEC-5: non-string PII (int phone numbers etc.) converted to str before masking, no longer passed through as-is
         if value is None:
             return value
         if not isinstance(value, str):
@@ -167,11 +169,11 @@ class DataAnonymizer:
         return result
 
     def anonymize_records(self, records: list[dict]) -> AnonymizeResult:
-        # SECb-A2: 直接返脱敏 records, 避免调用方二次遍历 export_desensitized
+        # SECb-A2: return the desensitized records directly, so callers skip a second pass over export_desensitized
         anonymized = []
         masked_fields = set()
         for idx, rec in enumerate(records):
-            # SEC-15: 每记录传序号, 同名不同记录得到不同 ID, 避免成绩/考勤合并
+            # SEC-15: pass a per-record index, so same-name records in different positions get different IDs, avoiding grade/attendance merging
             anon_rec = self.anonymize_record(rec, seq=str(idx))
             anonymized.append(anon_rec)
             for f in self.config.fields_to_mask:
@@ -180,7 +182,7 @@ class DataAnonymizer:
         logger.info(
             "anonymize_records: %d -> %d records", len(records), len(anonymized)
         )
-        # SEC-18: 反匿名表不随结果流转, 仅经 get_name_map() 显式取; 结果只返计数/掩码字段
+        # SEC-18: the deanonymization map never travels with results, only via explicit get_name_map(); results carry counts/masked fields only
         return AnonymizeResult(
             original_count=len(records),
             anonymized_count=len(anonymized),
@@ -196,20 +198,21 @@ class DataAnonymizer:
         return result
 
     def export_desensitized(self, records: list[dict], reversible: bool = False) -> list[dict]:
-        # SEC-15: 同 anonymize_records, 传序号避免同名记录合并
-        # SEC-19: 单向脱敏(reversible=False)默认不在内存驻留反匿名表
+        # SEC-15: same as anonymize_records, pass an index to avoid same-name record merging
+        # SEC-19: one-way desensitization (reversible=False) does not keep the map in memory by default
         out = [self.anonymize_record(rec, seq=str(idx)) for idx, rec in enumerate(records)]
         if not reversible:
-            logger.info("export_desensitized: 单向模式, 清理内存中的反匿名表")
+            logger.info("export_desensitized: one-way mode, clearing the in-memory deanonymization map")
             self.reset()
         return out
 
     def get_name_map(self, name: str = "") -> dict[str, str]:
-        # P2: 默认仍返全量(向后兼容)但 loud warning; 传 name 则仅返单条, 避免一次性暴露整张反匿名表。
+        # P2: by default still returns everything (backward compatible) with a loud warning; passing name
+        # returns a single entry only, avoiding exposing the whole deanonymization table at once.
         if name:
             anon = self._name_map.get(name)
             return {name: anon} if anon else {}
-        logger.warning("get_name_map 被调用 — 返回可逆映射表，注意保管，勿随脱敏数据一并存储")
+        logger.warning("get_name_map called — returns the reversible mapping table, keep it safe, never store it alongside desensitized data")
         return dict(self._name_map)
 
     def reset(self):

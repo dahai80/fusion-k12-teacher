@@ -1,6 +1,7 @@
-"""插件基类 — ASR/LLM/TTS/Avatar 四层抽象。
+"""Plugin base classes — ASR/LLM/TTS/Avatar four-layer abstraction.
 
-各插件: name 属性, init()/close() 生命周期, available 属性, cancel()/clear() 供 BargeInBus 注册。
+Each plugin: name attribute, init()/close() lifecycle, available property,
+cancel()/clear() for BargeInBus registration.
 """
 
 from __future__ import annotations

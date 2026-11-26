@@ -1,4 +1,4 @@
-"""pytest 全局 fixture + live-LLM 用例门控。"""
+"""pytest global fixtures + live-LLM test gating."""
 
 from __future__ import annotations
 
@@ -6,18 +6,19 @@ import os
 
 import pytest
 
-# P2: CI (ubuntu-latest, 无 fusion-mlx) 直连真实 LLM 必失败/降级。
-# live 用例默认在无 FUSION_K12_LIVE_TESTS=1 时 skip; 本机需真实加载模型时显式开启。
+# P2: CI (ubuntu-latest, no fusion-mlx) fails/degrades when hitting a real LLM directly.
+# live tests skip by default unless FUSION_K12_LIVE_TESTS=1; enable explicitly when the
+# machine must load real models.
 _LIVE_ENABLED = os.environ.get("FUSION_K12_LIVE_TESTS", "") == "1"
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line("markers", "live: 需 fusion-mlx 真实加载模型的用例")
+    config.addinivalue_line("markers", "live: tests that require fusion-mlx real model loading")
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    # P2: 未显式开启 live 时, 标 live 的用例 skip; 避免误标漏标。
-    skip_live = pytest.mark.skip(reason="需 fusion-mlx 运行 (设 FUSION_K12_LIVE_TESTS=1 开启)")
+    # P2: when live is not explicitly enabled, skip tests marked live; guards against mislabeled/missed markers.
+    skip_live = pytest.mark.skip(reason="requires fusion-mlx running (set FUSION_K12_LIVE_TESTS=1 to enable)")
     for item in items:
         if "live" in item.keywords and not _LIVE_ENABLED:
             item.add_marker(skip_live)
@@ -25,20 +26,21 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture(autouse=True)
 def _offline_llm(monkeypatch):
-    """非 live 用例一律指向不可达 LLM 地址, 与 CI (无 fusion-mlx) 行为对齐。
+    """Non-live tests always point at an unreachable LLM address, aligning with CI (no fusion-mlx) behavior.
 
-    本机开发时 fusion-mlx 常驻且要求 API key, 未 mock 的引擎用例会收到
-    401 NonDegradableError 而非预期的优雅降级 — 强制改 base_url 消除环境差异。
-    live 用例 (FUSION_K12_LIVE_TESTS=1) 不受影响, 须真实可达。
+    On dev machines fusion-mlx runs persistently and requires an API key; unmocked engine
+    tests would get 401 NonDegradableError instead of the expected graceful degradation —
+    forcing base_url removes the environment difference.
+    live tests (FUSION_K12_LIVE_TESTS=1) are unaffected and must be really reachable.
     """
     if not _LIVE_ENABLED:
         monkeypatch.setenv("FUSION_MLX_URL", "http://127.0.0.1:9/v1")
         monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
-        # issue #18: MLXClient.__init__ 现在读 FUSION_MLX_MODEL env —
-        # 离线模式清掉, 防 shell 环境变量污染 test_default_model 断言
+        # issue #18: MLXClient.__init__ now reads the FUSION_MLX_MODEL env —
+        # clear it in offline mode to keep shell env vars from polluting the test_default_model assertion
         monkeypatch.delenv("FUSION_MLX_MODEL", raising=False)
-        # issue #34: client key 改经 fusion_core.config 解析 — 清掉规范名与
-        # profile, 防 shell 环境污染 _auth_headers / prod RuntimeError 断言
+        # issue #34: client key is now resolved via fusion_core.config — clear the canonical
+        # name and profile to keep shell env from polluting _auth_headers / prod RuntimeError assertions
         monkeypatch.delenv("FUSION_CLIENT_KEY", raising=False)
         monkeypatch.delenv("FUSION_PROFILE", raising=False)
     yield
@@ -46,7 +48,7 @@ def _offline_llm(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
-    """每个用例前清空限流计数, 避免跨用例累积触发 429。"""
+    """Clear rate-limit counters before each test, avoiding cross-test accumulation triggering 429."""
     try:
         from fusion_k12_teacher.serve import _rate_limiter
         _rate_limiter._hits.clear()
@@ -57,10 +59,13 @@ def _reset_rate_limiter():
 
 @pytest.fixture(autouse=True)
 def _isolate_scheduler_pidfile(monkeypatch):
-    """TaskScheduler 测试不依赖全局 pidfile 锁 — 同机 serve 持锁会致 is_running=False。
+    """TaskScheduler tests must not depend on the global pidfile lock — a same-machine serve holding
+    the lock would make is_running=False.
 
-    直接 mock _acquire_pidfile 返 True, 绕过 fcntl 跨进程锁 (测试单进程无需去重)。
-    注: agent/__init__.py 把 scheduler 名重绑为实例, 须从子模块直接导 TaskScheduler 类。
+    Mock _acquire_pidfile to return True directly, bypassing the fcntl cross-process lock
+    (single-process tests need no dedup).
+    Note: agent/__init__.py rebinds the scheduler name to an instance; import the TaskScheduler
+    class from the submodule directly.
     """
     from fusion_k12_teacher.agent.scheduler import TaskScheduler
     monkeypatch.setattr(TaskScheduler, "_acquire_pidfile", lambda self: True)

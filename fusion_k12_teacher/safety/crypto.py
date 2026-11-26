@@ -1,9 +1,10 @@
-"""AES-256-GCM 加密工具 — M1-T5。
+"""AES-256-GCM encryption utilities — M1-T5.
 
-PII (name_map) 加密落盘, 不依赖文件权限。
-data_key 来源: env FUSION_K12_DATA_KEY (hex/base64 32 字节) 或
-               file FUSION_K12_DATA_KEY_FILE (600 权限, 32 字节原始或 hex)。
-cryptography 可选依赖 (cluster extras), 缺失则 raise — 加密不可降级为明文 (安全硬约束)。
+Encrypts PII (name_map) at rest, without relying on file permissions.
+data_key source: env FUSION_K12_DATA_KEY (hex/base64, 32 bytes) or
+                 file FUSION_K12_DATA_KEY_FILE (mode 600, 32 raw bytes or hex).
+cryptography is an optional dependency (cluster extras); if missing, raise —
+encryption must never degrade to plaintext (hard security constraint).
 """
 
 from __future__ import annotations
@@ -20,15 +21,16 @@ _KEY_LEN = 32  # AES-256
 
 
 class CryptoError(Exception):
-    """加密/解密失败。"""
+    """Encryption/decryption failure."""
 
 
 def _load_key() -> bytes:
-    """从 env/file 加载 32 字节 data_key。
+    """Load the 32-byte data_key from env/file.
 
-    优先 env FUSION_K12_DATA_KEY (hex 或 base64),
-    其次 FUSION_K12_DATA_KEY_FILE (原始 32 字节或 hex 行)。
-    短 key 用 sha256 派生到 32 字节 (兼容人类可记口令, 非最佳实践但可用)。
+    Prefers env FUSION_K12_DATA_KEY (hex or base64),
+    then FUSION_K12_DATA_KEY_FILE (raw 32 bytes or a hex line).
+    Short keys are derived to 32 bytes via sha256 (supports human-memorable
+    passphrases; not best practice but usable).
     """
     raw = os.environ.get("FUSION_K12_DATA_KEY", "")
     source = "env"
@@ -36,22 +38,22 @@ def _load_key() -> bytes:
         path = os.environ.get("FUSION_K12_DATA_KEY_FILE", "")
         if not path:
             raise CryptoError(
-                "未配置 data_key — 设 FUSION_K12_DATA_KEY 或 FUSION_K12_DATA_KEY_FILE "
-                "(安装: pip install -e '.[cluster]')"
+                "data_key not configured — set FUSION_K12_DATA_KEY or FUSION_K12_DATA_KEY_FILE "
+                "(install: pip install -e '.[cluster]')"
             )
         source = "file"
         try:
             with open(path, encoding="utf-8") as f:
                 raw = f.read().strip()
         except OSError as e:
-            raise CryptoError(f"读取 data_key 文件失败: {e}") from e
-        # 文件权限校验 (Unix)
+            raise CryptoError(f"Failed to read data_key file: {e}") from e
+        # File permission check (Unix)
         if os.name == "posix":
             mode = os.stat(path).st_mode & 0o777
             if mode & 0o077:
-                logger.warning("data_key 文件权限 %o 过宽, 建议 0600: %s", mode, path)
+                logger.warning("data_key file permission %o too broad, 0600 recommended: %s", mode, path)
 
-    # 尝试 hex → base64 → 原始
+    # Try hex → base64 → raw
     key: bytes
     try:
         key = bytes.fromhex(raw)
@@ -62,19 +64,19 @@ def _load_key() -> bytes:
             key = raw.encode("utf-8")
 
     if len(key) < _KEY_LEN:
-        # 短 key 派生 — sha256 拉到 32 字节
-        logger.info("data_key (%s) 长度 %d < 32, sha256 派生", source, len(key))
+        # Short key derivation — stretch to 32 bytes via sha256
+        logger.info("data_key (%s) length %d < 32, deriving via sha256", source, len(key))
         key = hashlib.sha256(key).digest()
     elif len(key) > _KEY_LEN:
         key = key[:_KEY_LEN]
-    logger.info("data_key 已加载 (来源=%s, len=%d)", source, len(key))
+    logger.info("data_key loaded (source=%s, len=%d)", source, len(key))
     return key
 
 
 class DataCipher:
-    """AES-256-GCM 加解密器 — 惰性建, 首次用加载 key。
+    """AES-256-GCM cipher — built lazily, key loaded on first use.
 
-    密文格式: base64(nonce(12) || ciphertext || tag(16))
+    Ciphertext format: base64(nonce(12) || ciphertext || tag(16))
     """
 
     def __init__(self):
@@ -82,7 +84,7 @@ class DataCipher:
             from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         except ImportError as e:
             raise ImportError(
-                "加密需 cryptography: pip install -e '.[cluster]'"
+                "cryptography required for encryption: pip install -e '.[cluster]'"
             ) from e
         self._AESGCM = AESGCM
         self._key: bytes | None = None
@@ -93,7 +95,7 @@ class DataCipher:
         return self._AESGCM(self._key)
 
     def encrypt(self, plaintext: str, aad: bytes | None = None) -> str:
-        """加密字符串 → base64 密文 (含 nonce)。"""
+        """Encrypt a string → base64 ciphertext (nonce included)."""
         import os as _os
         aes = self._aes()
         nonce = _os.urandom(12)
@@ -101,23 +103,23 @@ class DataCipher:
         return base64.b64encode(nonce + ct).decode("ascii")
 
     def decrypt(self, ciphertext: str, aad: bytes | None = None) -> str:
-        """解密 base64 密文 → 原文。"""
+        """Decrypt base64 ciphertext → plaintext."""
         try:
             blob = base64.b64decode(ciphertext, validate=True)
         except Exception as e:
-            raise CryptoError(f"密文 base64 解码失败: {e}") from e
+            raise CryptoError(f"Failed to base64-decode ciphertext: {e}") from e
         if len(blob) < 12 + 16:
-            raise CryptoError("密文长度不足 (nonce+tag)")
+            raise CryptoError("Ciphertext too short (nonce+tag)")
         nonce, ct = blob[:12], blob[12:]
         aes = self._aes()
         try:
             pt = aes.decrypt(nonce, ct, aad)
         except Exception as e:
-            raise CryptoError(f"解密失败 (key 不匹配或密文损坏): {e}") from e
+            raise CryptoError(f"Decryption failed (key mismatch or corrupted ciphertext): {e}") from e
         return pt.decode("utf-8")
 
     def encrypt_dict(self, obj: dict[str, Any], fields: list[str]) -> dict[str, Any]:
-        """加密 dict 指定字段 (就地返回副本), 其余字段不动。"""
+        """Encrypt the given fields of a dict (returns a copy), leaving other fields untouched."""
         import copy
         out = copy.deepcopy(obj)
         for f in fields:
@@ -126,7 +128,7 @@ class DataCipher:
         return out
 
     def decrypt_dict(self, obj: dict[str, Any], fields: list[str]) -> dict[str, Any]:
-        """解密 dict 指定字段 (就地返回副本)。"""
+        """Decrypt the given fields of a dict (returns a copy)."""
         import copy
         out = copy.deepcopy(obj)
         for f in fields:
@@ -134,6 +136,6 @@ class DataCipher:
                 try:
                     out[f] = self.decrypt(str(out[f]))
                 except CryptoError:
-                    # 非密文 (历史明文数据) 保持原样, 兼容渐进迁移
-                    logger.debug("字段 %s 非密文, 保持原值", f)
+                    # Not ciphertext (legacy plaintext data) — keep as-is for progressive migration
+                    logger.debug("Field %s is not ciphertext, keeping original value", f)
         return out

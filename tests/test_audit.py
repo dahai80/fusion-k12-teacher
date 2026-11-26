@@ -1,4 +1,4 @@
-"""M3 审计 + 指标测试 — T13/T14/T15/T16。"""
+"""M3 audit + metrics tests — T13/T14/T15/T16."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from fusion_k12_teacher.audit import (
 from fusion_k12_teacher.metrics import MetricsRegistry, get_metrics, render_prometheus
 from fusion_k12_teacher.repository.sqlite_repo import SQLiteRepository
 
-# ── T13: 审计事件模型 ──
+# ── T13: audit event model ──
 
 class TestAuditEvent:
     def test_new_trace_id_unique(self):
@@ -23,6 +23,7 @@ class TestAuditEvent:
         assert len(a) == 32
 
     def test_hash_pii_stable(self):
+        # i18n: user-facing (Chinese sample names, test fixture data)
         assert hash_pii("张三") == hash_pii("张三")
         assert hash_pii("张三") != hash_pii("李四")
         assert hash_pii("") == ""
@@ -40,7 +41,7 @@ class TestAuditEvent:
         assert e2.status == 200
 
 
-# ── T14: 审计持久化 ──
+# ── T14: audit persistence ──
 
 class TestAuditPersistence:
     @pytest.fixture
@@ -64,7 +65,7 @@ class TestAuditPersistence:
     async def test_logger_no_repo_memory_only(self):
         al = AuditLogger(repo=None, cap=10)
         await al.record(AuditEvent(route="/api/x", status=200))
-        await al.flush()  # 无 repo 不崩, 返 0
+        await al.flush()  # no repo: no crash, returns 0
         assert len(al.recent(10)) == 1
 
     @pytest.mark.asyncio
@@ -103,7 +104,7 @@ class TestAuditPersistence:
         assert s.purge_audit("x") == 0
 
 
-# ── T16: 指标 ──
+# ── T16: metrics ──
 
 class TestMetrics:
     def test_record_request(self):
@@ -135,7 +136,7 @@ class TestMetrics:
         m.record_request("/api/h", 200, 0.01)   # <=0.01
         m.record_request("/api/h", 200, 0.3)    # <=0.5
         out = m.render()
-        # le=0.01 应有 1, le=0.5 应有 2 (累计)
+        # le=0.01 should have 1, le=0.5 should have 2 (cumulative)
         assert 'le="0.01"} 1.0' in out
         assert 'le="0.5"} 2.0' in out
 
@@ -143,6 +144,6 @@ class TestMetrics:
         out1 = render_prometheus()
         out2 = render_prometheus()
         assert "# TYPE k12_request_total counter" in out1
-        assert out1 == out2  # 同一注册表, 内容一致
-        # 单例: 两次 render 同一对象
+        assert out1 == out2  # same registry, identical content
+        # singleton: both renders come from the same object
         assert get_metrics() is get_metrics()

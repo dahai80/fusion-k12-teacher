@@ -1,4 +1,4 @@
-"""Repository 层测试 — M1-T1。"""
+"""Repository layer tests — M1-T1."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ def repo(tmp_path):
     r.close()
 
 
+# i18n: user-facing (fixture data below uses Chinese sample names in name_map records)
 class TestSQLiteRepository:
     def test_history_roundtrip(self, repo):
         records = [
@@ -70,7 +71,7 @@ class TestFactory:
         r.close()
 
     def test_get_repository_cluster_no_dsn_fails_closed(self, tmp_path, monkeypatch):
-        # issue #36: cluster 模式 DSN 未配 → NonDegradableError 拒启, 不回退 SQLite
+        # issue #36: cluster mode without a DSN configured → NonDegradableError refuses startup, no SQLite fallback
         from fusion_k12_teacher.errors import NonDegradableError
 
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
@@ -80,13 +81,13 @@ class TestFactory:
             get_repository()
 
     def test_get_repository_cluster_no_asyncpg_fails_closed(self, tmp_path, monkeypatch):
-        # issue #36: cluster 模式配了 DSN 但 asyncpg 缺失 → NonDegradableError 拒启
-        # (含安装提示), 不回退 SQLite
+        # issue #36: cluster mode with a DSN configured but asyncpg missing → NonDegradableError refuses startup
+        # (with an install hint), no SQLite fallback
         import sys
 
         from fusion_k12_teacher.errors import NonDegradableError
 
-        # 模拟 asyncpg 缺失: sys.modules 置 None 使 import asyncpg 抛 ImportError
+        # Simulate asyncpg missing: setting sys.modules entry to None makes import asyncpg raise ImportError
         monkeypatch.setitem(sys.modules, "asyncpg", None)
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.setenv("FUSION_K12_PG_DSN", "postgresql://u:p@localhost/db")
@@ -95,13 +96,13 @@ class TestFactory:
             get_repository()
 
     def test_serve_init_teacher_services_fatal_propagates(self, monkeypatch):
-        # issue #36: serve 启动路径上 NonDegradableError 必须上抛拒启,
-        # 不能被"生成功能仍可用"的降级 warning 吞掉
+        # issue #36: on the serve startup path NonDegradableError must propagate and refuse startup,
+        # not be swallowed by a degrading "generation features still work" warning
         from fusion_k12_teacher import serve
         from fusion_k12_teacher.errors import NonDegradableError
 
         def _boom():
-            raise NonDegradableError("FUSION_K12_MODE=cluster 需要 FUSION_K12_PG_DSN")
+            raise NonDegradableError("FUSION_K12_MODE=cluster requires FUSION_K12_PG_DSN")
 
         monkeypatch.setattr(serve, "get_repository", _boom)
         with pytest.raises(NonDegradableError, match="FUSION_K12_PG_DSN"):
@@ -109,20 +110,20 @@ class TestFactory:
         assert serve.auth_service is None
 
     def test_serve_init_teacher_services_degradable_warns(self, monkeypatch):
-        # 非 fatal 失败仍降级 (无身份+资源库可用), 不影响启动
+        # Non-fatal failures still degrade (no identity + resource library), startup unaffected
         from fusion_k12_teacher import serve
 
         def _boom():
             raise RuntimeError("textbook dir missing")
 
         monkeypatch.setattr(serve, "get_repository", _boom)
-        serve._init_teacher_services()  # 不抛
+        serve._init_teacher_services()  # must not raise
         assert serve.auth_service is None
         assert serve.textbook_loader is None
         assert serve._materials_repo is None
 
     def test_postgres_repo_missing_asyncpg(self, monkeypatch):
-        # M1-T2: asyncpg 缺失时 PostgresRepository 构造抛 ImportError (清晰错误)
+        # M1-T2: with asyncpg missing, PostgresRepository construction raises ImportError (clear error)
         import sys
         monkeypatch.setitem(sys.modules, "asyncpg", None)
         from fusion_k12_teacher.repository import PostgresRepository
@@ -135,11 +136,11 @@ class TestSchedulerRepoIntegration:
         db = str(tmp_path / "sched.db")
         repo = SQLiteRepository(db)
         sched = TaskScheduler(repo=repo)
-        # 构造 TaskResult 写历史
+        # Build a TaskResult and write history
         result = TaskResult(task_id="weekly_prep", status="success", summary="ok")
         sched._history.append(result)
         sched._save_history()
-        # 新 scheduler 实例从同一 repo 加载, 验证跨实例持久化
+        # A new scheduler instance loads from the same repo, verifying cross-instance persistence
         sched2 = TaskScheduler(repo=repo)
         sched2.load_history()
         assert len(sched2._history) == 1
@@ -148,19 +149,19 @@ class TestSchedulerRepoIntegration:
 
 
 class TestTaskLock:
-    """M2-T11: DB 任务锁 — 跨实例 cron 去重。"""
+    """M2-T11: DB task lock — cross-instance cron dedup."""
 
     def test_lock_acquire_first(self, repo):
         assert repo.try_lock("task_a", "host1:100", 60) is True
 
     def test_lock_same_owner_reentrant(self, repo):
         assert repo.try_lock("task_b", "host1:100", 60) is True
-        # 同 owner 再获取 = 续约成功
+        # Same owner re-acquiring = successful renewal
         assert repo.try_lock("task_b", "host1:100", 60) is True
 
     def test_lock_other_owner_blocked(self, repo):
         assert repo.try_lock("task_c", "host1:100", 60) is True
-        # 其它实例持有未超时 → 拒
+        # Held by another instance, not timed out → reject
         assert repo.try_lock("task_c", "host2:200", 60) is False
 
     def test_lock_release_allows_other(self, repo):
@@ -170,29 +171,29 @@ class TestTaskLock:
 
     def test_lock_release_wrong_owner_noop(self, repo):
         repo.try_lock("task_e", "host1:100", 60)
-        # 非 owner 释放无效, 锁仍在
+        # Release by a non-owner is a no-op, lock stays
         repo.release_lock("task_e", "host2:200")
         assert repo.try_lock("task_e", "host2:200", 60) is False
 
     def test_lock_renew_by_owner(self, repo):
         repo.try_lock("task_f", "host1:100", 60)
         assert repo.renew_lock("task_f", "host1:100", 120) is True
-        # 非 owner 续约失败
+        # Renewal by a non-owner fails
         assert repo.renew_lock("task_f", "host2:200", 120) is False
 
     def test_lock_ttl_reap(self, repo):
-        # ttl 极短 → 过期后被 reap, 重新可获取
+        # Very short ttl → reaped after expiry, acquirable again
         repo.try_lock("task_g", "host1:100", ttl=0)
-        # ttl=0 即刻过期 (acquired_ts + 0 < now 下次 reap)
+        # ttl=0 expires immediately (acquired_ts + 0 < now on the next reap)
         import time
         time.sleep(0.01)
         assert repo.reap_expired_locks() >= 1
         assert repo.try_lock("task_g", "host2:200", 60) is True
 
     def test_base_repo_default_locks_passthrough(self):
-        # standalone / 无 lock 后端: 默认实现总放行
+        # standalone / no lock backend: default implementation always allows
         from fusion_k12_teacher.repository.base import Repository
-        # 不能直接实例化 ABC, 用桩
+        # Cannot instantiate the ABC directly, use a stub
         class _Stub(Repository):
             def save_history(self, r):
                 pass
@@ -210,14 +211,14 @@ class TestTaskLock:
 
 
 class TestSchedulerClusterLock:
-    """M2-T11: cluster 模式 run_task 抢 DB 锁, 被占则 skip。"""
+    """M2-T11: in cluster mode run_task races for the DB lock, skips when held."""
 
     @pytest.mark.asyncio
     async def test_cluster_skip_when_locked(self, tmp_path, monkeypatch):
         db = str(tmp_path / "lock.db")
         repo = SQLiteRepository(db)
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
-        # 预先被其它实例锁定
+        # Pre-locked by another instance
         repo.try_lock("dummy_task", "other-host:999", 300)
         sched = TaskScheduler(repo=repo)
         sched._tasks["dummy_task"] = _dummy_task("dummy_task")
@@ -227,7 +228,7 @@ class TestSchedulerClusterLock:
 
     @pytest.mark.asyncio
     async def test_standalone_no_db_lock(self, tmp_path, monkeypatch):
-        # standalone 模式不碰 DB 锁, 直接执行 (mock execute 避免真调引擎)
+        # standalone mode never touches the DB lock, executes directly (mock execute to avoid really calling engines)
         db = str(tmp_path / "nolock.db")
         repo = SQLiteRepository(db)
         monkeypatch.setenv("FUSION_K12_MODE", "standalone")
@@ -252,9 +253,10 @@ async def _mock_execute(task):
     return TaskResult(task_id=task.id, status="success", summary="mock")
 
 
+# i18n: user-facing (CLI output strings asserted below are Chinese product output)
 class TestMigrateCLI:
     def test_migrate_dry_run(self, tmp_path):
-        # M1-T3: dry-run 仅读源库预览, 不连 Postgres
+        # M1-T3: dry-run only reads the source DB for a preview, never connects to Postgres
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -276,7 +278,7 @@ class TestMigrateCLI:
         assert "未写入" in result.output
 
     def test_encrypt_name_map_cli(self, tmp_path, monkeypatch):
-        # M1-T9: 就地加密 standalone SQLite 旧明文 name_map
+        # M1-T9: encrypt the old plaintext standalone SQLite name_map in place
         from click.testing import CliRunner
 
         from fusion_k12_teacher.cli import cli
@@ -293,7 +295,7 @@ class TestMigrateCLI:
         assert "已加密" in result.output
         assert "2 条" in result.output
 
-        # 验证: 重开 repo, 用 cipher 解密读回原名
+        # Verify: reopen the repo and decrypt the original names with the cipher
         from fusion_k12_teacher.safety import DataCipher
         cipher = DataCipher()
         repo2 = SQLiteRepository(db)
@@ -327,8 +329,9 @@ except ImportError:
     _HAS_CRYPTO = False
 
 
+# i18n: user-facing (fixture data below uses Chinese sample names in name_map records)
 class TestEncryptedNameMap:
-    # M1-T6: name_map 加密存取 (name_hash + name_encrypted)
+    # M1-T6: name_map encrypted storage (name_hash + name_encrypted)
 
     @pytest.fixture
     def cipher(self, monkeypatch):
@@ -346,31 +349,32 @@ class TestEncryptedNameMap:
         assert rev["S002"] == "李四"
 
     def test_encrypted_stores_no_plaintext_reverse(self, repo, cipher):
-        # M1-T6: 加密行 reverse 列留明文备份但 name_encrypted 才是权威;
-        # 验证无 cipher 加载时 reverse 列仍有值 (明文兼容回退) — 加密列存在不破坏明文读
+        # M1-T6: encrypted rows keep a plaintext backup in the reverse column but name_encrypted is authoritative;
+        # verify the reverse column still has a value when loading without a cipher (plaintext-compatible fallback) — the encrypted column does not break plaintext reads
         repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"}, cipher=cipher)
-        # 无 cipher 加载: 回退 reverse 明文列
+        # Load without a cipher: fall back to the plaintext reverse column
         nm, rev = repo.load_name_map()
         assert nm["张三\x001"] == "S001"
         assert rev["S001"] == "张三"
 
     def test_plaintext_loadable_without_cipher(self, repo):
-        # 明文模式存, 无 cipher 读 — 向后兼容
+        # Stored in plaintext mode, read without a cipher — backward compatible
         repo.save_name_map({"王五\x001": "S003"}, {"S003": "王五"})
         _nm, rev = repo.load_name_map()
         assert rev["S003"] == "王五"
 
+    # i18n: user-facing
     @pytest.mark.skipif(not _HAS_CRYPTO, reason="缺 cryptography")
     def test_wrong_cipher_fails_graceful(self, repo, monkeypatch):
         monkeypatch.setenv("FUSION_K12_DATA_KEY", "ab" * 32)
         from fusion_k12_teacher.safety import DataCipher
         c1 = DataCipher()
         repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"}, cipher=c1)
-        # 换 key 后解密失败 → 回退明文 reverse 列, 不崩
+        # Decryption fails after switching keys → fall back to the plaintext reverse column, no crash
         monkeypatch.setenv("FUSION_K12_DATA_KEY", "cd" * 32)
         c2 = DataCipher()
         _nm, rev = repo.load_name_map(cipher=c2)
-        assert rev["S001"] == "张三"  # 回退明文
+        assert rev["S001"] == "张三"  # plaintext fallback, i18n: user-facing
 
     def test_encrypted_overwrite(self, repo, cipher):
         repo.save_name_map({"张三\x001": "S001"}, {"S001": "张三"}, cipher=cipher)

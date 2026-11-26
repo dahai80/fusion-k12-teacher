@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # ruff: noqa: E402
-"""易错题批量场景编译测试 — 逐题调 DeepSeek, 五步瀑布记录通过/失败。"""
+"""Misconception problem batch scene-compile test — calls DeepSeek per problem, records pass/fail through the five-step waterfall."""
 import asyncio
 import json
 import os
@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-# DeepSeek 云端配置 — 必须在 import MLXClient 前注入, 本地 .env 是 local 形态
-# (mlx gateway), 直跑会 401。key 从环境变量或 .env 读取, 禁止硬编码进仓库。
+# DeepSeek cloud config — must be injected before importing MLXClient; the local .env is the
+# local form (mlx gateway), a direct run would 401. Key read from env vars or .env, never hardcoded into the repo.
 os.environ['FUSION_MLX_CLOUD'] = '1'
 os.environ['FUSION_MLX_URL'] = os.environ.get('FUSION_MLX_URL', 'https://api.deepseek.com/v1')
 os.environ['FUSION_MLX_MODEL'] = os.environ.get('FUSION_MLX_MODEL', 'deepseek-chat')
@@ -23,7 +23,7 @@ if not _env_key:
                 _env_key = _line.split('=', 1)[1].strip()
                 break
 if not _env_key:
-    raise SystemExit("FUSION_CLIENT_KEY 未设置: export 或写入 .env (勿提交仓库)")
+    raise SystemExit("FUSION_CLIENT_KEY not set: export it or write it into .env (never commit it)")
 os.environ['FUSION_CLIENT_KEY'] = _env_key
 os.environ['FUSION_MLX_CONNECT_TIMEOUT'] = '30'
 os.environ['FUSION_MLX_READ_TIMEOUT'] = '240'
@@ -34,8 +34,8 @@ from fusion_k12_teacher.course.subjects.math.scene_compiler import MathSceneComp
 from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 from fusion_k12_teacher.eval.eval_harness import BNUPEvaluator
 
-# SceneDSL 实际产物 schema (entities/timeline 结构) — eval_harness.DSL_SCHEMA
-# 是 bnup_prep 训练闸的 pipeline/parameters 结构, 与 compiler 产物不同构
+# Actual SceneDSL output schema (entities/timeline structure) — eval_harness.DSL_SCHEMA is the
+# bnup_prep training-gate pipeline/parameters structure, not isomorphic with the compiler output
 SCENE_DSL_SCHEMA = {
     "type": "object",
     "required": ["version", "subject", "template_type", "meta", "entities",
@@ -54,8 +54,8 @@ SCENE_DSL_SCHEMA = {
     },
 }
 
-# timeline.answer 语义随场景: 里程映射已把各场景主解统一进 answer
-ANSWER_FIELD = {}  # 空 → 全部读 timeline.answer
+# timeline.answer semantics vary by scene: the milestone mapping already unifies each scene's main solution into answer
+ANSWER_FIELD = {}  # empty → read timeline.answer for all
 
 
 def is_math_ok(rec: dict) -> bool | None:
@@ -77,14 +77,14 @@ async def run_one(compiler, ev, client, p, sem):
             d = dsl.to_dict()
             rec['template_type'] = d.get('template_type', '')
             rec['dsl'] = d
-            # gate: schema (SceneDSL 结构判据 — 非具名场景视为路由失败)
+            # gate: schema (SceneDSL structure criterion — unnamed scenes count as routing failure)
             try:
                 jsonschema.Draft202012Validator(SCENE_DSL_SCHEMA).validate(d)
                 rec['schema_ok'] = True
             except jsonschema.ValidationError as e:
                 rec['schema_ok'] = False
                 rec['err'] = f"schema: {e.message[:60]}"
-            # gate: 数学正确 (timeline.answer vs gt, ε=0.01; verified=True 时 SymPy 已验)
+            # gate: math correctness (timeline.answer vs gt, ε=0.01; SymPy already verified when verified=True)
             if rec.get('schema_ok'):
                 m_ok = is_math_ok(rec)
                 rec['math_ok'] = m_ok
@@ -113,10 +113,10 @@ async def main():
     json.dump(results, open('/tmp/misconception_compile_results.json', 'w'), ensure_ascii=False, indent=1)
     from collections import Counter
     vc = Counter(r['verdict'] for r in results)
-    print("\n=== 汇总 ===")
+    print("\n=== Summary ===")
     total = len(results)
     for k, n in vc.most_common():
         print(f"  {k}: {n} ({n/total*100:.0f}%)")
-    print(f"数学正确率: {vc.get('PASS',0)/total*100:.1f}% (目标 89%)")
+    print(f"Math accuracy: {vc.get('PASS',0)/total*100:.1f}% (target 89%)")
 
 asyncio.run(main())

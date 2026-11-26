@@ -1,12 +1,12 @@
 """Fusion-K12-Teacher — Local AI-powered K-12 education assistant.
 
-对标 Claude K-12 Teacher，提供：
-- 课程规划与教案生成
-- 作业创建与自动批改
-- 多学科知识库（STEM/语言/文科）
-- 个性化学习路径
-- 教育内容生成
-100% 本地离线，基于 fusion-mlx。
+Parity with Claude K-12 Teacher, providing:
+- Lesson planning and lesson-plan generation
+- Assignment creation and auto-grading
+- Multi-subject knowledge base (STEM/languages/humanities)
+- Personalized learning paths
+- Educational content generation
+100% local offline, powered by fusion-mlx.
 """
 
 __version__ = "2.2.8"

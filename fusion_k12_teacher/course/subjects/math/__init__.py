@@ -1,12 +1,13 @@
-"""数学学科实现 — SubjectModule 注册入口。
+"""Math subject implementation — SubjectModule registration entry.
 
-实现 course.base 协议:
+Implements the course.base protocols:
 - MathKnowledgeGraph (KnowledgeGraphBase)
 - MathSympyVerifier (VerifierBase)
 - MathSceneCompiler (SceneCompilerBase)
 - MathSocraticTutor (SocraticTutorBase)
 
-数学专用: SymPy 符号引擎 + networkx 图谱 + 行程问题场景公式注册表。
+Math-specific: SymPy symbolic engine + networkx graph + motion-problem scene
+formula registry.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from .sympy_verifier import MathSympyVerifier
 
 
 class MathSubject(SubjectModule):
-    """数学学科模块。"""
+    """Math subject module."""
 
     @property
     def subject_id(self) -> str:
@@ -34,6 +35,7 @@ class MathSubject(SubjectModule):
 
     @property
     def display_name(self) -> str:
+        # i18n: user-facing (subject display name)
         return "数学"
 
     @property

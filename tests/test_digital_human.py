@@ -1,4 +1,9 @@
-"""数字人平台层测试 — Phase A: 6 大核心 pattern + session/manager (mock 插件)。"""
+"""Digital-human platform layer tests — Phase A: 6 core patterns +
+session/manager (mock plugins)."""
+
+# i18n: user-facing — Chinese literals below are test fixture data (sample
+# names, topics, narration/answer texts used as data) and assertion targets on
+# product content; do not translate.
 
 from __future__ import annotations
 
@@ -582,15 +587,16 @@ class TestDigitalHumanManager:
 
     @pytest.mark.asyncio
     async def test_gate_timeout_rejects_when_full(self):
-        # gate 耗尽时 create_session 快失败, 不永久阻塞 (issue: 忘 finish 致第11课挂死)
+        # When the gate is exhausted create_session must fail fast, not block
+        # forever (issue: forgotten finish froze the 11th lesson)
         import fusion_k12_teacher.digital_human.manager as mod
         old = mod._GATE_TIMEOUT
         mod._GATE_TIMEOUT = 0.5
         try:
             mgr = mod.DigitalHumanManager(_MockMlxClient(), _FakeRegistry(), None, None, max_sessions=1)
             await mgr.start()
-            await mgr.create_session("math", "分数", "3")  # 占满唯一闸门
-            with pytest.raises(RuntimeError, match="并发已满"):
+            await mgr.create_session("math", "分数", "3")  # fill the only gate slot
+            with pytest.raises(RuntimeError, match="concurrency full"):
                 await mgr.create_session("math", "另一题", "3")
         finally:
             mod._GATE_TIMEOUT = old

@@ -1,4 +1,4 @@
-"""学情分析引擎 — 班级画像、学生画像、错题归因、补救方案。"""
+"""Learning analytics engine — class profile, student profile, error attribution, remedial plans."""
 
 from __future__ import annotations
 
@@ -25,14 +25,14 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-# E13: _coerce_* 收敛至 _coerce.py 单实现, 保留别名兼容引擎内既有调用
+# E13: _coerce_* consolidated into the single _coerce.py implementation; aliases kept for existing in-engine calls
 _coerce_float = coerce_float
 _coerce_int = coerce_int
 _coerce_str_list = coerce_str_list
 
 
 class AnalyticsEngine:
-    """学情分析引擎 — 班级画像、错题归因、补救方案生成。"""
+    """Learning analytics engine — class profile, error attribution, remedial plan generation."""
 
     def __init__(
         self,
@@ -42,23 +42,23 @@ class AnalyticsEngine:
     ):
         self.mlx = mlx or MLXClient()
         self._standards = standards_query
-        # A6: 全引擎统一安全过滤 — LLM 生成报告/补救策略送学生/教师前过 check_output。
+        # A6: unified safety filter across engines — LLM-generated reports/remedial strategies pass check_output before reaching students/teachers.
         self._filter = content_filter or ContentFilter()
 
     def _filter_output(self, text: str, grade: str) -> str:
-        # A6: 命中不当内容替换掩码并告警, 不让敏感内容直达师生。
+        # A6: on hit, replace with mask and warn — never let sensitive content reach teachers/students directly.
         if not isinstance(text, str) or not text:
             return text
         check = self._filter.check_output(text, grade)
         if not check.is_safe:
-            logger.warning("学情分析内容检出不当, 已过滤: %s", check.summary)
+            logger.warning("Inappropriate analytics content detected, filtered: %s", check.summary)
             return check.filtered_text
         return text
 
     @staticmethod
     def _mask_sid(sid: Any) -> str:
-        # P1-2/P1-3: 学生 ID 属 PII, 进 prompt / 入 API 返回前脱敏为短哈希前缀,
-        # 不落原始 ID。同输入同输出 (无 salt, 仅遮蔽), 供聚合统计与风险标注。
+        # P1-2/P1-3: student IDs are PII — mask to a short hash prefix before entering prompts / API returns,
+        # never persist the raw ID. Same input, same output (no salt, masking only), for aggregate stats and risk tagging.
         s = str(sid or "")
         if not s:
             return ""
@@ -72,11 +72,11 @@ class AnalyticsEngine:
         grade: str,
         assessments: list[StudentAssessment],
     ) -> ClassProfile:
-        """生成班级学情画像。"""
+        """Build the class learning profile."""
         if not assessments:
             return ClassProfile(class_id=class_id, subject=subject, grade=grade)
 
-        # ENG-4: 统计块包 try/except, 任何 _calc_* 抛错降级到空统计, 不让方法整体崩
+        # ENG-4: stats block wrapped in try/except — any _calc_* failure degrades to empty stats instead of crashing the whole method
         total_students = 0
         avg_score = 0.0
         score_distribution: dict[str, int] = {}
@@ -85,17 +85,17 @@ class AnalyticsEngine:
         risk_levels: dict[str, str] = {}
         try:
             total_students = len({a.student_id for a in assessments})
-            # ENG-8: 用百分比统计, 与 _calc_risk_levels 一致; 避免非百分制测验(max_score!=100)全员落入低分桶
+            # ENG-8: use percentage stats, consistent with _calc_risk_levels; avoids non-percent assessments (max_score!=100) all falling into the lowest bucket
             pcts = [a.percentage for a in assessments]
             avg_score = sum(pcts) / len(pcts) if pcts else 0.0
             score_distribution = self._calc_score_distribution(pcts)
-            # P3: 单遍扫描得 weak+strong, 不再各调一遍 _calc_point_stats (双遍 assessments×responses)。
+            # P3: single scan produces weak+strong, instead of calling _calc_point_stats twice (double pass over assessments×responses).
             topic_stats = self._calc_point_stats(assessments)
             weak_points = self._weak_from_stats(topic_stats)
             strong_points = self._strong_from_stats(topic_stats)
             risk_levels = self._calc_risk_levels(assessments)
         except Exception as exc:
-            logger.error("build_class_profile 统计计算失败, 降级到空统计: %s", exc, exc_info=True)
+            logger.error("build_class_profile stats calculation failed, degrading to empty stats: %s", exc, exc_info=True)
             rethrow_if_fatal(exc)
 
         summary = self._build_class_summary(
@@ -106,6 +106,7 @@ class AnalyticsEngine:
         llm_err = ""
         try:
             response = await self.mlx.chat([
+                # i18n: user-facing
                 {"role": "system", "content": "你是一位资深教学分析师，擅长从数据中提炼教学洞察。"},
                 {"role": "user", "content": summary},
             ], temperature=0.3)
@@ -133,16 +134,16 @@ class AnalyticsEngine:
                 ):
                     risk_levels = {str(k): str(v) for k, v in llm_risk.items()}
             else:
-                llm_err = "LLM 返回空或无法解析"
+                llm_err = "LLM returned empty or unparseable output"
         except Exception as e:
-            logger.error(f"LLM 班级画像增强失败: {e}")
+            logger.error(f"LLM class profile enrichment failed: {e}")
             rethrow_if_fatal(e)
             llm_err = str(e)
 
-        # E14: 单一 now 快照 — 原两次 datetime.now() 非原子, 跨午夜时 period(前一天)
-        # 与 generated_at(后一天) 不一致。一次取值保证同一时刻。
+        # E14: single now snapshot — the original two datetime.now() calls were non-atomic; across midnight
+        # period(day N) and generated_at(day N+1) diverged. One read guarantees the same instant.
         now = datetime.now()
-        # P1-2: 学生风险键含原始学生 ID (PII), 出引擎前统一脱敏 — API 返回 + 报告 prompt 都不再落原始 ID。
+        # P1-2: student risk keys contain raw student IDs (PII) — mask uniformly before leaving the engine, so neither API returns nor report prompts persist raw IDs.
         masked_risk = {self._mask_sid(k): v for k, v in risk_levels.items()}
         return ClassProfile(
             class_id=class_id,
@@ -166,7 +167,7 @@ class AnalyticsEngine:
         grade: str,
         history: list[StudentAssessment],
     ) -> StudentProfile:
-        """生成学生个体画像。"""
+        """Build the individual student profile."""
         student_name = history[0].student_name if history else student_id
 
         if not history:
@@ -193,6 +194,7 @@ class AnalyticsEngine:
             ensure_ascii=False,
         )
 
+        # i18n: user-facing
         prompt = f"""分析以下学生的学习数据，生成个性化学习画像：
 
 学生: {student_name}({student_id})
@@ -215,6 +217,7 @@ class AnalyticsEngine:
         llm_err = ""
         try:
             response = await self.mlx.chat([
+                # i18n: user-facing
                 {"role": "system", "content": "你是一位教育数据分析师，善于从学情数据中提炼洞察。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
@@ -246,9 +249,9 @@ class AnalyticsEngine:
                         self._filter_output(a, grade) for a in _coerce_str_list(data.get("recommended_actions"))
                     ],
                 )
-            llm_err = "LLM 返回空或无法解析"
+            llm_err = "LLM returned empty or unparseable output"
         except Exception as e:
-            logger.error(f"LLM 学生画像增强失败: {e}")
+            logger.error(f"LLM student profile enrichment failed: {e}")
             rethrow_if_fatal(e)
             llm_err = str(e)
 
@@ -270,7 +273,7 @@ class AnalyticsEngine:
         grade: str,
         responses: list[dict[str, Any]],
     ) -> list[ErrorAnalysis]:
-        """错题归因分析。"""
+        """Attribute analysis of wrong answers."""
         if not responses:
             return []
 
@@ -284,9 +287,10 @@ class AnalyticsEngine:
         if self._standards:
             points = self._standards.get_knowledge_points(subject_s, grade_s)
             if points:
+                # i18n: user-facing
                 standards_hint = f"\n课标知识点参考: {', '.join(p.topic for p in points[:10])}"
 
-        # ENG-9: wrong 中 question/student_answer 等字符串字段来自装载器, 进 prompt 前脱敏防注入
+        # ENG-9: string fields in wrong (question/student_answer etc.) come from the loader — sanitize before entering the prompt to prevent injection
         wrong_safe = []
         for r in wrong[:20]:
             if not isinstance(r, dict):
@@ -296,6 +300,7 @@ class AnalyticsEngine:
                 sr[k] = sanitize_input(v, 500) if isinstance(v, str) else v
             wrong_safe.append(sr)
 
+        # i18n: user-facing
         prompt = f"""分析以下错题数据，进行归因分析：
 
 学科: {subject_s} | 年级: {grade_s}
@@ -320,6 +325,7 @@ class AnalyticsEngine:
 
         try:
             response = await self.mlx.chat([
+                # i18n: user-facing
                 {"role": "system", "content": "你是一位教育心理学专家，擅长错题归因和学情诊断。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
@@ -342,20 +348,23 @@ class AnalyticsEngine:
                     ))
                 if out:
                     return out
-                logger.error("错题归因: LLM 返回空数组或无法解析，回退")
+                logger.error("Error attribution: LLM returned empty array or unparseable output, falling back")
             else:
-                logger.error("错题归因: LLM 返回空或无法解析，回退")
+                logger.error("Error attribution: LLM returned empty or unparseable output, falling back")
         except Exception as e:
-            logger.error(f"LLM 错题归因失败: {e}")
+            logger.error(f"LLM error attribution failed: {e}")
             rethrow_if_fatal(e)
 
         return [ErrorAnalysis(
             error_id="err-fallback",
             error_type="unknown",
             frequency=len(wrong),
-            # P1-1: 降级回退不落原始学生作答 (PII), 仅占位保留样本数, 原文不入 API 返回。
+            # P1-1: degraded fallback never persists raw student answers (PII) — placeholders only, keep the sample count; raw text stays out of API returns.
+            # i18n: user-facing
             sample_responses=[f"<作答样本{i+1} 已脱敏>" for i in range(min(3, len(wrong)))],
+            # i18n: user-facing
             root_cause="分析失败，需人工检查",
+            # i18n: user-facing
             remediation="建议人工复核错题",
         )]
 
@@ -366,13 +375,13 @@ class AnalyticsEngine:
         grade: str,
         weak_points: list[WeakPoint],
     ) -> RemedialPlan:
-        """生成补救教学方案。"""
+        """Generate a remedial teaching plan."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         sid_s = sanitize_input(student_id, 50)
-        # P1-17: daily_homework_review 把 analyze_errors 的 list[ErrorAnalysis] 当 weak_points 传入,
-        # ErrorAnalysis 无 knowledge_point_name/to_dict → AttributeError 被吞成空方案。
-        # 统一规整为 WeakPoint: 缺接口者从 ErrorAnalysis 字段映射, 不再崩。
+        # P1-17: daily_homework_review passes analyze_errors' list[ErrorAnalysis] in as weak_points;
+        # ErrorAnalysis lacks knowledge_point_name/to_dict → AttributeError swallowed into an empty plan.
+        # Normalize to WeakPoint uniformly: objects missing the interface map from ErrorAnalysis fields, no more crash.
         weak_points = [self._to_weak_point(w) for w in weak_points] if weak_points else []
         if not weak_points:
             return RemedialPlan(student_id=sid_s, subject=subject_s, grade=grade_s)
@@ -382,6 +391,7 @@ class AnalyticsEngine:
             for wp in weak_points[:3]:
                 pres = self._standards.get_prerequisites(wp.knowledge_point_id)
                 if pres:
+                    # i18n: user-facing
                     standards_hint += f"\n{wp.knowledge_point_name} 前置知识: {', '.join(p.topic for p in pres)}"
 
         wp_summary = json.dumps(
@@ -389,6 +399,7 @@ class AnalyticsEngine:
             ensure_ascii=False,
         )
 
+        # i18n: user-facing
         prompt = f"""为学生 {sid_s} 生成补救教学方案：
 
 学科: {subject_s} | 年级: {grade_s}
@@ -405,13 +416,14 @@ class AnalyticsEngine:
         llm_err = ""
         try:
             response = await self.mlx.chat([
+                # i18n: user-facing
                 {"role": "system", "content": "你是一位经验丰富的教师，擅长设计针对性补救方案。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             data = self._parse_json(response)
             if isinstance(data, dict):
                 raw_ex = data.get("exercises", [])
-                # ENG-18: exercises 原始透传会带任意键/超长字段; 白名单键 + 有界 + 仅 dict
+                # ENG-18: passing exercises through raw would carry arbitrary keys/oversized fields; whitelist keys + bounded + dicts only
                 exercises = []
                 if isinstance(raw_ex, list):
                     for ex in raw_ex[:50]:
@@ -435,9 +447,9 @@ class AnalyticsEngine:
                     exercises=exercises,
                     estimated_duration=self._filter_output(str(data.get("estimated_duration", ""))[:200], grade_s),
                 )
-            llm_err = "LLM 返回空或无法解析"
+            llm_err = "LLM returned empty or unparseable output"
         except Exception as e:
-            logger.error(f"LLM 补救方案生成失败: {e}")
+            logger.error(f"LLM remedial plan generation failed: {e}")
             rethrow_if_fatal(e)
             llm_err = str(e)
 
@@ -446,16 +458,18 @@ class AnalyticsEngine:
             subject=subject_s,
             grade=grade_s,
             weak_points=weak_points,
+            # i18n: user-facing
             strategies=["复习基础知识", "针对性练习", "定期检测"],
             error=llm_err,
         )
 
     async def generate_class_report(self, class_profile: ClassProfile) -> str:
-        """生成 Markdown 格式班级学情报告。"""
-        # ENG-10: 班级画像字段用户可控, 进 prompt 前脱敏
+        """Generate a Markdown-format class learning report."""
+        # ENG-10: class profile fields are user-controlled — sanitize before entering the prompt
         cid_s = sanitize_input(class_profile.class_id, 50)
         subject_s = sanitize_input(class_profile.subject, 20)
         grade_s = sanitize_input(class_profile.grade, 4)
+        # i18n: user-facing
         wp_str = "\n".join(
             f"  - {wp.knowledge_point_name}: 错误率 {wp.error_rate:.0%}，"
             f"影响 {len(wp.affected_students)} 人"
@@ -466,6 +480,7 @@ class AnalyticsEngine:
             for sid, level in list(class_profile.student_risk_levels.items())[:5]
         )
 
+        # i18n: user-facing
         prompt = f"""根据以下班级学情画像，生成一份中文 Markdown 格式的教学分析报告：
 
 班级: {cid_s}
@@ -486,22 +501,23 @@ class AnalyticsEngine:
 
         try:
             response = await self.mlx.chat([
+                # i18n: user-facing
                 {"role": "system", "content": "你是一位教学督导，撰写专业、可操作的班级学情分析报告。"},
                 {"role": "user", "content": prompt},
             ], temperature=0.3)
             if response and response.strip():
-                # A6: 班级报告 LLM 原文送教师前过安全过滤
+                # A6: raw LLM class report passes the safety filter before reaching teachers
                 return self._filter_output(response.strip(), grade_s)
             return self._fallback_report(class_profile)
         except Exception as e:
-            logger.error(f"LLM 报告生成失败: {e}")
+            logger.error(f"LLM report generation failed: {e}")
             rethrow_if_fatal(e)
             return self._fallback_report(class_profile)
 
-    # ── 统计辅助方法 ──
+    # ── Statistics helpers ──
 
     def _to_weak_point(self, item: Any) -> WeakPoint:
-        # P1-17: 规整传入对象为 WeakPoint — 支持 ErrorAnalysis (无 knowledge_point_name/to_dict)。
+        # P1-17: normalize the incoming object to WeakPoint — supports ErrorAnalysis (no knowledge_point_name/to_dict).
         if isinstance(item, WeakPoint):
             return item
         if isinstance(item, dict):
@@ -510,7 +526,7 @@ class AnalyticsEngine:
                 knowledge_point_name=str(item.get("knowledge_point_name", item.get("error_type", ""))),
                 error_rate=float(item.get("error_rate", 0.5)),
             )
-        # ErrorAnalysis-like: duck-type 读字段
+        # ErrorAnalysis-like: read fields via duck typing
         kp_name = getattr(item, "knowledge_point_name", "") or getattr(item, "error_type", "")
         kp_id = getattr(item, "knowledge_point_id", "")
         freq = getattr(item, "frequency", 1)
@@ -521,7 +537,7 @@ class AnalyticsEngine:
         )
 
     def _calc_score_distribution(self, pcts: list[float]) -> dict[str, int]:
-        # ENG-8: 入参为百分比 (0-100), 桶阈值与百分比一致, 非百分制测验不再全员落低分桶
+        # ENG-8: input is percentages (0-100), bucket thresholds match percentages; non-percent assessments no longer all fall into the lowest bucket
         dist = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0, "0-59": 0}
         for s in pcts:
             if s >= 90:
@@ -537,8 +553,8 @@ class AnalyticsEngine:
         return dist
 
     def _calc_point_stats(self, assessments: list[StudentAssessment]) -> dict[str, dict[str, Any]]:
-        # P3: 单遍扫描 assessments×responses 同时统计 weak/strong 所需字段,
-        # 替代原 _calc_weak_points + _calc_strong_points 各扫一遍 (1000生×50题 双遍)。
+        # P3: single scan over assessments×responses collects all fields needed for both weak/strong stats,
+        # replacing the old double scan of _calc_weak_points + _calc_strong_points (1000 students × 50 questions, two passes).
         topic_stats: dict[str, dict[str, Any]] = {}
         for a in assessments:
             for resp in a.responses:
@@ -567,8 +583,8 @@ class AnalyticsEngine:
                 continue
             error_rate = stats["wrong"] / stats["total"]
             if error_rate >= 0.3:
-                # E15: qid 是题号(question_id), 非知识点 ID —
-                # knowledge_point_id 留空待课标对齐填充, 不再用题号冒充。
+                # E15: qid is the question number (question_id), not a knowledge point ID —
+                # leave knowledge_point_id empty for curriculum alignment to fill; no more impersonating a KP ID with a question number.
                 weak.append(WeakPoint(
                     question_id=qid,
                     knowledge_point_id="",
@@ -588,7 +604,7 @@ class AnalyticsEngine:
         return strong[:5]
 
     def _calc_weak_points(self, assessments: list[StudentAssessment]) -> list[WeakPoint]:
-        # 公开入口 (测试直调) — 单独扫一遍; build_class_profile 走合并路径免双遍。
+        # Public entry point (called directly by tests) — its own scan; build_class_profile uses the merged path to avoid a double pass.
         return self._weak_from_stats(self._calc_point_stats(assessments))
 
     def _calc_strong_points(self, assessments: list[StudentAssessment]) -> list[str]:
@@ -635,15 +651,18 @@ class AnalyticsEngine:
     def _calc_risk_indicators(self, history: list[StudentAssessment], avg_pct: float) -> list[str]:
         indicators = []
         if avg_pct < 60:
+            # i18n: user-facing
             indicators.append("成绩低于及格线")
         if len(history) >= 2:
             trend = self._calc_trend(history)
             if trend == "declining":
+                # i18n: user-facing
                 indicators.append("成绩呈下降趋势")
         low_scoring = [a for a in history if a.percentage < 50]
-        # ENG-21: 小样本误报 — 3 条里 1 低分(1>0.9) 即报"多次低分"。
-        # 要求 len(history)>=3 且绝对低分>=2, 杜绝 1 次偶发被判"多次"。
+        # ENG-21: small-sample false positive — 1 low score out of 3 (1>0.9) already reported "repeated low scores".
+        # Require len(history)>=3 and >=2 absolute low scores, so a single fluke is never judged "repeated".
         if len(history) >= 3 and len(low_scoring) >= 2 and len(low_scoring) > len(history) * 0.3:
+            # i18n: user-facing
             indicators.append("多次低分")
         return indicators
 
@@ -655,15 +674,17 @@ class AnalyticsEngine:
         weak_points: list[WeakPoint],
         risk_levels: dict[str, str],
     ) -> str:
-        # ENG-10: class_id/subject/grade 用户可控, 进 prompt 前脱敏防注入
+        # ENG-10: class_id/subject/grade are user-controlled — sanitize before entering the prompt to prevent injection
         class_id = sanitize_input(class_id, 50)
         subject = sanitize_input(subject, 20)
         grade = sanitize_input(grade, 4)
+        # i18n: user-facing
         wp_str = "\n".join(
             f"  - {wp.knowledge_point_name}: 错误率{wp.error_rate:.0%}"
             for wp in weak_points[:5]
         )
         high_risk = sum(1 for v in risk_levels.values() if v == "high")
+        # i18n: user-facing
         return f"""分析以下班级学情数据，补充教学洞察：
 
 班级: {class_id} | 学科: {subject} | 年级: {grade}
@@ -690,10 +711,12 @@ class AnalyticsEngine:
 }}"""
 
     def _fallback_report(self, profile: ClassProfile) -> str:
+        # i18n: user-facing
         wp_lines = "\n".join(
             f"- {wp.knowledge_point_name}: 错误率 {wp.error_rate:.0%}"
             for wp in profile.weak_knowledge_points[:5]
         )
+        # i18n: user-facing
         return f"""# 班级学情报告
 
 ## 概述
@@ -718,6 +741,6 @@ class AnalyticsEngine:
 """
 
     def _parse_json(self, text: Any) -> Any:
-        # E1: 收敛至单一 _parse.parse_json — 含有界长度+平衡括号扫描+围栏提取
-        # (原本地 _extract_first_json 已迁至 _parse.py, 各引擎共用同一实现)
+        # E1: consolidated into the single _parse.parse_json — bounded length + balanced-brace scan + fence extraction
+        # (the original local _extract_first_json moved to _parse.py, shared by all engines)
         return parse_json(text)

@@ -1,7 +1,7 @@
-"""审计日志器 — M3-T13/T14。
+"""Audit logger — M3-T13/T14.
 
-内存缓冲 + 批量落 Repository.audit_events (T14)。无 repo 时仅内存 (cap)。
-后台异步 flush, 不阻塞请求。get_audit_logger() 单例。
+In-memory buffer + batched writes to Repository.audit_events (T14). Without a repo, memory-only (capped).
+Background async flush, never blocks requests. get_audit_logger() singleton.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _DEFAULT_FLUSH_BATCH = 50
 
 
 class AuditLogger:
-    """审计事件收集器 — 内存缓冲 + 批量持久化。"""
+    """Audit event collector — in-memory buffer + batched persistence."""
 
     def __init__(self, repo: object | None = None, cap: int = _DEFAULT_CAP):
         self._repo = repo
@@ -31,11 +31,11 @@ class AuditLogger:
         self._flush_batch = int(os.environ.get("FUSION_K12_AUDIT_FLUSH_BATCH", _DEFAULT_FLUSH_BATCH))
 
     def set_repo(self, repo: object | None) -> None:
-        """运行期切换后端 (cluster 模式 repo 惰性建后注入)。"""
+        """Swap the backend at runtime (cluster mode injects the lazily-built repo)."""
         self._repo = repo
 
     async def record(self, event: AuditEvent) -> None:
-        """记一条审计事件 — 入缓冲, 超 batch 则 flush。"""
+        """Record one audit event — appended to the buffer, flushed once over batch size."""
         async with self._lock:
             self._events.append(event)
             if len(self._events) > self._cap:
@@ -45,7 +45,7 @@ class AuditLogger:
             await self.flush()
 
     async def flush(self) -> int:
-        """刷缓冲至 Repository — 返写入条数。无 repo 返 0, 不清缓冲 (保留供 recent)。"""
+        """Flush the buffer to the Repository — returns the number of rows written. Without a repo returns 0 and keeps the buffer (retained for recent)."""
         if self._repo is None:
             return 0
         async with self._lock:
@@ -58,28 +58,28 @@ class AuditLogger:
             await asyncio.to_thread(self._repo.save_audit, rows)
             return len(rows)
         except Exception as e:
-            logger.warning("审计 flush 失败, 回填缓冲: %s", e)
+            logger.warning("audit flush failed, refilling buffer: %s", e)
             async with self._lock:
                 self._events = batch + self._events
             return 0
 
     async def aclose(self) -> None:
-        """关闭 — flush 剩余事件。"""
+        """Close — flush remaining events."""
         try:
             while True:
                 n = await self.flush()
                 if n == 0:
                     break
         except Exception as e:
-            logger.warning("审计关闭 flush 失败: %s", e)
+            logger.warning("audit close flush failed: %s", e)
 
     def recent(self, limit: int = 100) -> list[dict[str, Any]]:
-        """取最近 N 条内存事件 (导出/调试用)。"""
+        """Return the most recent N in-memory events (for export/debugging)."""
         return [e.to_dict() for e in self._events[-limit:]]
 
 
 def get_audit_logger() -> AuditLogger:
-    """单例审计日志器。"""
+    """Singleton audit logger."""
     global _AUDIT
     if _AUDIT is None:
         _AUDIT = AuditLogger()

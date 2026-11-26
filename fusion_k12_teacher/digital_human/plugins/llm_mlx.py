@@ -1,6 +1,6 @@
-"""MlxLLM — fusion-mlx /v1/chat/completions stream 插件。
+"""MlxLLM — fusion-mlx /v1/chat/completions streaming plugin.
 
-课程上下文由 ContentInjector 注入 system prompt。SSE token 流。
+Course context is injected into the system prompt by ContentInjector. SSE token stream.
 """
 
 from __future__ import annotations
@@ -32,20 +32,23 @@ class MlxLLM(LLMPlugin):
 
     async def init(self) -> None:
         if self._mlx is None:
-            logger.warning("llm_mlx: mlx_client 为 None, 不可用")
+            logger.warning("llm_mlx: mlx_client is None, unavailable")
             self._available = False
             return
         self._available = True
         logger.info("llm_mlx: init")
 
     async def describe_image(self, image_b64: str, question: str = "") -> str:
-        """图片提问 (模式3): Qwen2.5-VL 看图 → 文字描述, 结果并入答疑上下文。
+        """Image question (mode 3): Qwen2.5-VL looks at the image and produces a text description,
+        merged into the Q&A context.
 
-        VLM 模型可配 FUSION_K12_VLM_MODEL; 不存在/失败返空串 (降级纯文字答疑)。
+        VLM model configurable via FUSION_K12_VLM_MODEL; missing/failed returns empty string
+        (degrades to text-only Q&A).
         """
         if not self._available or not image_b64:
             return ""
         model = os.environ.get("FUSION_K12_VLM_MODEL", "mlx-community--Qwen2.5-VL-7B-Instruct-4bit")
+        # i18n: user-facing
         content = [
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
             {"type": "text", "text": question or "请描述这张图片的内容，若是题目请抄出题目"},
@@ -54,10 +57,10 @@ class MlxLLM(LLMPlugin):
             desc = await self._mlx.chat(
                 [{"role": "user", "content": content}], temperature=0.3, max_tokens=512, model=model,
             )
-            logger.info("llm_mlx: VLM 看图完成 %d 字节描述", len(desc or ""))
+            logger.info("llm_mlx: VLM image description done, %d bytes", len(desc or ""))
             return (desc or "").strip()
         except Exception as exc:
-            logger.warning("llm_mlx: VLM 看图失败 (降级纯文字): %s", exc)
+            logger.warning("llm_mlx: VLM image description failed (degrading to text-only): %s", exc)
             return ""
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
@@ -72,7 +75,7 @@ class MlxLLM(LLMPlugin):
             async with resp as response:
                 async for line in response.aiter_lines():
                     if self._cancelled:
-                        logger.info("llm_mlx: 流被中断")
+                        logger.info("llm_mlx: stream interrupted")
                         break
                     line = line.strip()
                     if not line or not line.startswith("data:"):
@@ -86,9 +89,9 @@ class MlxLLM(LLMPlugin):
                         if delta:
                             yield delta
                     except (json.JSONDecodeError, IndexError, KeyError) as exc:
-                        logger.debug("llm_mlx: 跳过非 SSE 行 %s", type(exc).__name__)
+                        logger.debug("llm_mlx: skipping non-SSE line %s", type(exc).__name__)
         except Exception as exc:
-            logger.error("llm_mlx: 流失败 %s", exc)
+            logger.error("llm_mlx: stream failed %s", exc)
             yield ""
 
     async def cancel(self) -> None:

@@ -1,4 +1,4 @@
-"""学情分析数据模型。"""
+"""Learning analytics data models."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .._coerce import coerce_dict_list, coerce_float, coerce_str, coerce_str_dic
 logger = logging.getLogger(__name__)
 
 
-# E13: _coerce_* 收敛至 _coerce.py 单实现, 保留模块内别名兼容既有 from_dict 调用
+# E13: _coerce_* consolidated into the single _coerce.py implementation; module-level aliases kept for existing from_dict callers
 _coerce_float = coerce_float
 _coerce_str = coerce_str
 _coerce_str_dict = coerce_str_dict
@@ -20,7 +20,7 @@ _coerce_dict_list = coerce_dict_list
 
 @dataclass
 class StudentAssessment:
-    """学生测评记录 — 学情数据输入单元。"""
+    """Student assessment record — the input unit for learning analytics."""
     student_id: str = ""
     student_name: str = ""
     assessment_id: str = ""
@@ -55,7 +55,7 @@ class StudentAssessment:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StudentAssessment:
-        # ENG-3: 全字段强转, 防止 JSON 字符串数值/null 进下游统计触发 TypeError
+        # ENG-3: coerce every field, preventing JSON string values/null from triggering TypeError in downstream statistics
         return cls(
             student_id=_coerce_str(data.get("student_id", "")),
             student_name=_coerce_str(data.get("student_name", "")),
@@ -72,9 +72,10 @@ class StudentAssessment:
 
 @dataclass
 class WeakPoint:
-    """薄弱知识点。"""
-    # E15: question_id 与 knowledge_point_id 分离 — 原代码把 resp.question_id 当
-    # knowledge_point_id 写入, 题号污染知识点 ID 语义。各自独立字段, 题号归题号。
+    """Weak knowledge point."""
+    # E15: question_id separated from knowledge_point_id — the old code wrote resp.question_id as
+    # knowledge_point_id, letting question numbers pollute knowledge point ID semantics. Independent
+    # fields now; question numbers stay question numbers.
     question_id: str = ""
     knowledge_point_id: str = ""
     knowledge_point_name: str = ""
@@ -109,7 +110,7 @@ class WeakPoint:
 
 @dataclass
 class ClassProfile:
-    """班级学情画像。"""
+    """Class learning profile."""
     class_id: str = ""
     subject: str = ""
     grade: str = ""
@@ -160,7 +161,7 @@ class ClassProfile:
 
 @dataclass
 class StudentProfile:
-    """学生个体画像。"""
+    """Individual student profile."""
     student_id: str = ""
     name: str = ""
     grade: str = ""
@@ -204,7 +205,7 @@ class StudentProfile:
 
 @dataclass
 class ErrorAnalysis:
-    """错题归因分析。"""
+    """Wrong-answer attribution analysis."""
     error_id: str = ""
     knowledge_point_id: str = ""
     error_type: str = ""
@@ -239,7 +240,7 @@ class ErrorAnalysis:
 
 @dataclass
 class RemedialPlan:
-    """补救教学方案。"""
+    """Remedial teaching plan."""
     student_id: str = ""
     subject: str = ""
     grade: str = ""

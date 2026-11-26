@@ -16,8 +16,10 @@ class LayerContent:
     extension: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        # E11: 显式列字段, 不再 `{k:v if v}` 丢弃假值 — 原 filter 丢空 extension/hints/exercises,
-        # 下游无法区分"无拓展"与"字段缺失", 与 DifferentiatedContent 显式 to_dict 行为不一致。
+        # E11: list fields explicitly, no more `{k:v if v}` dropping falsy values —
+        # the old filter dropped empty extension/hints/exercises, so downstream
+        # could not distinguish "no extension" from "field missing", inconsistent
+        # with DifferentiatedContent's explicit to_dict behavior.
         return {
             "explanation": self.explanation,
             "examples": self.examples,
@@ -48,17 +50,22 @@ class DifferentiatedContent:
     topic: str = ""
     grade: str = ""
     subject: str = ""
-    # E3: layers: dict[str, LayerContent] 替代 struggling/standard/advanced 三固定字段。
-    # 原 3 字段与 E2 共同锁死三层, 新增层级须改 dataclass + to_dict + 全消费方 + 测试,
-    # 扩展成本 O(全链路)。改 dict 后新增层级只需在 LEVEL_CONFIGS 登记。
+    # E3: layers: dict[str, LayerContent] replaces the three fixed fields
+    # struggling/standard/advanced. The old 3 fields, together with E2, locked in
+    # exactly three layers; adding a layer required changing the dataclass +
+    # to_dict + all consumers + tests — O(entire chain) extension cost. With a
+    # dict, a new layer only needs registering in LEVEL_CONFIGS.
     layers: dict[str, LayerContent] = field(default_factory=dict)
     group_tasks: list[GroupTask] = field(default_factory=list)
     standards_aligned: list[str] = field(default_factory=list)
-    # R12: 分层生成失败时透出失败层与错误原因, 不再静默降级空层让教师拿无感知空内容。
+    # R12: when layer generation fails, surface the failed layer and error reason
+    # instead of silently degrading to empty layers that give teachers
+    # imperceptible empty content.
     layer_errors: dict[str, str] = field(default_factory=dict)
 
     def get_layer(self, level: str) -> LayerContent:
-        """按层级名取 LayerContent, 不存在返空 LayerContent (只读访问兼容)。"""
+        """Get LayerContent by level name; return an empty LayerContent when missing
+        (read-only access compatibility)."""
         return self.layers.get(level, LayerContent())
 
     def to_dict(self) -> dict[str, Any]:

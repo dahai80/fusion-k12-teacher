@@ -1,1 +1,1 @@
-"""Fusion-K12-Teacher 工具函数。"""
+"""Fusion-K12-Teacher utility functions."""

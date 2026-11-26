@@ -1,12 +1,12 @@
-"""BNUP 评估基准集生成器 — 300-500 题域内/域外/对抗 (issue #24 A5)。
+"""BNUP evaluation benchmark generator — 300-500 items, in-domain/out-of-domain/adversarial (issue #24 A5).
 
-从 train_bridge_bank.json (134 题) + 7 个模板生成器组装 360 题:
-  60% in-domain (216): 134 train_bridge + 82 其他 7 模板
-  20% OOD (72): 人教版/苏教版应用题 + 初中物理
-  20% adversarial (72): 单位混用/冗余条件/表达模糊
+Assembles 360 items from train_bridge_bank.json (134 items) + 7 template generators:
+  60% in-domain (216): 134 train_bridge + 82 from the other 7 templates
+  20% OOD (72): PEP/Sujing-edition word problems + middle-school physics
+  20% adversarial (72): unit mixing / redundant conditions / ambiguous wording
 
-运行: python -m fusion_k12_teacher.eval.benchmark_gen
-输出: fusion_k12_teacher/eval/data/bnup_benchmark.json
+Run: python -m fusion_k12_teacher.eval.benchmark_gen
+Output: fusion_k12_teacher/eval/data/bnup_benchmark.json
 """
 
 from __future__ import annotations
@@ -81,6 +81,7 @@ def _load_train_bridge() -> list[dict[str, Any]]:
             ground_truth=gt,
             category="in_domain",
             grade=5,
+            # i18n: user-facing
             topic="火车过桥",
             template_type=p.get("template_id", "train_crossing_bridge"),
             visual_type="track_timeline",
@@ -93,6 +94,7 @@ def _load_train_bridge() -> list[dict[str, Any]]:
 
 def _gen_array_grid(rng: random.Random) -> list[dict[str, Any]]:
     items = []
+    # i18n: user-facing
     templates = [
         ("{rows}行{cols}列苹果阵列, 一共有几个苹果?", lambda r, c: r * c, "array_grid", "乘法阵列"),
         ("教室里有{rows}排桌子, 每排{cols}张, 一共多少张桌子?", lambda r, c: r * c, "array_grid", "乘法阵列"),
@@ -127,6 +129,7 @@ def _gen_tape_diagram(rng: random.Random) -> list[dict[str, Any]]:
         total = a + b
         grade = rng.choice([3, 4])
         qtype = i % 3
+        # i18n: user-facing
         if qtype == 0:
             q = f"甲数是乙数的{multiple}倍, 甲乙两数共{total}, 求乙数。"
             gt = float(b)
@@ -142,6 +145,7 @@ def _gen_tape_diagram(rng: random.Random) -> list[dict[str, Any]]:
             ground_truth=gt,
             category="in_domain",
             grade=grade,
+            # i18n: user-facing
             topic="和差倍比",
             template_type="sum_multiple",
             visual_type="tape_diagram",
@@ -158,6 +162,7 @@ def _gen_geometry_2d(rng: random.Random) -> list[dict[str, Any]]:
         width = rng.randint(3, 15)
         grade = rng.choice([3, 4, 5])
         qtype = i % 3
+        # i18n: user-facing
         if qtype == 0:
             q = f"长方形长{length}厘米宽{width}厘米, 求面积。"
             gt = float(length * width)
@@ -194,6 +199,7 @@ def _gen_isometric_3d(rng: random.Random) -> list[dict[str, Any]]:
         h = rng.randint(3, 12)
         grade = rng.choice([5, 6])
         qtype = i % 2
+        # i18n: user-facing
         if qtype == 0:
             cyl_vol = math.pi * r * r * h
             q = f"圆柱底面半径{r}厘米高{h}厘米, 削成最大圆锥, 削去部分的体积是多少立方厘米? (π取3.14)"
@@ -229,6 +235,7 @@ def _gen_bucket_divider(rng: random.Random) -> list[dict[str, Any]]:
         per = total // people
         remainder = total % people
         grade = rng.choice([4, 5, 6])
+        # i18n: user-facing
         if remainder == 0:
             q = f"把{total}本书平均分给{people}个人, 每人得几本?"
             gt = float(per)
@@ -241,6 +248,7 @@ def _gen_bucket_divider(rng: random.Random) -> list[dict[str, Any]]:
             ground_truth=gt,
             category="in_domain",
             grade=grade,
+            # i18n: user-facing
             topic="组合分配",
             template_type="equal_division",
             visual_type="bucket_divider",
@@ -258,6 +266,7 @@ def _gen_data_chart(rng: random.Random) -> list[dict[str, Any]]:
         avg = sum(values) / count
         grade = rng.choice([4, 5])
         qtype = i % 2
+        # i18n: user-facing
         if qtype == 0:
             vals_str = "、".join(str(v) for v in values)
             q = f"某商店{count}天销售额分别为: {vals_str} 元, 求平均日销售额。"
@@ -289,6 +298,7 @@ def _gen_flow_card(rng: random.Random) -> list[dict[str, Any]]:
         b = rng.randint(5, 50)
         grade = rng.choice([5, 6])
         qtype = i % 2
+        # i18n: user-facing
         if qtype == 0:
             c = a + b
             q = f"解方程: x + {a} = {c}, 求 x。"
@@ -318,6 +328,7 @@ def _gen_ood(rng: random.Random) -> list[dict[str, Any]]:
     items = []
     for i in range(36):
         qtype = i % 4
+        # i18n: user-facing
         if qtype == 0:
             speed = rng.randint(40, 120)
             time = rng.randint(2, 8)
@@ -361,7 +372,9 @@ def _gen_ood(rng: random.Random) -> list[dict[str, Any]]:
     for i in range(36):
         a = rng.randint(10, 99)
         b = rng.randint(10, 99)
+        # i18n: user-facing
         q = f"计算: {a} + {b} = ? (通用计算)"
+        # i18n: user-facing
         items.append(_item(
             item_id=f"ood-calc-{i+1:02d}",
             question=q,
@@ -380,6 +393,7 @@ def _gen_adversarial(rng: random.Random) -> list[dict[str, Any]]:
     items = []
     for i in range(24):
         qtype = i % 3
+        # i18n: user-facing
         if qtype == 0:
             length_mm = rng.randint(100, 900)
             length_m = length_mm / 1000
@@ -419,8 +433,10 @@ def _gen_adversarial(rng: random.Random) -> list[dict[str, Any]]:
         bridge = rng.randint(200, 800)
         train_len = rng.randint(100, 300)
         time_sec = (bridge + train_len) / speed
+        # i18n: user-facing
         temp = rng.choice(["今天", "昨天", "上午", "下午"])
         q = f"{temp}一列长{train_len}米的火车以{speed}米每秒通过{bridge}米大桥, 求通过时间。 (含时间干扰词)"
+        # i18n: user-facing
         items.append(_item(
             item_id=f"adv-train-{i+1:02d}",
             question=q,
@@ -439,7 +455,9 @@ def _gen_adversarial(rng: random.Random) -> list[dict[str, Any]]:
         import math
         cyl_vol = math.pi * r * r * h
         extra = rng.randint(1, 5)
+        # i18n: user-facing
         q = f"圆柱底面半径{r}厘米高{h}厘米, 旁边有一个边长{extra}厘米的小立方体(无关条件), 削最大圆锥求削去体积。 (π取3.14)"
+        # i18n: user-facing
         items.append(_item(
             item_id=f"adv-3d-{i+1:02d}",
             question=q,
@@ -476,6 +494,7 @@ def generate() -> dict[str, Any]:
 
     return {
         "version": "1.0.0",
+        # i18n: user-facing
         "description": "BNUP K-12 数学评估基准集 — 域内/域外/对抗三分类 (PRD A5)",
         "total": total,
         "distribution": {

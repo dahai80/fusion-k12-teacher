@@ -1,11 +1,11 @@
-"""通用场景编译路径 — 新题型不再依赖枚举模板。
+"""Generic scene compilation path — new problem types no longer depend on enumerated templates.
 
-架构: S1 自然语言解析 (LLM 开放提取已知量/方程) → S2 结构化 JSON DSL
-(SymPy 解方程组 + 可视化原语) → S3 物理/数学拓扑 Canvas 渲染 (前端原语)。
+Architecture: S1 natural-language parsing (LLM openly extracts knowns/equations) -> S2 structured JSON DSL
+(SymPy solves the equation system + visualization primitives) -> S3 physics/math topology Canvas rendering (frontend primitives).
 
-与模板路径 (_KNOWN_SCENARIOS) 的关系: 模板命中走精品渲染; 未命中
-(scenario=unknown 或校验失败) 落入本路径, 用 SymPy 通用求解兜底,
-仅当 LLM 提取失败或方程不可解时才真正降级静态推导。
+Relationship to the template path (_KNOWN_SCENARIOS): template hits get premium rendering; misses
+(scenario=unknown or verification failure) land in this path with SymPy generic solving as the fallback,
+and only LLM extraction failure or unsolvable equations truly degrade to static derivation.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from ...prompts.bnup_socratic import (
 
 logger = logging.getLogger(__name__)
 
-# issue #19: DSL v3.0 — 8 可视化基元白名单 (替代旧 5 种 _VISUAL_KINDS)
-# 旧值映射: number_line/timeline→track_timeline, bar_model→tape_diagram,
+# issue #19: DSL v3.0 — whitelist of 8 visualization primitives (replacing the old 5 _VISUAL_KINDS)
+# Old-value mapping: number_line/timeline -> track_timeline, bar_model -> tape_diagram,
 #           flow→flow_card, grid→array_grid
 _LEGACY_VISUAL_MAP = {
     "number_line": "track_timeline",
@@ -37,6 +37,7 @@ _VISUAL_KINDS = (
     "track_timeline", "bucket_divider", "data_chart", "flow_card",
 )
 
+# i18n: user-facing (LLM generic-solver prompt — Chinese teaching-domain prompt content)
 _GENERIC_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是数学应用题求解器。把题目转化为「已知量 + 方程组」, 严格输出 JSON。
 
 规则:
@@ -174,7 +175,7 @@ _GENERIC_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" 
 
 
 def _sanitize_pipeline(raw: Any) -> list[dict[str, Any]]:
-    """pipeline 白名单过滤 — 只保留受控字段与安全 eval 串 (Gemini 方案融合)。"""
+    """Pipeline whitelist filter — keep only controlled fields and safe eval strings (Gemini-approach fusion)."""
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
@@ -208,7 +209,7 @@ _ALLOWED_NODES = (
 
 
 def _eval_safe(expr: str, extra_names: set[str] | None = None) -> bool:
-    """静态校验 eval 串 — 算术 + params.x/results[n] + extra_names (判断题判据裸名)。"""
+    """Statically validate an eval string — arithmetic + params.x/results[n] + extra_names (bare judgment-criterion names)."""
     allowed = {"params", "results"} | (extra_names or set())
     try:
         tree = ast.parse(expr, mode="eval")
@@ -218,7 +219,7 @@ def _eval_safe(expr: str, extra_names: set[str] | None = None) -> bool:
         if not isinstance(node, _ALLOWED_NODES):
             return False
         if isinstance(node, ast.Attribute):
-            # 只允许 params.<name> / results 形态的一层属性; 禁 dunder 防逃逸
+            # Only one level of attribute access like params.<name> / results is allowed; dunders are banned to prevent escape
             if not isinstance(node.value, ast.Name) or node.value.id not in ("params", "results"):
                 return False
             if node.attr.startswith("_"):
@@ -229,9 +230,9 @@ def _eval_safe(expr: str, extra_names: set[str] | None = None) -> bool:
 
 
 def eval_pipeline(parsed: dict[str, Any]) -> dict[str, Any] | None:
-    """执行分步 pipeline (受限 AST 求值, 非 new Function)。
+    """Execute the step-by-step pipeline (sandboxed AST evaluation, not new Function).
 
-    返回 {"steps": [...带 value 的步骤...], "final": 终值}; 任一步失败返回 None。
+    Returns {"steps": [...steps with value...], "final": the final value}; any failing step returns None.
     """
     pipeline = parsed.get("pipeline") or []
     if not pipeline:
@@ -281,7 +282,7 @@ def _ast_eval(node: ast.AST, params: dict[str, float], results: dict[int, float]
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
         if node.value.id == "params" and node.attr in params:
             return float(params[node.attr])
-    # 判断题判据裸变量名 (side1 等) — 安全校验 (_eval_safe extra_names) 已限定范围
+    # Bare criterion variable names for judgment problems (side1 etc.) — already scoped by the safety validation (_eval_safe extra_names)
     if isinstance(node, ast.Name) and node.id in params:
         return float(params[node.id])
     if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "results":
@@ -290,22 +291,22 @@ def _ast_eval(node: ast.AST, params: dict[str, float], results: dict[int, float]
             if idx.value in results:
                 return results[idx.value]
         raise KeyError("results index")
-    raise ValueError(f"不支持的表达式节点: {type(node).__name__}")
+    raise ValueError(f"unsupported expression node: {type(node).__name__}")
 
 
 def _clean_equation(eq: str) -> str:
-    """清洗 LLM 方程串 — 全角符号/中文标点/等号转 SymPy 可解析形态, 清洗后为空则丢弃。"""
+    """Clean LLM equation strings — full-width symbols / Chinese punctuation / equal signs converted to a SymPy-parseable form; discarded when empty after cleaning."""
     out = eq.strip()
     for a, b in (("＝", "="), ("＋", "+"), ("－", "-"), ("×", "*"), ("÷", "/"),
                  ("（", "("), ("）", ")"), ("，", ","), (":", "/"), ("：", "/")):
         out = out.replace(a, b)
-    # LLM 常在方程里混入中文单位/注释 (如 "12*5 - target（立方厘米）") —
-    # 变量名约定为英文标识符, 剥离中文字符通常只去掉注释, 比整条丢弃召回率高
+    # The LLM often mixes Chinese units/comments into equations (e.g. "12*5 - target (cubic cm)") —
+    # variable names are English identifiers by convention, so stripping Chinese characters usually removes only the comment; higher recall than dropping the whole equation
     cleaned = "".join(ch for ch in out if not ("\u4e00" <= ch <= "\u9fff"))
     out = cleaned.strip()
     if not out:
         return ""
-    # LLM 常写完整等式 "lhs = rhs" — 约定是右端为 0, 此处统一转 lhs - (rhs)
+    # The LLM often writes full equations "lhs = rhs" — the convention is right-hand side 0; normalize here to lhs - (rhs)
     if "=" in out:
         lhs, _, rhs = out.partition("=")
         lhs, rhs = lhs.strip(), rhs.strip()
@@ -320,7 +321,7 @@ def _clean_equation(eq: str) -> str:
 
 def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
                       unknowns: list[str], answer_expr: str) -> dict[str, Any] | None:
-    """SymPy 解方程组 — 超时/异常/解非数值均返回 None (调用方降级)。"""
+    """Solve the equation system with SymPy — timeout/exception/non-numeric solutions all return None (caller degrades)."""
     try:
         import sympy
         from sympy.parsing.sympy_parser import (
@@ -346,7 +347,7 @@ def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
             try:
                 expr = parse_expr(cleaned, local_dict=local, transformations=transformations)
             except Exception as exc:
-                logger.info("generic_pipeline: 方程 %r 解析失败 %s", cleaned, exc)
+                logger.info("generic_pipeline: equation %r failed to parse %s", cleaned, exc)
                 continue
             eqs.append(expr)
         if not eqs:
@@ -367,7 +368,7 @@ def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
             if fval != fval or fval in (float("inf"), float("-inf")):  # NaN/inf
                 return None
             result[name] = fval
-        # answer_expr 若是表达式 (如 speed*target), 代入求值
+        # If answer_expr is an expression (e.g. speed*target), substitute and evaluate
         if answer_expr and answer_expr in result:
             result["__answer__"] = result[answer_expr]
         elif answer_expr:
@@ -382,14 +383,14 @@ def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
             result["__answer__"] = result.get(unknowns[0], 0.0) if unknowns else 0.0
         return result
     except Exception as exc:
-        logger.info("generic_pipeline: sympy 求解失败 %s", exc)
+        logger.info("generic_pipeline: sympy solving failed %s", exc)
         return None
 
 
 def _sanitize_visual(raw: Any, problem_text: str = "") -> dict[str, Any]:
-    """issue #19/#22: v3.0 可视化基元白名单过滤 — 8 基元 + 旧值映射 + 题型路由兜底。"""
+    """issue #19/#22: v3.0 visualization-primitive whitelist filter — 8 primitives + old-value mapping + problem-type routing fallback."""
     if not isinstance(raw, dict) or not raw.get("kind"):
-        # issue #22: LLM 未指定 visual 时按题型关键词路由
+        # issue #22: when the LLM does not specify a visual, route on problem-type keywords
         if problem_text:
             routed = route_visual_type("", problem_text)
             return {"kind": routed}
@@ -397,7 +398,7 @@ def _sanitize_visual(raw: Any, problem_text: str = "") -> dict[str, Any]:
     kind = str(raw.get("kind", "flow_card"))
     if kind in _LEGACY_VISUAL_MAP:
         kind = _LEGACY_VISUAL_MAP[kind]
-        logger.info("visual 旧值映射 -> %s", kind)
+        logger.info("visual old-value mapped -> %s", kind)
     if kind not in _VISUAL_KINDS:
         kind = "flow_card"
     out: dict[str, Any] = {"kind": kind}
@@ -418,12 +419,12 @@ def _sanitize_visual(raw: Any, problem_text: str = "") -> dict[str, Any]:
 
 
 def build_generic_prompt(problem: str) -> str:
-    # replace 而非 format — prompt 内含大量 JSON 大括号, format 转义易错
+    # replace instead of format — the prompt contains many JSON braces, and format escaping is error-prone
     return _GENERIC_PROMPT.replace("__PROBLEM__", problem)
 
 
 def parse_judgment(raw: str) -> dict[str, Any] | None:
-    """解析判断型题 (question_kind=judgment) 输出 — criterion 必须合法。"""
+    """Parse judgment-type (question_kind=judgment) output — the criterion must be valid."""
     from ...._parse import parse_json
     data = parse_json(raw)
     if not isinstance(data, dict) or str(data.get("question_kind", "")) != "judgment":
@@ -451,7 +452,9 @@ def parse_judgment(raw: str) -> dict[str, Any] | None:
     return {
         "knowns": knowns,
         "criterion_expr": expr[:200],
+        # i18n: user-facing (default verdict texts shown to students)
         "true_meaning": str(crit_raw.get("true_meaning", "成立"))[:120],
+        # i18n: user-facing
         "false_meaning": str(crit_raw.get("false_meaning", "不成立"))[:120],
         "steps": [str(s)[:120] for s in data.get("steps", [])[:5] if isinstance(s, str)],
         "visual": _sanitize_visual(data.get("visual")),
@@ -461,7 +464,7 @@ def parse_judgment(raw: str) -> dict[str, Any] | None:
 
 
 def solve_judgment(parsed: dict[str, Any]) -> dict[str, Any] | None:
-    """执行判据表达式 (受限 AST), 返回 {criterion_value, verdict, verdict_text}。"""
+    """Evaluate the criterion expression (sandboxed AST), returning {criterion_value, verdict, verdict_text}."""
     try:
         tree = ast.parse(parsed["criterion_expr"], mode="eval")
         val = float(_ast_eval(tree.body, parsed["knowns"], {}))
@@ -478,7 +481,7 @@ def solve_judgment(parsed: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def parse_generic_extraction(raw: str) -> dict[str, Any] | None:
-    """解析 S1 输出并做结构校验 — 非法/缺关键字段返回 None。"""
+    """Parse the S1 output and validate its structure — returns None when invalid or missing key fields."""
     from ...._parse import parse_json
     data = parse_json(raw)
     if not isinstance(data, dict):
@@ -526,6 +529,6 @@ def parse_generic_extraction(raw: str) -> dict[str, Any] | None:
 
 
 def solve_generic(parsed: dict[str, Any]) -> dict[str, Any] | None:
-    """S2: SymPy 解方程组, 返回 {unknown: value, __answer__: value} 或 None。"""
+    """S2: solve the equation system with SymPy, returning {unknown: value, __answer__: value} or None."""
     return _safe_sympy_solve(parsed["knowns"], parsed["equations"],
                              parsed["unknowns"], parsed["answer_expr"])

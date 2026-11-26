@@ -1,4 +1,9 @@
-"""安全模块测试 — models / wordlist / age_checker / filter。"""
+"""Safety module tests — models / wordlist / age_checker / filter."""
+
+# i18n: user-facing — Chinese literals below are test fixture data (sample
+# sensitive words, texts and student inputs used as data) and assertion
+# targets on product content (default sensitive-word list, restricted topics,
+# age_checker log strings); do not translate.
 
 import logging
 import os
@@ -153,7 +158,7 @@ class TestAgeChecker:
         with caplog.at_level(logging.WARNING, logger="fusion_k12_teacher.safety.age_checker"):
             rating = ac.get_rating("幼儿园")
         assert rating.max_abstraction == "concrete"
-        assert any("非法年级" in r.message for r in caplog.records)
+        assert any("Invalid grade value" in r.message for r in caplog.records)
 
     def test_save_and_load(self):
         with tempfile.TemporaryDirectory() as tmpdir:

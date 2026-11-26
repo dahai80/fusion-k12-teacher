@@ -1,7 +1,8 @@
-"""DigitalHumanManager — 数字人平台管理器 (serve.py 生命周期单例)。
+"""DigitalHumanManager — digital human platform manager (serve.py lifecycle singleton).
 
-prewarm 共享插件管线; create_session 带并发闸门 (BoundedSemaphore MAX_SESSIONS);
-aclose 关停时排空所有会话。持 mlx_client/subject_registry/session_manager/lesson_scripter 引用。
+Prewarms shared plugin pipelines; create_session carries a concurrency gate
+(BoundedSemaphore MAX_SESSIONS); aclose drains all sessions on shutdown.
+Holds references to mlx_client/subject_registry/session_manager/lesson_scripter.
 """
 
 from __future__ import annotations
@@ -19,18 +20,19 @@ from .session import DigitalHumanSession
 logger = logging.getLogger(__name__)
 
 MAX_SESSIONS = 10
-# 闸门获取超时 — 调用方忘 finish 时快失败, 不永久挂死
+# Gate acquisition timeout — fails fast when callers forget to finish, never hangs forever
 _GATE_TIMEOUT = float(os.environ.get("FUSION_K12_DH_GATE_TIMEOUT", "60"))
 
 
 async def _fusion_mlx_service_up(base_url: str) -> bool:
-    # 探测本地 fusion-mlx HTTP 服务是否在跑 — 同机 GPU 已被服务进程占用时,
-    # 进程内 MuseTalk 会触发不可捕获的 metal::malloc OOM (上游 issue #956),
-    # 直接 hard-crash 宿主进程。探测到则降级 StaticAvatar。
+    # Probes whether a local fusion-mlx HTTP service is running — when the same-machine GPU is
+    # already occupied by the service process, in-process MuseTalk triggers an uncatchable
+    # metal::malloc OOM (upstream issue #956) that hard-crashes the host process.
+    # If detected, degrade to StaticAvatar.
     try:
         import httpx
 
-        # #34: client key 经 fusion_core.config 单点解析
+        # #34: client key resolved via fusion_core.config as the single point
         from fusion_k12_teacher._keys import gateway_client_key
         key = gateway_client_key()
         headers = {"Authorization": f"Bearer {key}"} if key else {}
@@ -72,19 +74,20 @@ class DigitalHumanManager:
         try:
             await self._prewarm()
         except Exception as exc:
-            logger.error("manager: prewarm 失败 %s (降级, 插件按需初始化)", exc)
-        logger.info("manager: 启动完成 max_sessions=%d", self._gate._bound_value if hasattr(self._gate, "_bound_value") else MAX_SESSIONS)
+            logger.error("manager: prewarm failed %s (degraded, plugins initialize on demand)", exc)
+        logger.info("manager: startup complete max_sessions=%d", self._gate._bound_value if hasattr(self._gate, "_bound_value") else MAX_SESSIONS)
 
     async def _prewarm(self) -> None:
         from .plugins.avatar_static import StaticAvatar
-        # 同机 fusion-mlx 服务在跑时, 进程内 MuseTalk 触发不可捕获 OOM (issue #956),
-        # hard-crash 宿主进程。除非显式 FUSION_K12_MUSETALK_INPROCESS=1 强制开启,
-        # 探测到服务则降级 StaticAvatar (TTS/LLM/ASR 仍走 HTTP, 仅唇形同步降级)。
+        # When a same-machine fusion-mlx service is running, in-process MuseTalk triggers an
+        # uncatchable OOM (issue #956) that hard-crashes the host process. Unless explicitly forced
+        # with FUSION_K12_MUSETALK_INPROCESS=1, degrade to StaticAvatar when the service is
+        # detected (TTS/LLM/ASR still go over HTTP, only lip sync degrades).
         force_inprocess = os.environ.get("FUSION_K12_MUSETALK_INPROCESS", "").strip() in ("1", "true", "yes")
         mlx_base = getattr(self.mlx_client, "base_url", "") or "http://localhost:11432/v1"
         cohost_up = await _fusion_mlx_service_up(mlx_base) if not force_inprocess else False
         if cohost_up:
-            logger.warning("manager: fusion-mlx 服务同机运行 (%s), 进程内 MuseTalk 将 OOM crash, 降级 StaticAvatar (issue #956)", mlx_base)
+            logger.warning("manager: fusion-mlx service running on same machine (%s), in-process MuseTalk would OOM crash, degrading to StaticAvatar (issue #956)", mlx_base)
         try:
             from .plugins.avatar_musetalk import MuseTalkAvatar
             musetalk = MuseTalkAvatar()
@@ -94,14 +97,14 @@ class DigitalHumanManager:
                 logger.info("manager: prewarm MuseTalkAvatar available=True")
             else:
                 reason = "cohost-oom-guard" if cohost_up else ("unavailable" if not musetalk.available else "unknown")
-                logger.info("manager: MuseTalkAvatar 跳过 (%s), 回退 StaticAvatar", reason)
+                logger.info("manager: MuseTalkAvatar skipped (%s), falling back to StaticAvatar", reason)
                 self._avatar = StaticAvatar()
                 await self._avatar.init()
         except Exception as exc:
-            logger.warning("manager: MuseTalkAvatar prewarm 失败 %s, 回退 StaticAvatar", exc)
+            logger.warning("manager: MuseTalkAvatar prewarm failed %s, falling back to StaticAvatar", exc)
             self._avatar = StaticAvatar()
             await self._avatar.init()
-        logger.info("manager: prewarm avatar=%s 完成", self._avatar.name)
+        logger.info("manager: prewarm avatar=%s done", self._avatar.name)
         if self.mlx_client is not None:
             try:
                 from .plugins.tts_kokoro import KokoroTTS
@@ -109,21 +112,21 @@ class DigitalHumanManager:
                 await self._tts.init()
                 logger.info("manager: prewarm KokoroTTS available=%s", self._tts.available)
             except Exception as exc:
-                logger.warning("manager: KokoroTTS prewarm 失败 %s", exc)
+                logger.warning("manager: KokoroTTS prewarm failed %s", exc)
             try:
                 from .plugins.llm_mlx import MlxLLM
                 self._llm = MlxLLM(self.mlx_client)
                 await self._llm.init()
                 logger.info("manager: prewarm MlxLLM available=%s", self._llm.available)
             except Exception as exc:
-                logger.warning("manager: MlxLLM prewarm 失败 %s", exc)
+                logger.warning("manager: MlxLLM prewarm failed %s", exc)
             try:
                 from .plugins.asr_mlx import MlxWhisperASR
                 self._asr = MlxWhisperASR(self.mlx_client)
                 await self._asr.init()
                 logger.info("manager: prewarm MlxWhisperASR available=%s", self._asr.available)
             except Exception as exc:
-                logger.warning("manager: MlxWhisperASR prewarm 失败 %s", exc)
+                logger.warning("manager: MlxWhisperASR prewarm failed %s", exc)
 
     async def create_session(
         self, subject: str, topic: str, grade: str, *,
@@ -133,16 +136,17 @@ class DigitalHumanManager:
         mode: str = "topic",
         knowledge_node_id: str = "",
     ) -> DigitalHumanSession:
-        # 闸门带超时 — 避调用方忘 finish 时 create_session 永久阻塞 (issue: gate 耗尽)
-        # 超时则快失败, 调用方收 503 而非挂死
+        # Gate with timeout — prevents create_session from blocking forever when callers forget
+        # to finish (issue: gate exhaustion). On timeout fail fast; the caller gets a 503 instead of a hang.
         try:
             await asyncio.wait_for(self._gate.acquire(), timeout=_GATE_TIMEOUT)
         except TimeoutError:
-            logger.warning("manager: DH 并发闸门超时 (活跃会话≥%d), 拒绝新建", MAX_SESSIONS)
-            raise RuntimeError(f"DH 并发已满 (max={MAX_SESSIONS}), 请先 finish 旧会话")
+            logger.warning("manager: DH concurrency gate timed out (active sessions >= %d), refusing new session", MAX_SESSIONS)
+            raise RuntimeError(f"DH concurrency full (max={MAX_SESSIONS}), finish old sessions first")
         session_id = new_id("dh-")
-        # 闸门已获取, 会话注册进 _sessions 前若失败须 release, 否则配额永久泄漏
-        # (累计 MAX_SESSIONS 次失败后服务拒所有新建, 只能重启) — issue #13
+        # Gate already acquired; if anything fails before the session is registered into _sessions
+        # it must be released, otherwise the quota leaks permanently (after MAX_SESSIONS cumulative
+        # failures the service rejects all new sessions until restart) — issue #13
         try:
             content = ContentInjector(self.subject_registry, self.lesson_scripter)
             avatar = self._avatar or await self._fallback_avatar()
@@ -155,19 +159,19 @@ class DigitalHumanManager:
             )
             async with self._lock:
                 self._sessions[session_id] = sess
-            # issue #16: 空闲超时 watchdog 自动 finish — 走统一 finish 路径释放闸门
+            # issue #16: idle-timeout watchdog auto-finish — goes through the unified finish path to release the gate
             sess._idle_finish_cb = self._make_idle_finish_cb(session_id)
             await sess.start(lesson_plan=lesson_plan)
         except Exception:
             self._gate.release()
             raise
-        logger.info("manager: 创建会话 %s subject=%s topic=%s", session_id, subject, topic)
+        logger.info("manager: session created %s subject=%s topic=%s", session_id, subject, topic)
         return sess
 
     def _make_idle_finish_cb(self, session_id: str):
-        """issue #16: 空闲超时自动 finish 回调 — 复用统一 finish (pop+闸门释放)。"""
+        """issue #16: idle-timeout auto-finish callback — reuses the unified finish (pop + gate release)."""
         async def _cb() -> None:
-            logger.info("manager: 会话 %s 空闲超时, 自动结束", session_id)
+            logger.info("manager: session %s idle timeout, auto-finishing", session_id)
             await self.finish(session_id)
         return _cb
 
@@ -191,10 +195,10 @@ class DigitalHumanManager:
         return res
 
     async def aclose(self) -> None:
-        logger.info("manager: 关停 排空 %d 会话", len(self._sessions))
+        logger.info("manager: shutting down, draining %d sessions", len(self._sessions))
         for sid in list(self._sessions.keys()):
             try:
                 await self.finish(sid)
             except Exception as exc:
-                logger.warning("manager: 关停会话 %s 异常 %s", sid, exc)
+                logger.warning("manager: session drain error %s %s", sid, exc)
         self._started = False

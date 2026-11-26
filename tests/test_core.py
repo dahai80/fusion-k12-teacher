@@ -1,4 +1,8 @@
-"""Fusion-K12-Teacher 核心测试。"""
+"""Fusion-K12-Teacher core tests."""
+
+# i18n: user-facing — Chinese literals below are test fixture data (sample
+# names/subjects/topics used as data) and assertion targets on product
+# content (e.g. SUBJECTS list); do not translate.
 
 from __future__ import annotations
 
@@ -11,7 +15,7 @@ from fusion_k12_teacher.curriculum import CurriculumEngine, LessonPlan, Quiz
 from fusion_k12_teacher.personalization import LearningPath, PersonalizationEngine
 from fusion_k12_teacher.subjects import SubjectExercise, SubjectExpert
 
-# live = 需 fusion-mlx 真实加载模型 (CI 无 mlx 时 skip)
+# live = requires fusion-mlx to actually load a model (skip on CI without mlx)
 pytestmark_live = pytest.mark.live
 
 
@@ -21,14 +25,16 @@ class TestMLXClient:
         assert client.model == "test-model"
 
     def test_default_model(self, monkeypatch):
-        # issue #26: 断言的是"无 env 时默认为空"前置条件 — live 模式下 _offline_llm
-        # fixture 不清 env, ambient FUSION_MLX_MODEL 会泄漏进来, 测试自己清掉
+        # issue #26: asserts the "defaults to empty without env" precondition —
+        # in live mode the _offline_llm fixture does not clear env, an ambient
+        # FUSION_MLX_MODEL would leak in, so the test clears it itself
         monkeypatch.delenv("FUSION_MLX_MODEL", raising=False)
         client = MLXClient()
         assert client.model == ""
 
     def test_env_model_at_init(self, monkeypatch):
-        # issue #18: __init__ 须读 FUSION_MLX_MODEL env, 不等 auto-select 首调才赋值
+        # issue #18: __init__ must read the FUSION_MLX_MODEL env, not wait for
+        # the first auto-select call to assign it
         monkeypatch.setenv("FUSION_MLX_MODEL", "mlx-community--Qwen3-8B-4bit")
         client = MLXClient()
         assert client.model == "mlx-community--Qwen3-8B-4bit"
@@ -84,7 +90,7 @@ class TestCurriculumEngine:
 class TestAssessmentEngine:
     def test_grading_result_defaults(self):
         result = GradingResult(score=85, total=100, feedback="Good")
-        # percentage 有默认值，不自动计算
+        # percentage has a default value, not auto-computed
         assert result.score == 85
         assert result.total == 100
         assert result.feedback == "Good"
@@ -142,7 +148,7 @@ class TestSubjectExpert:
     async def test_generate_exercise(self):
         expert = SubjectExpert()
         ex = await expert.generate_exercise("数学", "3", "加法")
-        # fusion-mlx 不可用时返回带错误信息的对象
+        # returns an object carrying an error message when fusion-mlx is unavailable
         assert ex.topic == "加法"
 
     @pytest.mark.live

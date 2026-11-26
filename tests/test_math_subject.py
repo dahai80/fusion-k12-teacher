@@ -1,4 +1,5 @@
-"""数学学科测试 — SymPy 校验、知识图谱、场景编译(mock LLM)、苏格拉底课稿(mock LLM)。"""
+"""Math subject tests — SymPy verification, knowledge graph, scene compiler (mock LLM),
+Socratic lesson script (mock LLM)."""
 
 from __future__ import annotations
 
@@ -176,12 +177,12 @@ class TestSympyVerifier:
     def test_unknown_scenario_fallback(self):
         r = self.v.verify_scene("unknown_scene", {})
         assert r.fallback is True
-        assert "未知场景" in r.error
+        assert "unknown scene" in r.error
 
     def test_missing_variable(self):
         r = self.v.verify_scene("train_crossing_bridge", {"L_bridge": 800})
         assert r.fallback is True
-        assert "缺失变量" in r.error
+        assert "missing variables" in r.error
 
     def test_judge_expression_equivalent(self):
         cp = Checkpoint(id="cp1", type=CheckpointType.EXPRESSION, prompt="", expected_expression="(800-200)/20")
@@ -203,6 +204,7 @@ class TestSympyVerifier:
         assert self.v.judge_checkpoint(cp, "30").correct is False
 
     def test_judge_multiple_choice(self):
+        # i18n: user-facing (fixture option feedback, Chinese product content)
         cp = Checkpoint(id="cp1", type=CheckpointType.MULTIPLE_CHOICE, prompt="",
                         options=[{"id": "a", "is_correct": False, "feedback": ""}, {"id": "b", "is_correct": True, "feedback": "对"}])
         assert self.v.judge_checkpoint(cp, "b").correct is True
@@ -253,7 +255,7 @@ class TestMathProblemBank:
                     "semicircle_perimeter", "cuboid_combine_surface",
                     "combination_count", "unitary_combined",
                     "redundant_filter", "fold_cut", "stars_bars"):
-            assert len(self.bank.query(template_id=tid)) >= 1, f"{tid} 缺题"
+            assert len(self.bank.query(template_id=tid)) >= 1, f"{tid} missing problems"
 
     def test_get_by_id(self):
         p = self.bank.get("tb-ex-01")
@@ -276,8 +278,8 @@ class TestMathProblemBank:
 
     def test_triple_tagging(self):
         for p in self.bank.all():
-            assert p.knowledge_node_id, f"{p.id} 缺知识点节点"
-            assert p.cognitive_level, f"{p.id} 缺认知层级"
+            assert p.knowledge_node_id, f"{p.id} missing knowledge node"
+            assert p.cognitive_level, f"{p.id} missing cognitive level"
             assert isinstance(p.misconception_tags, list)
 
 
@@ -317,7 +319,7 @@ class TestMathKnowledgeGraph:
             assert n is not None
             assert n.id == nodes[0].id
 
-    # ── issue #21: 150 节点覆盖性测试 ──
+    # ── issue #21: 150-node coverage tests ──
 
     def test_all_enhanced_nodes_have_visual_type(self):
         from fusion_k12_teacher.course.models import VISUAL_TYPES
@@ -351,9 +353,9 @@ class TestMathKnowledgeGraph:
         assert len(g1_2) > 0
         assert len(g3_4) > 0
         assert len(g5_6) > 0
-        # 低年级应有 array_grid (计数)
+        # Lower grades should have array_grid (counting)
         assert any(n.visual_type == "array_grid" for n in g1_2)
-        # 高年级应有 tape_diagram (和差倍比)
+        # Higher grades should have tape_diagram (sum/difference/multiple ratios)
         assert any(n.visual_type == "tape_diagram" for n in g5_6)
 
     def test_graphnode_visual_engine_alias(self):
@@ -364,7 +366,7 @@ class TestMathKnowledgeGraph:
     # ── issue #21 gap: standards-only nodes backfill ──
 
     def test_standards_nodes_have_visual_type(self):
-        """issue #21: 47 standards-only nodes 应有 visual_type (非空)。"""
+        """issue #21: 47 standards-only nodes should have visual_type (non-empty)."""
         standards = [n for n in self.kg._nodes.values()
                      if n.id not in self.kg._enhanced_ids]
         assert len(standards) > 0, "no standards nodes loaded"
@@ -374,14 +376,14 @@ class TestMathKnowledgeGraph:
                 f"standards node {n.id} visual_type={n.visual_type} not in 8 primitives"
 
     def test_standards_nodes_have_semester(self):
-        """issue #21: standards-only nodes 应有 semester (非空)。"""
+        """issue #21: standards-only nodes should have semester (non-empty)."""
         standards = [n for n in self.kg._nodes.values()
                      if n.id not in self.kg._enhanced_ids]
         for n in standards:
             assert n.semester, f"standards node {n.id} has empty semester"
 
     def test_standards_nodes_have_misconceptions(self):
-        """issue #21: standards-only nodes 应有 misconceptions (≥1)。"""
+        """issue #21: standards-only nodes should have misconceptions (≥1)."""
         standards = [n for n in self.kg._nodes.values()
                      if n.id not in self.kg._enhanced_ids]
         for n in standards:
@@ -396,6 +398,7 @@ class TestSceneCompilerMock:
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 
         class MockMLX:
+            # i18n: user-facing (fixture LLM payload with Chinese teaching content)
             async def chat(self, messages, temperature=0.3, max_tokens=1024, **kwargs):
                 return '''{"scenario": "train_crossing_bridge", "entities": {"bridge": {"length": 800, "label": "大桥"}, "train": {"length": 200, "speed": 20, "label": "火车"}}, "key_milestones": [{"time_ratio": 0.0, "label": "车头上桥", "event": "start"}], "question_focus": "calculate_total_time", "misconception_hint": "忘记加车长"}'''
 
@@ -403,6 +406,7 @@ class TestSceneCompilerMock:
 
     @pytest.mark.asyncio
     async def test_compile_full_pipeline(self, compiler):
+        # i18n: user-facing (fixture question text, Chinese teaching content)
         dsl = await compiler.compile("一列长200米的火车以20米每秒的速度通过800米大桥求通过时间")
         assert dsl.subject == "math"
         assert dsl.template_type == "train_crossing_bridge"
@@ -418,6 +422,7 @@ class TestSocraticTutorMock:
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 
         class MockMLX:
+            # i18n: user-facing (fixture LLM payload with Chinese teaching content)
             async def chat(self, messages, temperature=0.3, max_tokens=4096, **kwargs):
                 return '''{"global_variables": {"L_train": {"label": "车长", "unit": "m", "value": 200, "is_unknown": false}}, "steps": [{"step_id": "step1", "step_title": "观察", "phase": "Engage", "speech_narration": "我们来看火车过桥", "landmarks": [{"timeOffsetMs": 0, "progressRatio": 0.0, "latexHighlightVar": "L_train"}], "animation": {"start_ratio": 0.0, "end_ratio": 0.3, "camera_focus_entity": "train_head", "highlight_entities": ["train_head"]}, "checkpoint": {"id": "cp1", "type": "multiple_choice", "prompt": "路程关系?", "options": [{"id": "a", "label": "桥长+车长", "is_correct": true, "feedback": "对"}], "hints": ["提示"], "on_error_action": "rewind", "difficulty_layer": "B"}}]}'''
 
@@ -425,6 +430,7 @@ class TestSocraticTutorMock:
 
     @pytest.mark.asyncio
     async def test_generate_lesson_script(self, tutor):
+        # i18n: user-facing (fixture topic, Chinese teaching content)
         dsl = await tutor.generate_lesson_script("火车过桥", grade="5")
         assert dsl.subject == "math"
         assert len(dsl.steps) == 1
@@ -434,7 +440,9 @@ class TestSocraticTutorMock:
 
 # ── issue #19: v3.0 generic_pipeline sanitize + socratic_tutor meta ──
 
+
 class TestV3VisualSanitize:
+    # i18n: user-facing (fixture visual titles, Chinese product content)
     def test_sanitize_valid_v3_kind(self):
         from fusion_k12_teacher.course.subjects.math.generic_pipeline import _sanitize_visual
         out = _sanitize_visual({"kind": "tape_diagram", "title": "和差问题"})
@@ -466,12 +474,14 @@ class TestV3VisualSanitize:
 
 
 class TestSocraticTutorV3Meta:
+    # i18n: user-facing (fixture LLM payload and topics, Chinese teaching content)
     @pytest.fixture
     def tutor(self, monkeypatch):
         from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
 
         class MockMLX:
+            # i18n: user-facing (fixture LLM payload with Chinese teaching content)
             async def chat(self, messages, temperature=0.3, max_tokens=4096, **kwargs):
                 return '''{"meta": {"visual_type": "track_timeline", "fallback_type": "tape_diagram"}, "global_variables": {"L_train": {"label": "车长", "unit": "m", "value": 200}}, "steps": [{"step_id": "step1", "step_title": "观察", "phase": "Engage", "speech_narration": "火车过桥", "animation": {"start_ratio": 0.0, "end_ratio": 0.3, "camera_focus_entity": "train_head"}, "visual_state": {"visual_type": "track_timeline", "action": "进入:列车驶入", "progress_range": [0.0, 0.3], "active_entities": ["train_head"]}, "checkpoint": {"id": "cp1", "type": "multiple_choice", "prompt": "路程?", "options": [{"id": "a", "label": "桥长+车长", "is_correct": true, "feedback": "对"}], "hints": ["提示"], "on_error_action": "rewind", "difficulty_layer": "B"}}]}'''
 

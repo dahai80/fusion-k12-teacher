@@ -1,8 +1,9 @@
-"""#34 (config Phase 2.2): 网关凭据单点解析。
+"""#34 (config Phase 2.2): Single-point resolution of gateway credentials.
 
-config-conventions §1/§2: 唯一实现在 fusion_core.config — 各仓禁止自抄
-解析逻辑。fusion_core 为可选依赖 (.[core]), 缺席时回退语义等价的旧 env
-读取, 保证隔离环境行为不回退。
+config-conventions §1/§2: the only implementation lives in fusion_core.config —
+repos must not copy the parsing logic locally. fusion_core is an optional
+dependency (.[core]); when absent, fall back to semantically equivalent legacy
+env reads so isolated environments do not regress.
 """
 
 from __future__ import annotations
@@ -14,21 +15,24 @@ logger = logging.getLogger(__name__)
 
 
 def gateway_client_key() -> str:
-    # FUSION_CLIENT_KEY 规范名 (别名链收敛在 fusion_core); dev 缺省空+警告,
-    # FUSION_PROFILE=prod 缺省 RuntimeError — 语义见 fusion_core.config。
+    # Canonical name FUSION_CLIENT_KEY (alias chain lives in fusion_core); dev
+    # default empty + warning, FUSION_PROFILE=prod default RuntimeError — see
+    # fusion_core.config for semantics.
     try:
         from fusion_core.config import client_key
     except ImportError:
-        # issue #35: 裸装回退只认规范名 FUSION_CLIENT_KEY — 别名链只活在
-        # fusion_core, 本仓不重复 (pattern: fusion-cowork #204, caff989)
+        # issue #35: bare-install fallback only honors canonical FUSION_CLIENT_KEY
+        # — the alias chain lives only in fusion_core, this repo does not
+        # duplicate it (pattern: fusion-cowork #204, caff989)
         logger.debug("fusion_core absent — client key falls back to FUSION_CLIENT_KEY")
         return os.environ.get("FUSION_CLIENT_KEY", "")
     return client_key()
 
 
 def service_listen_port(legacy_default: int) -> int:
-    # 监听端口经 fusion_core.service_port 单点解析: FUSION_K12_TEACHER_PORT
-    # 优先, 未设时回退 legacy FUSION_K12_PORT / 内置默认 — 旧部署零改动。
+    # Listen port resolved at the single point fusion_core.service_port:
+    # FUSION_K12_TEACHER_PORT takes priority, falls back to legacy
+    # FUSION_K12_PORT / built-in default — zero change for old deployments.
     try:
         from fusion_core.config import service_port
     except ImportError:

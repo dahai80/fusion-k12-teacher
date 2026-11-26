@@ -1,8 +1,11 @@
-"""from_dict 统一类型强转 (E13)。
+"""Unified from_dict type coercion (E13).
 
-原各模块 from_dict 强转策略分叉: analytics 有 _coerce_* 防御, agent/desensitize/safety
-裸 d.get 不强转, LLM 返回畸形类型时强转字段静默吞错、未强转抛 TypeError。此处收敛为
-单实现, 所有 from_dict 经此守门, 行为可预测。
+Previously each module's from_dict coercion strategy diverged: analytics had
+_coerce_* defenses while agent/desensitize/safety used bare d.get with no
+coercion — malformed LLM types were silently swallowed on coerced fields but
+raised TypeError on uncoerced ones. Consolidated here into a single
+implementation; all from_dict paths go through this gate with predictable
+behavior.
 """
 
 from __future__ import annotations

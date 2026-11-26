@@ -1,7 +1,9 @@
-"""Repository 抽象层 — v2.0 持久化解耦。
+"""Repository abstraction layer — v2.0 persistence decoupling.
 
-业务层面向 Repository 接口编程, 不感知具体后端 (SQLite/Postgres)。
-standalone 模式用 SQLiteRepository, cluster 模式用 PostgresRepository (M1-T2)。
+The business layer programs against the Repository interface and is unaware
+of the concrete backend (SQLite/Postgres).
+standalone mode uses SQLiteRepository, cluster mode uses PostgresRepository
+(M1-T2).
 """
 
 from __future__ import annotations
@@ -14,96 +16,104 @@ logger = logging.getLogger(__name__)
 
 
 class Repository(ABC):
-    """持久化仓库抽象基类。
+    """Persistence repository abstract base class.
 
-    每个 entity (history/name_map/audit) 一组读写方法。
-    后端实现负责序列化/并发/事务, 调用方仅传结构化 dict。
+    One set of read/write methods per entity (history/name_map/audit).
+    Backend implementations own serialization/concurrency/transactions;
+    callers only pass structured dicts.
     """
 
     @abstractmethod
     def save_history(self, records: list[dict[str, Any]]) -> None:
-        """覆写式保存任务执行历史 (整列表)。"""
+        """Overwrite-save task execution history (whole list)."""
 
     @abstractmethod
     def load_history(self) -> list[dict[str, Any]]:
-        """加载全部任务执行历史 (按时间升序)。"""
+        """Load all task execution history (ascending by time)."""
 
     @abstractmethod
     def save_name_map(self, name_map: dict[str, str], reverse_map: dict[str, str]) -> None:
-        """保存脱敏映射表 (name→id 正向 + id→name 反向)。"""
+        """Save the anonymization mapping (name→id forward + id→name reverse)."""
 
     @abstractmethod
     def load_name_map(self) -> tuple[dict[str, str], dict[str, str]]:
-        """加载脱敏映射表, 返回 (name_map, reverse_map)。"""
+        """Load the anonymization mapping, returns (name_map, reverse_map)."""
 
-    # ── M2-T11: 任务锁 (跨实例 cron 去重) ──
-    # cluster 模式多实例各 arm cron, 抢 DB 行锁防同一任务重复执行。
-    # owner = 实例标识 (hostname+pid), ttl = 锁超时秒 (防持锁实例宕机永久阻塞)。
+    # ── M2-T11: task locks (cross-instance cron dedup) ──
+    # In cluster mode multiple instances each arm cron; grabbing a DB row lock
+    # prevents the same task from executing twice.
+    # owner = instance identity (hostname+pid), ttl = lock timeout in seconds
+    # (prevents a crashed lock holder from blocking forever).
 
     def try_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
-        """尝试获取任务执行锁 — 成功返 True, 已被持有(且未超时)返 False。
+        """Try to acquire the task execution lock — True on success, False when
+        already held (and not expired).
 
-        幂等: 同 owner 再次获取返 True (重入/续约场景)。
-        ttl 超时的旧锁被 reap 后可重新获取。
-        默认实现 (standalone 单进程无需 DB 锁) 总返 True。
+        Idempotent: re-acquiring with the same owner returns True
+        (re-entry/renewal scenarios).
+        Expired locks can be re-acquired after being reaped.
+        Default implementation (standalone single process needs no DB lock)
+        always returns True.
         """
         return True
 
     def renew_lock(self, task_id: str, owner: str, ttl: float = 300.0) -> bool:
-        """续约任务锁 — 仅持锁 owner 可续, 成功返 True。默认空实现。"""
+        """Renew the task lock — only the lock owner may renew, True on success. No-op by default."""
         return True
 
     def release_lock(self, task_id: str, owner: str) -> None:
-        """释放任务锁 — 仅持锁 owner 可释放。默认空实现。"""
+        """Release the task lock — only the lock owner may release. No-op by default."""
 
     def reap_expired_locks(self) -> int:
-        """清理超时锁 — 返回清理条数。默认空实现返 0。"""
+        """Clean up expired locks — returns the number cleaned. No-op by default, returns 0."""
         return 0
 
-    # ── M3-T14: 审计持久化 ──
-    # audit_events 表存每请求审计 (ts/trace_id/route/status/duration/student_hash/...)。
-    # 留存: purge_audit(days) 清理 N 天前; 归档侧可另接。
+    # ── M3-T14: audit persistence ──
+    # The audit_events table stores per-request audit records
+    # (ts/trace_id/route/status/duration/student_hash/...).
+    # Retention: purge_audit(days) cleans records older than N days; archiving
+    # can be attached separately.
 
     def save_audit(self, records: list[dict[str, Any]]) -> None:
-        """批量写审计事件 (追加语义, 非覆写)。默认空实现。"""
+        """Batch-write audit events (append semantics, not overwrite). No-op by default."""
 
     def load_audit(
         self, since_ts: str = "", limit: int = 1000
     ) -> list[dict[str, Any]]:
-        """加载审计事件 — since_ts 起升序, 限 limit 条。默认返空。"""
+        """Load audit events — ascending from since_ts, limited to limit rows. Returns empty by default."""
         return []
 
     def purge_audit(self, before_ts: str) -> int:
-        """清理 before_ts 之前的审计事件 — 返删除条数。默认 0。"""
+        """Purge audit events before before_ts — returns the number deleted. Default 0."""
         return 0
 
-    # ── 教师身份 ──
-    # teachers/sessions/materials 三表: 注册/登录/令牌/资源库。
+    # ── Teacher identity ──
+    # teachers/sessions/materials tables: register/login/tokens/resource library.
 
     def create_teacher(self, teacher: dict[str, Any]) -> str:
-        """写教师记录, 返 teacher_id。默认空实现。"""
+        """Write a teacher record, returns teacher_id. No-op by default."""
         return ""
 
     def get_teacher_by_username(self, username: str) -> dict[str, Any] | None:
-        """按用户名查教师。默认 None。"""
+        """Look up a teacher by username. Default None."""
         return None
 
     def get_teacher(self, teacher_id: str) -> dict[str, Any] | None:
-        """按 id 查教师。默认 None。"""
+        """Look up a teacher by id. Default None."""
         return None
 
     def create_session(self, token: str, teacher_id: str, expires_at: float) -> None:
-        """写登录会话 (token->teacher_id, 过期时间)。默认空。"""
+        """Write a login session (token->teacher_id, expiry time). No-op by default."""
 
     def get_session(self, token: str) -> dict[str, Any] | None:
-        """查会话。默认 None。"""
+        """Look up a session. Default None."""
         return None
 
     def delete_session(self, token: str) -> None:
-        """注销会话。默认空。"""
+        """Log out a session. No-op by default."""
 
     def save_material(self, material: dict[str, Any]) -> str:
-        """保存生成资源, 返 material id。默认空。"""
+        """Save a generated resource, returns the material id. No-op by default."""
         return ""
 
     def list_materials(
@@ -117,28 +127,30 @@ class Repository(ABC):
         edition: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """列教师资源 (按条件过滤)。默认空列表。"""
+        """List teacher resources (filtered by criteria). Default empty list."""
         return []
 
     def get_material(self, material_id: str) -> dict[str, Any] | None:
-        """查单条资源。默认 None。"""
+        """Fetch a single resource. Default None."""
         return None
 
     def delete_material(self, material_id: str, teacher_id: str) -> bool:
-        """删资源 (须校验 teacher_id 归属)。默认 False。"""
+        """Delete a resource (teacher_id ownership must be verified). Default False."""
         return False
 
-    # issue #17: 资源落盘无限增长 — 按天数+每教师上限清理, serve 启动时惰性执行。
+    # issue #17: unbounded resource growth on disk — purge by age + per-teacher
+    # cap, executed lazily at serve startup.
     def purge_old_materials(
         self, before_ts: str = "", max_per_teacher: int = 500
     ) -> int:
-        """清理旧资源 — before_ts 之前的全删, 每教师超 max_per_teacher 的旧记录删。
-        返删除条数。默认空实现返 0。"""
+        """Purge old resources — delete everything before before_ts, and delete
+        older records beyond max_per_teacher per teacher.
+        Returns the number deleted. No-op by default, returns 0."""
         return 0
 
     def close(self) -> None:
-        """释放后端资源 (连接/文件句柄)。默认空实现。"""
+        """Release backend resources (connections/file handles). No-op by default."""
 
     def health(self) -> bool:
-        """后端健康探测, 供 /api/ready 用。默认 True。"""
+        """Backend health probe, used by /api/ready. Default True."""
         return True

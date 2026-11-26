@@ -1,4 +1,4 @@
-"""敏感词库管理。"""
+"""Sensitive word list management."""
 
 from __future__ import annotations
 
@@ -19,21 +19,21 @@ DEFAULT_WORDLIST_PATH = os.path.join(os.path.dirname(__file__), "data", "sensiti
 
 
 class SensitiveWordList:
-    """敏感词库 — 加载/查询/增删。"""
+    """Sensitive word list — load/query/add/remove."""
 
     def __init__(self, path: str = ""):
         self._path = path or DEFAULT_WORDLIST_PATH
         self._words: set[str] = set()
         self._matcher: re.Pattern[str] = re.compile(r"$^")
-        # SEC-12: 词库缺失标记 disabled, 由 ContentFilter fail-closed, 不再静默放行
+        # SEC-12: missing wordlist marks disabled; ContentFilter fails closed, no silent pass-through
         self.disabled: bool = False
         self.load()
 
     def _rebuild_matcher(self) -> None:
-        # SECb-P1: 单正则一次扫描, 替代 O(W×N) 逐词 in 子串
-        # SEC-23: 局部构建, compile 成功才赋值, 失败保留旧 matcher 不污染 _words 状态
-        # E16: 全量重编译 — 仅 load(首次/批量)与 remove(无法增量剥离单词)调用。
-        # add 走 _extend_matcher 增量拼接, 不重编译整条 alternation。
+        # SECb-P1: single regex one-pass scan, replaces O(W×N) per-word `in` substring checks
+        # SEC-23: local build; assign only if compile succeeds, on failure keep old matcher without polluting _words state
+        # E16: full recompile — only load (first/batch) and remove (cannot incrementally strip a word) call this.
+        # add goes through _extend_matcher incremental concat, no full alternation recompile.
         if not self._words:
             self._matcher = re.compile(r"$^")
             return
@@ -41,28 +41,28 @@ class SensitiveWordList:
             escaped = sorted((re.escape(w) for w in self._words), key=len, reverse=True)
             new_matcher = re.compile("|".join(escaped))
         except re.error as e:
-            logger.error("敏感词 matcher 构建失败, 保留旧 matcher: %s", e)
+            logger.error("Sensitive-word matcher build failed, keeping old matcher: %s", e)
             raise
         self._matcher = new_matcher
 
     def _extend_matcher(self, word: str) -> None:
-        """E16: 增量拼接 — 仅 escape+拼接新词, 不重编译整条 alternation。
-        O(1) 词而非 O(W)。失败抛 re.error 由调用方回滚 _words。"""
+        """E16: incremental concat — only escape+concat the new word, no full alternation recompile.
+        O(1) per word instead of O(W). Failure raises re.error for the caller to roll back _words."""
         if not self._words:
             self._matcher = re.compile(r"$^")
             return
         try:
             new_part = re.escape(word)
-            # 旧 matcher 已是 alternation, 直接 | 拼新词即可
+            # Old matcher is already an alternation; just | concat the new word
             new_matcher = re.compile(self._matcher.pattern + "|" + new_part)
         except re.error as e:
-            logger.error("敏感词 matcher 增量构建失败: %s", e)
+            logger.error("Sensitive-word matcher incremental build failed: %s", e)
             raise
         self._matcher = new_matcher
 
     def load(self) -> None:
         if not os.path.exists(self._path):
-            logger.warning(f"敏感词库文件不存在, 标记 disabled, 过滤将 fail-closed: {self._path}")
+            logger.warning(f"Sensitive wordlist file missing, marking disabled, filter will fail closed: {self._path}")
             self._words = set()
             self.disabled = True
             self._rebuild_matcher()
@@ -77,27 +77,28 @@ class SensitiveWordList:
         self._words.discard("")
         self.disabled = False
         self._rebuild_matcher()
-        logger.info(f"敏感词库加载: {len(self._words)} 个词")
+        logger.info(f"Sensitive wordlist loaded: {len(self._words)} words")
 
     def save(self) -> None:
         os.makedirs(os.path.dirname(self._path), exist_ok=True)
         with open(self._path, "w", encoding="utf-8") as f:
+            # i18n: user-facing (data-file header for the Chinese blocklist)
             f.write("# Fusion-K12-Teacher 敏感词库\n")
             f.write("# 格式: 每行一词，# 开头为注释\n\n")
             f.writelines(f"{word}\n" for word in sorted(self._words))
-        logger.info(f"敏感词库保存: {len(self._words)} 个词")
+        logger.info(f"Sensitive wordlist saved: {len(self._words)} words")
 
     def add(self, word: str) -> None:
         w = _normalize(word.strip())
         if not w:
             return
         self._words.add(w)
-        # SEC-23: matcher 构建失败时回滚新增词, 不留静默缺失状态
-        # E16: 增量拼接而非全量重编译 — 已在 _words 内的词不重新 escape
+        # SEC-23: roll back the added word when matcher build fails, no silent missing state
+        # E16: incremental concat instead of full recompile — words already in _words are not re-escaped
         try:
             self._extend_matcher(w)
         except re.error:
-            logger.error("新增词 %r 导致 matcher 构建失败, 已回滚", w)
+            logger.error("New word %r broke matcher build, rolled back", w)
             self._words.discard(w)
             self._rebuild_matcher()
 
@@ -109,7 +110,7 @@ class SensitiveWordList:
         return sorted(self._words)
 
     def check(self, text: str) -> list[str]:
-        # SECb-P1: 单正则扫描, 命中词去重保持出现顺序
+        # SECb-P1: single regex scan, dedupe hits preserving order of appearance
         text_norm = _normalize(text)
         seen: set[str] = set()
         found: list[str] = []

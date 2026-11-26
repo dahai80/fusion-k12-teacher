@@ -1,9 +1,9 @@
-"""ContentInjector — 学科内容注入器。
+"""ContentInjector — subject content injector.
 
-两路:
-1. 课程路 (学科注入): SubjectModule.socratic_tutor().generate_lesson_script() -> TeachingStep -> NarrationSegment
-2. 课堂路: LessonScripter.generate() -> ScriptPage -> NarrationSegment
-平台零学科硬编码, 只依赖 SubjectModule + SubjectRegistry。
+Two routes:
+1. Course route (subject injection): SubjectModule.socratic_tutor().generate_lesson_script() -> TeachingStep -> NarrationSegment
+2. Classroom route: LessonScripter.generate() -> ScriptPage -> NarrationSegment
+The platform has zero subject hardcoding and depends only on SubjectModule + SubjectRegistry.
 """
 
 from __future__ import annotations
@@ -50,10 +50,11 @@ class ContentInjector:
         misconceptions: list[str] | None = None,
         lesson_plan: dict[str, Any] | None = None,
     ) -> list[NarrationSegment]:
-        # mode: topic=自由主题(默认, 原行为) | course=按教案讲(lesson_plan.script_pages
-        # 必带, 零 LLM) | expand=举一反三(图谱上下文+扩展 prompt) | qa=纯问答(无讲稿)
+        # mode: topic=free topic (default, legacy behavior) | course=teach per lesson plan
+        # (lesson_plan.script_pages required, zero LLM) | expand=extend-by-analogy (graph context
+        # + extension prompt) | qa=Q&A only (no script)
         if mode == "qa":
-            logger.info("content: 纯问答模式 subject=%s topic=%s — 不生成讲稿", subject, topic)
+            logger.info("content: QA-only mode subject=%s topic=%s — no script generated", subject, topic)
             return []
         if mode == "course" and lesson_plan and lesson_plan.get("script_pages"):
             segs = []
@@ -63,29 +64,32 @@ class ContentInjector:
                     emotion=p.get("emotion_tag", "neutral"), title=str(p.get("title", "")),
                     question=p.get("question_point", {}),
                 ))
-            logger.info("content: 教案复用 course mode subject=%s topic=%s 段数=%d", subject, topic, len(segs))
+            logger.info("content: lesson-plan reuse course mode subject=%s topic=%s segments=%d", subject, topic, len(segs))
             return segs
         if self._registry is not None:
             try:
-                # 举一反三: 从知识图谱拉先修节点+易错点, 让 LLM 围绕知识点扩展而非照本宣科
+                # Extend-by-analogy: pull prerequisite nodes + common misconceptions from the knowledge
+                # graph so the LLM expands around the knowledge point instead of reciting the textbook
                 if mode == "expand" and not prerequisites and not misconceptions:
                     pre, misc, node_id = self._graph_context(subject, topic)
                     prerequisites = prerequisites or pre
                     misconceptions = misconceptions or misc
                     knowledge_node_id = knowledge_node_id or node_id
+                    # i18n: user-facing (LLM prompt suffix, Chinese teaching product)
                     topic = f"{topic}（举一反三拓展讲法, 不照课本顺序, 用生活实例类比延伸）"
-                    logger.info("content: expand 模式 pre=%s misc=%s node=%s", pre, misc, node_id or "-")
+                    logger.info("content: expand mode pre=%s misc=%s node=%s", pre, misc, node_id or "-")
                 segs = await self._load_from_course(subject, topic, grade, layer, knowledge_node_id, prerequisites, misconceptions)
                 if segs:
                     return segs
-                # 课程路空段 (如小模型输出非 JSON → steps=0) 不应静默返回空 —
-                # 回退课堂路, 保证数字人始终有讲稿可讲 (黑屏+无声修复)
-                logger.warning("content: 课程路 0 段 subject=%s topic=%s, 回退课堂路", subject, topic)
+                # Empty course-route segments (e.g. small model outputs non-JSON → steps=0) must not
+                # silently return empty — fall back to the classroom route so the digital human
+                # always has a script to speak (black-screen + no-audio fix)
+                logger.warning("content: course route returned 0 segments subject=%s topic=%s, falling back to classroom route", subject, topic)
             except Exception as exc:
-                logger.warning("content: 课程路加载失败 %s, 回退课堂路", exc)
+                logger.warning("content: course route load failed %s, falling back to classroom route", exc)
         if self._scripter is not None:
             return await self._load_from_classroom(subject, topic, grade, lesson_plan or {})
-        logger.error("content: 无可用内容源 (registry/scripter 均 None)")
+        logger.error("content: no available content source (both registry/scripter None)")
         return []
 
     async def _load_from_course(
@@ -95,7 +99,7 @@ class ContentInjector:
         mod = self._registry.get(subject)
         tutor = mod.socratic_tutor() if mod.has_socratic_tutor else None
         if tutor is None:
-            logger.warning("content: 学科 %s 无 socratic_tutor", subject)
+            logger.warning("content: subject %s has no socratic_tutor", subject)
             return []
         dsl = await tutor.generate_lesson_script(
             topic=topic, grade=grade, knowledge_node_id=knowledge_node_id,
@@ -108,13 +112,14 @@ class ContentInjector:
                 index=i, text=step.speech_narration, title=step.step_title,
                 phase=step.phase, checkpoint=cp,
             ))
-        logger.info("content: 课程路 subject=%s topic=%s 段数=%d", subject, topic, len(segs))
+        logger.info("content: course route subject=%s topic=%s segments=%d", subject, topic, len(segs))
         return segs
 
     async def _load_from_classroom(
         self, subject: str, topic: str, grade: str, lesson_plan: dict[str, Any],
     ) -> list[NarrationSegment]:
-        # 优先复用已生成 script (pack 里有), 跳过 LLM 重生成 — 省一次推理 + 避长 prompt 超时
+        # Prefer reusing an already-generated script (present in the pack), skipping LLM
+        # regeneration — saves one inference + avoids long-prompt timeouts
         pre_pages = lesson_plan.get("script_pages") if lesson_plan else None
         if pre_pages:
             segs = []
@@ -124,7 +129,7 @@ class ContentInjector:
                     emotion=p.get("emotion_tag", "neutral"), title=str(p.get("title", "")),
                     question=p.get("question_point", {}),
                 ))
-            logger.info("content: 课堂路(复用script) subject=%s topic=%s 段数=%d", subject, topic, len(segs))
+            logger.info("content: classroom route (reused script) subject=%s topic=%s segments=%d", subject, topic, len(segs))
             return segs
         script = await self._scripter.generate(subject, grade, topic, lesson_plan)
         segs: list[NarrationSegment] = []
@@ -133,11 +138,11 @@ class ContentInjector:
                 index=page.page_index, text=page.narration, emotion=page.emotion_tag,
                 title=page.title, question=page.question_point,
             ))
-        logger.info("content: 课堂路 subject=%s topic=%s 段数=%d", subject, topic, len(segs))
+        logger.info("content: classroom route subject=%s topic=%s segments=%d", subject, topic, len(segs))
         return segs
 
     def _graph_context(self, subject: str, topic: str) -> tuple[list[str], list[str], str]:
-        """举一反三上下文: 从知识图谱找 topic 匹配节点 → (先修节点, 易错点, node_id)。"""
+        """Extend-by-analogy context: find the graph node matching the topic → (prerequisite nodes, misconceptions, node_id)."""
         try:
             mod = self._registry.get(subject)
             graph = mod.knowledge_graph() if mod else None
@@ -148,7 +153,8 @@ class ContentInjector:
                            if topic in n.title or n.title in topic), None)
             if target is None:
                 return [], [], ""
-            # 先修: 同 strand 更低年级节点 (数值比较 — 字符串比较会把 "10"<"2" 判真)
+            # Prerequisites: same strand, lower grade nodes (numeric comparison — string comparison
+            # would wrongly judge "10" < "2")
             def _g(v: Any) -> int:
                 try:
                     return int(str(v).strip())
@@ -160,13 +166,14 @@ class ContentInjector:
             misc = list(target.misconceptions)[:3]
             return prereq, misc, target.id
         except Exception as exc:
-            logger.warning("content: 图谱上下文获取失败 %s", exc)
+            logger.warning("content: failed to fetch graph context %s", exc)
             return [], [], ""
 
     def build_course_context(
         self, subject: str, topic: str, grade: str,
         prerequisites: list[str] | None = None, misconceptions: list[str] | None = None,
     ) -> str:
+        # i18n: user-facing (course context block fed into Chinese LLM prompts)
         lines = [f"学科: {subject}", "主题: " + topic, "年级: " + str(grade)]
         if prerequisites:
             lines.append("前置知识: " + ", ".join(prerequisites))

@@ -1,11 +1,15 @@
-"""A12: 引擎异常分类层 — 区分可降级与不可降级, 后者必须上抛。
+"""A12: engine exception classification layer — separates degradable from non-degradable
+failures; the latter must be rethrown.
 
-引擎原 blanket `except Exception` 统一降级返默认 dataclass, 把配置错/认证错
-(LLM 侧 401/403)也吞成"正常空结果", 运维无法区分 LLM 崩溃 vs 正常空输出。
+The engine's original blanket `except Exception` uniformly degraded to default dataclasses,
+swallowing config/auth errors (LLM-side 401/403) as "normal empty results", so operators
+could not distinguish an LLM crash from normal empty output.
 
-分类:
-- DegradableError: 解析失败 / LLM 空返回 / 瞬态网络抖动 / 5xx 服务端瞬态硬错 — 引擎降级返默认 dataclass, 写 .error。
-- NonDegradableError: 配置错 / 认证错 (LLM 401/403) / 模型未配置 — 不可恢复, 必须上抛让上层 (CLI ClickException / serve 502) 显式处理。
+Classification:
+- DegradableError: parse failure / empty LLM return / transient network jitter / 5xx server-side
+  transient hard error — engine degrades to default dataclass and writes .error.
+- NonDegradableError: config error / auth error (LLM 401/403) / model not configured — unrecoverable,
+  must be rethrown so upper layers (CLI ClickException / serve 502) handle it explicitly.
 """
 
 from __future__ import annotations
@@ -16,48 +20,55 @@ logger = logging.getLogger(__name__)
 
 
 class EngineError(Exception):
-    """A12: 引擎异常基类 — 所有引擎 LLM 调用相关错误的共同根。"""
+    """A12: engine exception base class — common root of all engine LLM-call errors."""
 
 
 class DegradableError(EngineError):
-    """可降级错误 — 解析失败 / LLM 空返回 / 瞬态网络 / 5xx 服务端瞬态。引擎降级返默认 dataclass。"""
+    """Degradable error — parse failure / empty LLM return / transient network / 5xx server transient.
+    Engine degrades to default dataclass."""
 
 
 class NonDegradableError(EngineError):
-    """不可降级错误 — 配置错 / 认证错 (LLM 401/403) / 模型未配置。必须上抛, 不静默降级。"""
+    """Non-degradable error — config error / auth error (LLM 401/403) / model not configured.
+    Must be rethrown, never silently degraded."""
 
 
 def classify_http_status(status_code: int) -> bool:
-    """A12: 判 HTTP 状态码是否不可降级。
+    """A12: determine whether an HTTP status code is non-degradable.
 
-    仅认证/授权错(401/403)不可降级 — 这是配置问题, 引擎无法自行恢复, 须上抛暴露
-    让运维查 key。5xx 是 LLM 服务端瞬态硬错, 网关抖动/模型未就绪都归此类,
-    引擎按既有优雅降级返默认 dataclass + 写 .error, 不上抛(否则打断 CLI/serve
-    既有的容错契约)。404(模型未加载)由 ai_client 单独 _ModelNotFound 重选, 不经此分类。
+    Only auth errors (401/403) are non-degradable — they are configuration problems the engine
+    cannot recover from on its own; rethrow to expose them so operators can check the key. 5xx
+    are LLM server-side transient hard errors (gateway jitter / model not ready); the engine
+    keeps its existing graceful degradation (default dataclass + .error) and does not rethrow
+    (otherwise it would break the established fault-tolerance contract of CLI/serve). 404
+    (model not loaded) is handled separately in ai_client via _ModelNotFound re-select and
+    does not go through this classification.
     """
     if status_code in (401, 403):
-        logger.error("LLM 认证/授权失败 (HTTP %d) — 不可降级, 须上抛", status_code)
+        logger.error("LLM auth failure (HTTP %d) — non-degradable, must rethrow", status_code)
         return True
     if 500 <= status_code < 600:
-        logger.warning("LLM 服务端瞬态硬错 (HTTP %d) — 可降级, 引擎返默认 dataclass + .error", status_code)
+        logger.warning("LLM server-side transient hard error (HTTP %d) — degradable, engine returns default dataclass + .error", status_code)
         return False
     return False
 
 
 def rethrow_if_fatal(exc: BaseException) -> None:
-    """A11/A12: 共享 engine 调用层守门 — 在引擎 `except Exception` 内调用。
+    """A11/A12: shared gatekeeper for the engine call layer — call inside the engine's
+    `except Exception` block.
 
-    不可降级错(NonDegradableError: 配置错/认证错, 即 LLM 401/403)必须上抛暴露,
-    不被 blanket except 降级成默认 dataclass。可降级错(解析失败/LLM 空返回/5xx 瞬态)
-    原样返 None, 引擎继续降级返默认 dataclass + 写 .error。
+    Non-degradable errors (NonDegradableError: config/auth errors, i.e. LLM 401/403) must be
+    rethrown and exposed, not degraded into a default dataclass by the blanket except.
+    Degradable errors (parse failure / empty LLM return / 5xx transient) return None as-is and
+    the engine continues degrading to the default dataclass + .error.
 
-    用法 (engine 各方法 catch 块第一行):
+    Usage (first line of each engine method's catch block):
         except Exception as e:
             logger.error(...)
-            rethrow_if_fatal(e)        # 认证/配置硬错上抛, 否则继续降级
+            rethrow_if_fatal(e)        # auth/config hard errors rethrow, otherwise continue degrading
             return LessonPlan(..., error=str(e))
     """
     if isinstance(exc, NonDegradableError):
-        logger.error("不可降级错误, 中止降级上抛: %s", exc)
+        logger.error("Non-degradable error, aborting degradation and rethrowing: %s", exc)
         raise exc
 

@@ -1,4 +1,4 @@
-"""PII 加密工具测试 — M1-T5。"""
+"""PII encryption utility tests — M1-T5."""
 
 from __future__ import annotations
 
@@ -12,18 +12,18 @@ try:
 except ImportError:
     _HAS_CRYPTO = False
 
-pytestmark = pytest.mark.skipif(not _HAS_CRYPTO, reason="缺 cryptography, 安装: pip install -e '.[cluster]'")
+pytestmark = pytest.mark.skipif(not _HAS_CRYPTO, reason="cryptography missing, install: pip install -e '.[cluster]'")
 
 
 def test_missing_cryptography_clear_error(monkeypatch):
-    # M1-T5: cryptography 缺失 → DataCipher 抛清晰 ImportError (含 pip install 提示)
+    # M1-T5: cryptography missing → DataCipher raises a clear ImportError (with pip install hint)
     monkeypatch.delenv("FUSION_K12_DATA_KEY", raising=False)
     monkeypatch.delenv("FUSION_K12_DATA_KEY_FILE", raising=False)
     import sys
 
     import fusion_k12_teacher.safety.crypto as crypto_mod
 
-    # 模拟 cryptography 缺失: sys.modules 置 None 使 from import 抛 ImportError
+    # Simulate cryptography missing: setting sys.modules entries to None makes the from-import raise ImportError
     for mod in (
         "cryptography",
         "cryptography.hazmat",
@@ -38,7 +38,7 @@ def test_missing_cryptography_clear_error(monkeypatch):
 
 @pytest.fixture
 def cipher(monkeypatch, tmp_path):
-    # 32 字节 hex key
+    # 32-byte hex key
     key_hex = "00" * 32
     monkeypatch.setenv("FUSION_K12_DATA_KEY", key_hex)
     from fusion_k12_teacher.safety import CryptoError, DataCipher
@@ -48,6 +48,7 @@ def cipher(monkeypatch, tmp_path):
 class TestDataCipher:
     def test_encrypt_decrypt_roundtrip(self, cipher):
         dc, _ = cipher
+        # i18n: user-facing
         ct = dc.encrypt("张三")
         assert ct != "张三"
         pt = dc.decrypt(ct)
@@ -57,14 +58,14 @@ class TestDataCipher:
         dc, _ = cipher
         ct1 = dc.encrypt("same")
         ct2 = dc.encrypt("same")
-        # GCM nonce 随机, 同明文密文不同
+        # GCM nonce is random: same plaintext, different ciphertext
         assert ct1 != ct2
         assert dc.decrypt(ct1) == dc.decrypt(ct2) == "same"
 
     def test_wrong_key_fails(self, cipher, monkeypatch):
         dc, CryptoError = cipher
         ct = dc.encrypt("secret")
-        # 换 key 后同一 cipher 实例已缓存旧 key, 新实例用新 key 应解密失败
+        # After the key change, the same cipher instance has the old key cached; a new instance with the new key must fail to decrypt
         monkeypatch.setenv("FUSION_K12_DATA_KEY", "ff" * 32)
         from fusion_k12_teacher.safety import DataCipher
         dc2 = DataCipher()
@@ -74,7 +75,7 @@ class TestDataCipher:
     def test_corrupt_ciphertext_fails(self, cipher):
         dc, CryptoError = cipher
         ct = dc.encrypt("data")
-        # 篡改末尾字节
+        # Tamper with the trailing bytes
         corrupt = ct[:-2] + ("00" if not ct.endswith("00") else "11")
         with pytest.raises(CryptoError):
             dc.decrypt(corrupt)
@@ -107,19 +108,21 @@ class TestDataCipher:
 
     def test_encrypt_decrypt_dict(self, cipher):
         dc, _ = cipher
+        # i18n: user-facing
         obj = {"name": "李四", "phone": "13800000000", "id": "S001"}
         enc = dc.encrypt_dict(obj, ["name", "phone"])
         assert enc["name"] != "李四"
         assert enc["phone"] != "13800000000"
-        assert enc["id"] == "S001"  # 未加密字段不动
+        assert enc["id"] == "S001"  # unencrypted fields untouched
         dec = dc.decrypt_dict(enc, ["name", "phone"])
         assert dec["name"] == "李四"
         assert dec["phone"] == "13800000000"
         assert dec["id"] == "S001"
 
     def test_decrypt_dict_plaintext_passthrough(self, cipher):
-        # 历史明文数据渐进迁移: 非密文字段保持原样不报错
+        # Gradual migration of legacy plaintext data: non-ciphertext fields pass through unchanged without error
         dc, _ = cipher
-        obj = {"name": "明文张三"}  # 未加密
+        # i18n: user-facing
+        obj = {"name": "明文张三"}  # not encrypted
         dec = dc.decrypt_dict(obj, ["name"])
         assert dec["name"] == "明文张三"

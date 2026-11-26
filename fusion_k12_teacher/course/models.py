@@ -1,7 +1,8 @@
-"""课程平台数据模型 — 学科无关的通用 DSL。
+"""Course platform data models — subject-agnostic generic DSL.
 
-学科实现填充这些 dataclass, 平台/前端只认这些结构, 不认学科私有类型。
-对应 PRD §5 FusionSocraticDSL + §12.3 SceneDSL, 抽象为学科中立的字段名。
+Subject implementations fill these dataclasses; platform/frontend only recognizes these
+structures, not subject-private types. Maps to PRD §5 FusionSocraticDSL + §12.3 SceneDSL,
+abstracted into subject-neutral field names.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class CheckpointType(StrEnum):
     MULTIPLE_CHOICE = "multiple_choice"
     NUMERIC_INPUT = "numeric_input"
-    EXPRESSION = "expression"  # 代数式/方程等价判定 (学科 verifier 判)
+    EXPRESSION = "expression"  # algebraic expression / equation equivalence judging (subject verifier decides)
     CANVAS_ACTION = "canvas_action"
 
 
@@ -28,19 +29,19 @@ class OnErrorAction(StrEnum):
     JUMP = "jump"
 
 
-# issue #19: DSL v3.0 — 8 可视化基元 (visual_type 路由)
+# issue #19: DSL v3.0 — 8 visual primitives (visual_type routing)
 class VisualType(StrEnum):
-    ARRAY_GRID = "array_grid"            # 1-2年级 计数/圈画/阵列
-    TAPE_DIAGRAM = "tape_diagram"        # 2-6年级 和差倍比/分数 (核心通用)
-    GEOMETRY_2D = "geometry_2d"          # 3-5年级 平面几何/周长面积
-    ISOMETRIC_3D = "isometric_3d"        # 5-6年级 立体几何/切削展开
-    TRACK_TIMELINE = "track_timeline"    # 4-6年级 速度/时间/行程追及
-    BUCKET_DIVIDER = "bucket_divider"    # 4-6年级 组合/隔板/抽屉原理
-    DATA_CHART = "data_chart"            # 4-5年级 统计/条形/折线图
-    FLOW_CARD = "flow_card"              # 纯计算/方程/通用兜底
+    ARRAY_GRID = "array_grid"            # grades 1-2 counting/circling/arrays
+    TAPE_DIAGRAM = "tape_diagram"        # grades 2-6 sum-difference-multiple-ratio/fractions (core generic)
+    GEOMETRY_2D = "geometry_2d"          # grades 3-5 plane geometry/perimeter-area
+    ISOMETRIC_3D = "isometric_3d"        # grades 5-6 solid geometry/cutting-unfolding
+    TRACK_TIMELINE = "track_timeline"    # grades 4-6 speed/time/chase problems
+    BUCKET_DIVIDER = "bucket_divider"    # grades 4-6 combinatorics/divider/pigeonhole principle
+    DATA_CHART = "data_chart"            # grades 4-5 statistics/bar/line charts
+    FLOW_CARD = "flow_card"              # pure computation/equations/generic fallback
 
 
-# issue #19: DSL v3.0 — 二级兜底基元 (fallback_type)
+# issue #19: DSL v3.0 — secondary fallback primitives (fallback_type)
 class FallbackType(StrEnum):
     TAPE_DIAGRAM = "tape_diagram"
     FLOW_CARD = "flow_card"
@@ -52,18 +53,18 @@ FALLBACK_TYPES = tuple(v.value for v in FallbackType)
 
 @dataclass
 class Checkpoint:
-    """随堂互动卡点 — 苏格拉底式不直接给答案。"""
+    """In-class interactive checkpoint — Socratic style, never hands out the answer directly."""
     id: str
     type: CheckpointType
     prompt: str
     options: list[dict[str, Any]] = field(default_factory=list)
-    expected_expression: str = ""  # 学科符号引擎判等 (数学=SymPy, 物理=SymPy, 语言=字符串)
+    expected_expression: str = ""  # subject symbolic engine judges equality (math=SymPy, physics=SymPy, language=string)
     expected_value: float = 0.0
     tolerance: float = 0.01
     hints: list[str] = field(default_factory=list)
     on_error_action: OnErrorAction = OnErrorAction.RETRY
     target_prerequisite_id: str = ""
-    difficulty_layer: str = "B"  # A 基础 | B 进阶 | C 拔高
+    difficulty_layer: str = "B"  # A basic | B advanced | C challenge
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -102,7 +103,7 @@ class Checkpoint:
 
 @dataclass
 class VisualState:
-    """issue #19: DSL v3.0 — 步骤级可视化状态 (visual_type 路由驱动)。"""
+    """issue #19: DSL v3.0 — step-level visual state (driven by visual_type routing)."""
     visual_type: str = ""
     action: str = ""
     progress_range: tuple[float, float] = (0.0, 1.0)
@@ -121,7 +122,7 @@ class VisualState:
     def from_dict(cls, d: dict[str, Any]) -> VisualState:
         vt = str(d.get("visual_type", ""))
         if vt and vt not in VISUAL_TYPES:
-            logger.warning("visual_type 不在白名单: %s -> flow_card 兜底", vt)
+            logger.warning("visual_type not in whitelist: %s -> flow_card fallback", vt)
             vt = VisualType.FLOW_CARD.value
         pr = d.get("progress_range", [0.0, 1.0])
         if not isinstance(pr, (list, tuple)) or len(pr) != 2:
@@ -167,7 +168,7 @@ class Landmark:
 
 @dataclass
 class TeachingStep:
-    """5E 课稿步骤 — 学科中立。phase ∈ Engage/Explore/Explain/Elaborate/Evaluate/Transfer。"""
+    """5E lesson step — subject-neutral. phase ∈ Engage/Explore/Explain/Elaborate/Evaluate/Transfer."""
     step_id: str
     step_title: str
     speech_narration: str
@@ -220,11 +221,12 @@ class Milestone:
 
 @dataclass
 class SceneDSL:
-    """场景动画 DSL — 学科中立 (PRD §12.3 schema 抽象)。
+    """Scene animation DSL — subject-neutral (PRD §12.3 schema abstraction).
 
-    issue #19 v3.0: 作为 FusionSocraticDSL.scene 的类型化子合约,
-    不再是独立平级模型。scene_compiler 仍可返回 SceneDSL (向后兼容),
-    但 FusionSocraticDSL.scene 字段持有 SceneDSL 实例实现统一合约。
+    issue #19 v3.0: acts as the typed sub-contract of FusionSocraticDSL.scene,
+    no longer a standalone peer model. scene_compiler may still return SceneDSL
+    (backward compatible), but the FusionSocraticDSL.scene field holds a SceneDSL
+    instance to implement the unified contract.
     """
     version: str = "3.0.0"
     subject: str = ""
@@ -249,13 +251,13 @@ class SceneDSL:
 
 @dataclass
 class FusionSocraticDSL:
-    """苏格拉底课稿 DSL v3.0 — 学科中立 (issue #19)。
+    """Socratic lesson DSL v3.0 — subject-neutral (issue #19).
 
-    v3.0 变更:
-    - meta 新增 visual_type (8 基元路由) + fallback_type (2 兜底)
-    - step.visual_state 携带步骤级可视化动作
-    - scene 字段为 SceneDSL 类型 (统一 v3.0 合约, 不再是 plain dict)
-    - to_spec_dict() 输出符合 spec DSL v3.0 JSON Schema (fusion-core SOCRATIC_DSL_V3_SCHEMA)
+    v3.0 changes:
+    - meta gains visual_type (8-primitive routing) + fallback_type (2 fallbacks)
+    - step.visual_state carries step-level visual actions
+    - scene field is typed SceneDSL (unified v3.0 contract, no longer a plain dict)
+    - to_spec_dict() outputs spec DSL v3.0 JSON Schema compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
     """
     version: str = "3.0.0"
     subject: str = ""
@@ -275,15 +277,15 @@ class FusionSocraticDSL:
         }
 
     def to_spec_dict(self) -> dict[str, Any]:
-        """issue #19 P0: 转换为 spec DSL v3.0 JSON Schema 合规结构。
+        """issue #19 P0: converts to a spec DSL v3.0 JSON Schema compliant structure.
 
-        spec (architecture/k12-train-model-autumation-1009.md §417-432) 要求根级
-        required: ["meta", "parameters", "entities", "pipeline"], additionalProperties=False。
-        fusion-core SOCRATIC_DSL_V3_SCHEMA 与此一致 (core#26)。
+        The spec (architecture/k12-train-model-autumation-1009.md §417-432) requires root-level
+        required: ["meta", "parameters", "entities", "pipeline"], additionalProperties=False.
+        fusion-core SOCRATIC_DSL_V3_SCHEMA matches this (core#26).
 
-        字段映射:
-          meta:         内部 meta + backfill id/grade/topic/visual_type/fallback_type
-          parameters:   global_variables → {label, value, unit} (value 强制 float)
+        Field mapping:
+          meta:         internal meta + backfilled id/grade/topic/visual_type/fallback_type
+          parameters:   global_variables → {label, value, unit} (value coerced to float)
           entities:     scene.entities → {id, type, label, properties}
           pipeline:     steps → {step, title, formula, eval, result_unit, visual_state}
         """
@@ -392,7 +394,7 @@ class FusionSocraticDSL:
 
 @dataclass
 class VerifyResult:
-    """学科 verifier 校验结果。"""
+    """Subject verifier result."""
     verified: bool = False
     variables: dict[str, Any] = field(default_factory=dict)
     error: str = ""
@@ -401,7 +403,7 @@ class VerifyResult:
 
 @dataclass
 class JudgeResult:
-    """checkpoint 判分结果 — 学科中立。"""
+    """Checkpoint judging result — subject-neutral."""
     correct: bool
     method: str = ""  # "verifier" | "numeric" | "string_fallback" | "multiple_choice"
     detail: str = ""
@@ -417,7 +419,7 @@ class JudgeResult:
 
 @dataclass
 class GraphNode:
-    """知识图谱节点 — 学科中立 (PRD §3.2 schema 抽象, issue #21 扩展)。"""
+    """Knowledge graph node — subject-neutral (PRD §3.2 schema abstraction, issue #21 extension)."""
     id: str
     title: str
     node_type: str = "Concept"  # Concept | Theorem | Method | Misconception
@@ -456,7 +458,7 @@ class GraphNode:
 
 @dataclass
 class CoursePackage:
-    """课程包 — 学科中立, 供课堂编排。"""
+    """Course package — subject-neutral, for classroom orchestration."""
     class_id: str
     subject: str
     grade: str

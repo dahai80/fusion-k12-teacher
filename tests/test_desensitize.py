@@ -2,20 +2,20 @@ import hashlib
 
 from fusion_k12_teacher.desensitize import AnonymizeResult, DataAnonymizer, DesensitizeConfig
 
-# 测试用显式 salt — 保证 hermetic, 不依赖 ~/.fusion-k12/salt 文件
+# Explicit test salt — keeps tests hermetic, no dependency on the ~/.fusion-k12/salt file
 _TEST_SALT = "k12-test-salt"
 
 
 def _expected_id(name: str, salt: str = _TEST_SALT, prefix: str = "S", seq: str = "") -> str:
-    # SEC-3: 截断 16 hex(64bit), 与 anonymizer._hash_id 一致
-    # SEC-15: 传 seq 时键含序号, 与 anonymizer.anonymize_name(seq=) 一致
+    # SEC-3: truncated to 16 hex (64bit), consistent with anonymizer._hash_id
+    # SEC-15: with seq, the key includes the sequence number, consistent with anonymizer.anonymize_name(seq=)
     key = f"{name}:{seq}" if seq else name
     digest = hashlib.sha256(f"{salt}:{key}".encode()).hexdigest()
     return f"{prefix}{digest[:16]}"
 
 
 def _expected_phone(value: str, salt: str = _TEST_SALT) -> str:
-    # SEC-16: phone 全值 keyed 哈希, 不保留明文位
+    # SEC-16: phone uses a full-value keyed hash, no plaintext digits kept
     digest = hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
     return f"PH{digest[:10]}"
 
@@ -31,7 +31,7 @@ class TestDesensitizeConfig:
         assert cfg.name_mode == "id"
         assert cfg.id_prefix == "S"
         assert cfg.mask_char == "*"
-        # SEC-2: 不再硬编码默认 salt
+        # SEC-2: no more hardcoded default salt
         assert cfg.salt == ""
         assert "student_name" in cfg.fields_to_mask
         assert "name" in cfg.fields_to_mask
@@ -45,13 +45,14 @@ class TestDesensitizeConfig:
     def test_to_dict_from_dict(self):
         cfg = DesensitizeConfig(name_mode="mask", id_prefix="X")
         d = cfg.to_dict()
-        # SEC-17: salt 不进序列化
+        # SEC-17: salt never enters serialization
         assert "salt" not in d
         cfg2 = DesensitizeConfig.from_dict(d)
         assert cfg2.name_mode == "mask"
         assert cfg2.id_prefix == "X"
 
 
+# i18n: user-facing (fixture data below uses Chinese sample names)
 class TestAnonymizeResult:
     def test_create(self):
         r = AnonymizeResult(original_count=5, anonymized_count=5)
@@ -84,6 +85,7 @@ class TestAnonymizeResult:
         assert r.name_map == {"张三": "S001"}
 
 
+# i18n: user-facing (fixture data below uses Chinese sample names/addresses)
 class TestDataAnonymizer:
     def test_anonymize_name_id_mode_deterministic(self):
         anon = _anon()
@@ -121,14 +123,14 @@ class TestDataAnonymizer:
 
     def test_mask_field_phone(self):
         anon = _anon()
-        # SEC-16: phone 全值 keyed 哈希, 不保留末 4 位, 不可再识别
+        # SEC-16: phone uses a full-value keyed hash, last 4 digits not kept, no re-identification
         assert anon.mask_field("13812345678", "phone") == _expected_phone("13812345678")
         assert anon.mask_field("1234", "phone") == _expected_phone("1234")
         assert anon.mask_field("13812345678", "phone").startswith("PH")
 
     def test_mask_field_email(self):
         anon = _anon()
-        # SEC-3: 不泄露域名, 哈希成不可逆伪邮箱
+        # SEC-3: domain never leaked, hashed into an irreversible pseudo-email
         masked = anon.mask_field("student@school.edu.cn", "email")
         assert masked.startswith("***@")
         assert masked.endswith(".invalid")
@@ -136,13 +138,13 @@ class TestDataAnonymizer:
     def test_mask_field_id_number(self):
         anon = _anon()
         masked = anon.mask_field("110101199001011234", "id_number")
-        # SEC-21: 全长 HMAC 不截断 — ID + 64 hex = 66, 杜绝 salt 泄露后枚举。
+        # SEC-21: full-length HMAC, no truncation — ID + 64 hex = 66, prevents enumeration after a salt leak.
         assert masked.startswith("ID")
         assert len(masked) == 66
 
     def test_mask_field_generic(self):
         anon = _anon()
-        # SEC-3: 固定 8 位掩码, 不保留长度
+        # SEC-3: fixed 8-char mask, length not preserved
         assert anon.mask_field("某地址", "address") == "********"
 
     def test_mask_field_empty(self):
@@ -150,8 +152,8 @@ class TestDataAnonymizer:
         assert anon.mask_field("", "phone") == ""
 
     def test_mask_field_non_string_phone(self):
-        # SEC-5: 非字符串 PII(int 手机号)转 str 后脱敏, 不再原样穿透
-        # SEC-16: 走 keyed 哈希
+        # SEC-5: non-string PII (int phone number) is converted to str before masking, no longer passes through raw
+        # SEC-16: keyed hash path
         anon = _anon()
         assert anon.mask_field(123, "phone") == _expected_phone("123")
         assert anon.mask_field(13812345678, "phone") == _expected_phone("13812345678")
@@ -164,7 +166,7 @@ class TestDataAnonymizer:
             "score": 85,
         }
         result = anon.anonymize_record(record)
-        # 单记录无 seq, ID 保持 _expected_id("张三"); phone 走 SEC-16 keyed 哈希
+        # Single record has no seq, ID stays _expected_id("张三"); phone uses the SEC-16 keyed hash
         assert result["student_name"] == _expected_id("张三")
         assert result["phone"] == _expected_phone("13812345678")
         assert result["score"] == 85
@@ -185,8 +187,8 @@ class TestDataAnonymizer:
         result = anon.anonymize_records(records)
         assert result.original_count == 2
         assert result.anonymized_count == 2
-        # SEC-18: 反匿名表不随结果流转, 经 get_name_map() 显式取
-        # SEC-15: 映射键含序号 (name\x00seq), 同名不同记录可区分
+        # SEC-18: the reverse-anonymization map never travels with results, fetch explicitly via get_name_map()
+        # SEC-15: mapping keys include the sequence number (name\x00seq), same-name records stay distinguishable
         name_map = anon.get_name_map()
         assert "张三\x000" in name_map
         assert "李四\x001" in name_map
@@ -208,15 +210,15 @@ class TestDataAnonymizer:
             {"student_name": "李四", "phone": "13987654321"},
         ]
         result = anon.export_desensitized(records)
-        # SEC-15: 每记录传序号, 同名不同记录不同 ID
+        # SEC-15: each record passes a sequence number, same-name records get different IDs
         assert result[0]["student_name"] == _expected_id("张三", seq="0")
         assert result[1]["student_name"] == _expected_id("李四", seq="1")
-        # SEC-16: phone 全值 keyed 哈希
+        # SEC-16: phone uses a full-value keyed hash
         assert result[0]["phone"] == _expected_phone("13812345678")
         assert result[1]["phone"] == _expected_phone("13987654321")
 
     def test_same_name_different_seq_unique(self):
-        # SEC-15: 同名不同记录序号得不同 ID, 避免成绩/考勤合并
+        # SEC-15: same-name records with different sequence numbers get different IDs, avoiding score/attendance merging
         anon = _anon()
         records = [
             {"student_name": "张三", "score": 85},

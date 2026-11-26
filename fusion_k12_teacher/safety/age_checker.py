@@ -1,4 +1,4 @@
-"""适龄内容审查。"""
+"""Age-appropriate content review."""
 
 from __future__ import annotations
 
@@ -27,12 +27,12 @@ def _grade_index(grade: str) -> int:
     try:
         return GRADE_ORDER.index(grade)
     except ValueError:
-        logger.warning(f"非法年级值: {grade!r}, 回退到最严格档(1年级)")
+        logger.warning(f"Invalid grade value: {grade!r}, falling back to strictest tier (grade 1)")
         return 0
 
 
 class AgeChecker:
-    """适龄内容审查 — 检查内容是否超出目标年级范围。"""
+    """Age-appropriate content review — checks whether content exceeds the target grade range."""
 
     def __init__(self, ratings_path: str = ""):
         self._path = ratings_path or DEFAULT_RATINGS_PATH
@@ -41,7 +41,7 @@ class AgeChecker:
 
     def load(self) -> None:
         if not os.path.exists(self._path):
-            logger.warning(f"适龄配置文件不存在: {self._path}")
+            logger.warning(f"Age-rating config file missing: {self._path}")
             self._init_defaults()
             return
         with open(self._path, encoding="utf-8") as f:
@@ -49,7 +49,7 @@ class AgeChecker:
         self._ratings = {
             g: AgeRating(**r) for g, r in data.get("ratings", {}).items()
         }
-        logger.info(f"适龄配置加载: {len(self._ratings)} 个年级")
+        logger.info(f"Age-rating config loaded: {len(self._ratings)} grades")
 
     def save(self) -> None:
         os.makedirs(os.path.dirname(self._path), exist_ok=True)
@@ -58,7 +58,7 @@ class AgeChecker:
         }
         with open(self._path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        logger.info(f"适龄配置保存: {len(self._ratings)} 个年级")
+        logger.info(f"Age-rating config saved: {len(self._ratings)} grades")
 
     def get_rating(self, grade: str) -> AgeRating:
         if grade not in self._ratings:
@@ -71,6 +71,7 @@ class AgeChecker:
         text_norm = _normalize(text)
         for restricted in rating.restricted_topics:
             if _normalize(restricted) in text_norm:
+                # i18n: user-facing (filter issue message returned via API)
                 issues.append(f"受限主题: {restricted}")
         return issues
 
@@ -79,12 +80,14 @@ class AgeChecker:
         rating = self.get_rating(grade)
         order = {"concrete": 0, "semi-abstract": 1, "abstract": 2}
         if order.get(abstraction, 0) > order.get(rating.max_abstraction, 0):
+            # i18n: user-facing (filter issue message returned via API)
             issues.append(
                 f"抽象层级超出: {abstraction} > {rating.max_abstraction}"
             )
         return issues
 
     def _init_defaults(self) -> None:
+        # i18n: user-facing (restricted topics / vocabulary tiers are Chinese safety data shown to users)
         for i, g in enumerate(GRADE_ORDER):
             if i < 3:
                 self._ratings[g] = AgeRating(
@@ -107,9 +110,10 @@ class AgeChecker:
                     restricted_topics=["色情"],
                     vocabulary_level="拓展",
                 )
-        logger.info(f"适龄默认配置初始化: {len(self._ratings)} 个年级")
+        logger.info(f"Age-rating defaults initialized: {len(self._ratings)} grades")
 
     def _default_rating(self, grade: str) -> AgeRating:
+        # i18n: user-facing (same Chinese safety data as _init_defaults)
         idx = _grade_index(grade)
         if idx < 3:
             return AgeRating(grade=grade, max_abstraction="concrete",

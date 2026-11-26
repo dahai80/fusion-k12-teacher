@@ -1,4 +1,4 @@
-"""课堂模块测试 — E1-E6 K1 文字版 (mock LLM)。"""
+"""Classroom module tests — E1-E6 K1 text version (mock LLM)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from fusion_k12_teacher.serve import app
 
+# i18n: user-facing
 MOCK_SCRIPT_JSON = '''{"pages": [{"page_index": 0, "title": "导入", "narration": "今天学分数。想想切披萨怎么平分?", "slide_content": "分数引入", "question_point": {"prompt": "1/2表示什么?", "type": "multiple_choice", "options": ["一半","两倍","三倍"], "answer": "一半", "explanation": "1/2 就是一半"}, "emotion_tag": "curious"}, {"page_index": 1, "title": "计算", "narration": "同分母相加, 分母不变分子相加。", "slide_content": "1/4+2/4=3/4", "question_point": {"prompt": "1/4+2/4=?", "type": "numeric", "answer": "0.75", "explanation": "3/4=0.75"}, "emotion_tag": "encouraging"}]}'''
 
 
@@ -68,6 +69,7 @@ async def client():
 class TestClassroomScript:
     @pytest.mark.asyncio
     async def test_generate_script(self, client):
+        # i18n: user-facing
         r = await client.post("/api/classroom/script", json={
             "subject": "数学", "grade": "5", "topic": "分数加减",
         })
@@ -82,6 +84,7 @@ class TestClassroomScript:
     async def test_script_fallback_on_bad_llm(self, client):
         from fusion_k12_teacher import serve as srv
         type(srv.mlx_client).chat = _mock_chat("not json at all")
+        # i18n: user-facing
         r = await client.post("/api/classroom/script", json={
             "subject": "数学", "grade": "3", "topic": "乘法",
             "lesson_plan": {"sections": [{"title": "s1", "content": "c1"}]},
@@ -95,6 +98,7 @@ class TestClassroomScript:
 class TestClassroomPack:
     @pytest.mark.asyncio
     async def test_pack_and_get(self, client):
+        # i18n: user-facing
         r = await client.post("/api/classroom/pack", json={
             "subject": "数学", "grade": "5", "topic": "分数",
             "lesson_plan": {"title": "分数"}, "quiz": {"q1": "a"},
@@ -117,6 +121,7 @@ class TestClassroomPack:
 
     @pytest.mark.asyncio
     async def test_list_packs(self, client):
+        # i18n: user-facing
         await client.post("/api/classroom/pack", json={"subject": "数学", "grade": "5", "topic": "t1"})
         r = await client.get("/api/classroom/packs")
         assert r.status_code == 200
@@ -126,6 +131,7 @@ class TestClassroomPack:
 class TestClassroomSession:
     @pytest.mark.asyncio
     async def test_full_flow(self, client):
+        # i18n: user-facing
         pack = (await client.post("/api/classroom/pack", json={
             "subject": "数学", "grade": "5", "topic": "分数",
             "quiz": {"q1": {"answer": "0.75"}},
@@ -135,6 +141,7 @@ class TestClassroomSession:
             "code": code, "student_id": "s001",
         })).json()
         sid = sess["session"]["session_id"]
+        # i18n: user-facing
         assert sess["package"]["topic"] == "分数"
         await client.get(f"/api/classroom/session/{sid}/page/0")
         await client.get(f"/api/classroom/session/{sid}/page/1")
@@ -156,6 +163,7 @@ class TestClassroomSession:
 
     @pytest.mark.asyncio
     async def test_abandoned_no_snapshot(self, client):
+        # i18n: user-facing
         pack = (await client.post("/api/classroom/pack", json={
             "subject": "数学", "grade": "5", "topic": "x",
         })).json()
@@ -177,6 +185,7 @@ class TestClassroomSession:
 
     @pytest.mark.asyncio
     async def test_multiple_choice_judge(self, client):
+        # i18n: user-facing
         pack = (await client.post("/api/classroom/pack", json={
             "subject": "数学", "grade": "5", "topic": "m",
         })).json()

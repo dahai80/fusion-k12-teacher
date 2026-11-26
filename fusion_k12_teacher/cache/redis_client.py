@@ -1,8 +1,10 @@
-"""Redis 缓存后端 — cluster 模式 (M2-T12)。
+"""Redis cache backend — cluster mode (M2-T12).
 
-redis-py 可选依赖, 惰性 import — 缺失抛 ImportError (工厂回退 LocalCache)。
-用 redis.asyncio 客户端, 全异步 API。
-跨实例共享: 限流计数 (INCR+EXPIRE)、会话 (SETEX)、salt (GET/SET)。
+redis-py is an optional dependency, imported lazily — raises ImportError when
+missing (the factory falls back to LocalCache).
+Uses the redis.asyncio client, fully async API.
+Shared across instances: rate-limit counters (INCR+EXPIRE), sessions (SETEX),
+salt (GET/SET).
 """
 
 from __future__ import annotations
@@ -15,19 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 class RedisCache(CacheBackend):
-    """异步 Redis 后端 — redis.asyncio 连接。"""
+    """Async Redis backend — redis.asyncio connection."""
 
     def __init__(self, url: str):
         try:
             import redis.asyncio as aioredis
         except ImportError as e:
             raise ImportError(
-                "cluster 模式需 redis: pip install -e '.[cluster]'"
+                "cluster mode requires redis: pip install -e '.[cluster]'"
             ) from e
         self._client = aioredis.from_url(
             url, decode_responses=True, socket_timeout=5, socket_connect_timeout=5
         )
-        logger.info("RedisCache 配置就绪")
+        logger.info("RedisCache configured and ready")
 
     async def get(self, key: str) -> str | None:
         return await self._client.get(key)
@@ -54,6 +56,6 @@ class RedisCache(CacheBackend):
     async def aclose(self) -> None:
         try:
             await self._client.aclose()
-            logger.info("RedisCache 连接已关闭")
+            logger.info("RedisCache connection closed")
         except Exception as e:
-            logger.warning("关闭 RedisCache 失败: %s", e)
+            logger.warning("Failed to close RedisCache: %s", e)

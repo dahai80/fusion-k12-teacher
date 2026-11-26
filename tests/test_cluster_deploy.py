@@ -1,11 +1,13 @@
-"""T22: 集群部署模板 + 对接 + 压测基线测试。
+"""T22: cluster deploy templates + gateway integration + load baseline tests.
 
-覆盖:
-  - 部署模板 yaml 可解析 + 关键字段完整 (T20)
-  - k12↔gateway 对接配置闭环 (T21)
-  - 多实例一致性: 配置/限流/脱敏在多实例下一致 (cluster 模式)
-  - 故障转移: 优雅排水摘流语义 (M3-T19 复验)
-  - 性能基线: mock LLM 下吞吐/延迟上限 (不依赖真实 mlx)
+Coverage:
+  - deploy template yaml parseable + key fields complete (T20)
+  - k12↔gateway integration config closed loop (T21)
+  - multi-instance consistency: config/rate-limit/anonymization consistent
+    across instances (cluster mode)
+  - failover: graceful drain/evict semantics (M3-T19 re-verification)
+  - performance baseline: throughput/latency ceiling with a mock LLM
+    (no real mlx needed)
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ DEPLOY = Path(__file__).resolve().parents[1] / "deploy"
 K8S = DEPLOY / "k8s"
 
 
-# ── T20: 部署模板结构 ──
+# ── T20: deploy template structure ──
 
 class TestDeployTemplates:
     def _load_yaml(self, p: Path):
@@ -34,12 +36,12 @@ class TestDeployTemplates:
         docs = self._load_yaml(DEPLOY / "docker-compose.yml")
         svc = docs[0]["services"]
         assert "k12" in svc and "postgres" in svc and "redis" in svc
-        # replicas + 资源限额 + 健康检查
+        # replicas + resource limits + health check
         k12 = svc["k12"]
         assert k12["deploy"]["replicas"] == "${FUSION_K12_REPLICAS:-3}"
         assert "limits" in k12["deploy"]["resources"]
         assert k12["healthcheck"]["test"]
-        # 排水宽限期 > 0
+        # drain grace period > 0
         assert int(k12["stop_grace_period"].rstrip("s")) >= 30
 
     def test_k8s_deployment_probes(self):
@@ -49,9 +51,9 @@ class TestDeployTemplates:
         assert c["startupProbe"]["httpGet"]["path"] == "/api/ready"
         assert c["livenessProbe"]["httpGet"]["path"] == "/api/health"
         assert c["readinessProbe"]["httpGet"]["path"] == "/api/ready"
-        # 资源限额
+        # resource limits
         assert "limits" in c["resources"]
-        # 排水宽限期 > FUSION_K12_DRAIN_TIMEOUT(30)
+        # drain grace period > FUSION_K12_DRAIN_TIMEOUT(30)
         assert dep["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] >= 30
         # envFrom config + secret
         assert c["envFrom"][0]["configMapRef"]["name"] == "k12-config"
@@ -60,9 +62,9 @@ class TestDeployTemplates:
     def test_k8s_hpa_scale_protection(self):
         docs = self._load_yaml(K8S / "hpa.yaml")
         hpa = docs[0]
-        assert hpa["spec"]["minReplicas"] >= 2   # 不缩到 0
+        assert hpa["spec"]["minReplicas"] >= 2   # never scale to 0
         assert hpa["spec"]["maxReplicas"] >= hpa["spec"]["minReplicas"]
-        # 缩容冷却窗口
+        # scale-down cooldown window
         assert hpa["spec"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] >= 300
         # PDB
         pdb = docs[1]
@@ -77,35 +79,35 @@ class TestDeployTemplates:
             "FUSION_K12_REPLICAS", "FUSION_K12_MIN_REPLICAS",
         ]
         for k in required:
-            assert k in txt, f"env.example 缺 {k}"
+            assert k in txt, f"env.example missing {k}"
 
     def test_dockerfile_exposes_port_and_healthcheck(self):
         txt = (DEPLOY / "Dockerfile").read_text(encoding="utf-8")
         assert "EXPOSE 11448" in txt
         assert "/api/health" in txt
-        assert "USER k12" in txt   # 非根用户
+        assert "USER k12" in txt   # non-root user
 
 
-# ── T21: gateway 对接配置闭环 ──
+# ── T21: gateway integration config closed loop ──
 
 class TestGatewayIntegration:
     def test_integration_doc_exists_and_complete(self):
         doc = DEPLOY / "fusion-gateway-integration.md"
         assert doc.exists()
         txt = doc.read_text(encoding="utf-8")
-        # 关键章节
+        # key sections (doc section titles are Chinese product docs, keep as is)
         for sec in ["能力分工", "k12 侧配置", "网关侧配置", "集群形态拓扑", "对接验证清单", "issue→PR"]:
             assert sec in txt
-        # 双层鉴权 + Bearer 透传
+        # dual-layer auth + Bearer passthrough
         assert "Bearer" in txt and "X-API-Key" in txt
 
     def test_ai_client_sends_bearer_when_key_set(self):
         from fusion_k12_teacher.ai_client import MLXClient
         c = MLXClient()
-        # 无 key 不发 Authorization (P1-20)
+        # no key → no Authorization header (P1-20)
         os.environ.pop("FUSION_CLIENT_KEY", None)
         assert "Authorization" not in c._auth_headers()
-        # 有 key 发 Bearer
+        # key set → send Bearer
         os.environ["FUSION_CLIENT_KEY"] = "gw-key-123"
         try:
             h = c._auth_headers()
@@ -115,35 +117,36 @@ class TestGatewayIntegration:
 
     def test_env_example_gateway_endpoint(self):
         txt = (DEPLOY / ".env.example").read_text(encoding="utf-8")
-        # 指向网关 11432, 非 mlx 11434
+        # points at the gateway 11432, not mlx 11434
         assert "11432" in txt
         assert "FUSION_CLIENT_KEY" in txt
 
 
-# ── 多实例一致性 (cluster 模式逻辑) ──
+# ── multi-instance consistency (cluster mode logic) ──
 
 class TestMultiInstanceConsistency:
     def test_cluster_mode_routes_to_shared_backends(self, monkeypatch):
-        # cluster 模式 → Postgres + Redis (共享后端), 多实例一致
+        # cluster mode → Postgres + Redis (shared backends), consistent across instances
         from fusion_k12_teacher.repository.factory import get_repository
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.setenv("FUSION_K12_PG_DSN", "postgresql://u:p@nohost:5432/k12")
-        # asyncpg 可能未装 → factory 应返回 None 或抛可控异常, 不静默用 SQLite
+        # asyncpg may be missing → the factory should return None or raise a
+        # controlled exception, never silently fall back to SQLite
         repo = None
         try:
             repo = get_repository()
         except Exception:
             pass
-        # 若拿到 repo, 必须是 Postgres (cluster 不回退 SQLite)
+        # if a repo is returned, it must be Postgres (cluster never falls back to SQLite)
         if repo is not None:
             assert type(repo).__name__ == "PostgresRepository"
 
     def test_shared_cache_only_in_cluster(self, monkeypatch):
         from fusion_k12_teacher import serve
-        # standalone → None (进程内限流)
+        # standalone → None (in-process rate limiting)
         monkeypatch.setenv("FUSION_K12_MODE", "standalone")
         assert serve._shared_cache() is None
-        # cluster 无 redis url → None (回退进程内)
+        # cluster without a redis url → None (in-process fallback)
         monkeypatch.setenv("FUSION_K12_MODE", "cluster")
         monkeypatch.delenv("FUSION_K12_REDIS_URL", raising=False)
         assert serve._shared_cache() is None
@@ -153,29 +156,30 @@ class TestMultiInstanceConsistency:
         from fusion_k12_teacher.serve import _RateLimiter
         a = _RateLimiter(60, 2, state_file="")
         b = _RateLimiter(60, 2, state_file="")
-        # 两实例各自计数, 不共享 (集群靠 Redis 共享, 单机各自)
+        # each instance counts on its own, not shared (clusters share via
+        # Redis, standalone instances stay separate)
         assert await a.check("ip1")
         assert await a.check("ip1")
-        assert not await a.check("ip1")   # 第 3 次拒
-        # b 实例独立, ip1 在 b 仍可
+        assert not await a.check("ip1")   # 3rd request rejected
+        # instance b is independent, ip1 still allowed on b
         assert await b.check("ip1")
 
 
-# ── 故障转移: 排水摘流 ──
+# ── failover: drain and evict ──
 
 class TestFailoverDrain:
     @pytest.mark.asyncio
     async def test_draining_then_undraining_cycle(self, monkeypatch):
-        # 排水 → 拒新; 取消排水 → 恢复 (模拟实例替换)
+        # drain → reject new; undrain → recover (simulates instance replacement)
         import fusion_k12_teacher.serve as serve
         monkeypatch.setattr(serve, "_draining", False)
         monkeypatch.setattr(serve, "_ready", True)
         monkeypatch.setattr(serve, "_inflight", 0)
-        # 进入排水
+        # enter draining
         serve._draining = True
         assert serve._draining is True
-        # 排水期间新请求应被中间件拒 (中间件读 _draining)
-        # 退出排水 (新实例上线语义)
+        # new requests must be rejected by the middleware while draining (middleware reads _draining)
+        # exit draining (new instance online semantics)
         serve._draining = False
         assert serve._draining is False
 
@@ -188,11 +192,12 @@ class TestFailoverDrain:
         assert serve._drain_timeout() == 30.0
 
 
-# ── 性能基线: mock LLM 吞吐 ──
+# ── performance baseline: mock LLM throughput ──
 
 class TestPerfBaseline:
     def test_throughput_under_concurrent_mock(self):
-        # 不依赖真实 mlx: 用 mock chat, 测并发调度无串行化瓶颈
+        # no real mlx needed: use a mock chat to verify concurrent dispatch has
+        # no serialization bottleneck
         from fusion_k12_teacher.ai_client import MLXClient
         c = MLXClient()
 
@@ -211,11 +216,11 @@ class TestPerfBaseline:
         results = asyncio.run(run())
         elapsed = time.monotonic() - t0
         assert len(results) == 50
-        # 50 并发 mock 应在 2s 内完成 (无锁串行化)
-        assert elapsed < 2.0, f"并发吞吐异常: {elapsed:.2f}s"
+        # 50 concurrent mocks should finish within 2s (no lock serialization)
+        assert elapsed < 2.0, f"Abnormal concurrent throughput: {elapsed:.2f}s"
 
     def test_metrics_no_lock_contention(self):
-        # 指标注册表多线程并发写不死锁
+        # the metrics registry must not deadlock under concurrent multi-threaded writes
         from fusion_k12_teacher.metrics import MetricsRegistry
         m = MetricsRegistry()
 
@@ -232,6 +237,6 @@ class TestPerfBaseline:
             t.join()
         elapsed = time.monotonic() - t0
         out = m.render()
-        # 8000 请求全部计数
+        # all 8000 requests counted
         assert 'k12_request_total{route="/api/x",status="200"} 8000.0' in out
-        assert elapsed < 3.0, f"指标并发写卡顿: {elapsed:.2f}s"
+        assert elapsed < 3.0, f"Metrics concurrent write stall: {elapsed:.2f}s"

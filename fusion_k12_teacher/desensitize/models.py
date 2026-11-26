@@ -17,11 +17,13 @@ class DesensitizeConfig:
     fields_to_mask: list[str] = field(default_factory=lambda: list(DEFAULT_MASK_FIELDS))
     mask_char: str = "*"
     mask_keep_chars: int = 1
-    # SEC-2/SEC-17: 不再硬编码默认 salt; 空串由 DataAnonymizer._resolve_salt 解析
+    # SEC-2/SEC-17: no more hardcoded default salt; empty string is resolved by
+    # DataAnonymizer._resolve_salt
     salt: str = ""
 
     def to_dict(self) -> dict:
-        # SEC-17: salt 不随配置序列化, 避免与脱敏数据同存导致保护失效
+        # SEC-17: salt is not serialized with the config, avoiding co-storage with
+        # desensitized data that would defeat the protection
         return {
             "name_mode": self.name_mode,
             "id_prefix": self.id_prefix,

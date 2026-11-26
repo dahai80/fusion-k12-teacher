@@ -1,12 +1,12 @@
-"""MuseTalkAvatar — fusion_mlx.video.musetalk_mlx 数字人插件。
+"""MuseTalkAvatar — digital human plugin for fusion_mlx.video.musetalk_mlx.
 
-in-process 库 API (非 HTTP): encode_audio_from_wav(wav) -> mel chunks,
-render(latent_batch, audio_chunks) -> (B,256,256,3) BGR uint8 帧。
-不需要 word timestamps (TTS 仅给 PCM, MuseTalk 从 mel 推口型)。
+In-process library API (not HTTP): encode_audio_from_wav(wav) -> mel chunks,
+render(latent_batch, audio_chunks) -> (B,256,256,3) BGR uint8 frames.
+No word timestamps needed (TTS only provides PCM; MuseTalk infers lip sync from mel).
 
-2 级降级: 分辨率降 -> StaticAvatar 兜底。
-fusion_mlx 不可 import 时 available=False, manager 自动回退 StaticAvatar。
-PTS 驱动帧节奏 (monotonic 时钟, 迟到帧跳过 — linguakids 模式)。
+2-level degradation: resolution down -> StaticAvatar fallback.
+When fusion_mlx cannot be imported, available=False and the manager auto-falls back to StaticAvatar.
+PTS drives the frame pace (monotonic clock, late frames skipped — linguakids mode).
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ def _init_mx_thread() -> None:
         import mlx.core as mx
         dev = mx.default_device()
         mx.default_stream(dev)
-        logger.info("avatar_musetalk: MLX 线程流初始化完成 thread=%s", _thread_name())
+        logger.info("avatar_musetalk: MLX thread stream initialized thread=%s", _thread_name())
     except Exception as exc:
-        logger.warning("avatar_musetalk: MLX 线程流初始化失败 %s", exc)
+        logger.warning("avatar_musetalk: MLX thread stream init failed %s", exc)
 
 
 def _thread_name() -> str:
@@ -71,12 +71,12 @@ def _try_import_musetalk():
         src = _resolve_fusion_mlx_source()
         if src and src not in sys.path:
             sys.path.insert(0, src)
-            logger.info("avatar_musetalk: 注入 fusion-mlx 源码路径 %s", src)
+            logger.info("avatar_musetalk: injected fusion-mlx source path %s", src)
         try:
             from fusion_mlx.video.musetalk_mlx.pipeline_mlx import MuseTalkPipeline as _P
             return _P
         except Exception as exc:
-            logger.warning("avatar_musetalk: MuseTalk 不可 import (%s), 降级 StaticAvatar", str(exc)[:120])
+            logger.warning("avatar_musetalk: MuseTalk not importable (%s), degrading to StaticAvatar", str(exc)[:120])
             return None
 
 
@@ -152,9 +152,9 @@ class MuseTalkAvatar(AvatarPlugin):
     async def init(self) -> None:
         self._low_mem = _free_mem_gb() < 4.0
         if self._low_mem:
-            logger.warning("avatar_musetalk[%s]: 可用内存 <4GB, 渲染降级 idle-only", self.session_id)
+            logger.warning("avatar_musetalk[%s]: available memory <4GB, render degrades to idle-only", self.session_id)
         if not _HAS_MUSETALK:
-            logger.warning("avatar_musetalk[%s]: fusion_mlx.video.musetalk_mlx 不可 import, available=False", self.session_id)
+            logger.warning("avatar_musetalk[%s]: fusion_mlx.video.musetalk_mlx not importable, available=False", self.session_id)
             self._available = False
             return
         try:
@@ -169,13 +169,13 @@ class MuseTalkAvatar(AvatarPlugin):
                     _get_mx_executor(), _MuseTalkPipeline.from_pretrained_mlx, dist)
                 logger.info("avatar_musetalk[%s]: init (native MLX) dist=%s", self.session_id, dist)
             else:
-                logger.warning("avatar_musetalk[%s]: MuseTalk 资源未就绪, available=False", self.session_id)
+                logger.warning("avatar_musetalk[%s]: MuseTalk assets not ready, available=False", self.session_id)
                 self._available = False
                 return
             self._available = True
-            logger.info("avatar_musetalk[%s]: pipeline 就绪 %s", self.session_id, type(self._pipeline).__name__)
+            logger.info("avatar_musetalk[%s]: pipeline ready %s", self.session_id, type(self._pipeline).__name__)
         except Exception as exc:
-            logger.error("avatar_musetalk[%s]: init 失败 %s, 降级 StaticAvatar", self.session_id, exc)
+            logger.error("avatar_musetalk[%s]: init failed %s, degrading to StaticAvatar", self.session_id, exc)
             self._available = False
             self._pipeline = None
 
@@ -191,7 +191,7 @@ class MuseTalkAvatar(AvatarPlugin):
         disk = self._disk_get(text)
         if disk is not None:
             self._cache[text] = disk
-            logger.info("avatar_musetalk[%s]: disk cache 命中 文本=%d字节", self.session_id, len(text))
+            logger.info("avatar_musetalk[%s]: disk cache hit text=%d bytes", self.session_id, len(text))
             return disk
         self._rendering_text = text
         self._cancelled = False
@@ -201,7 +201,7 @@ class MuseTalkAvatar(AvatarPlugin):
             self._disk_put(text, frames)
             return frames
         except Exception as exc:
-            logger.error("avatar_musetalk[%s]: render 失败 %s, 降级 idle", self.session_id, exc)
+            logger.error("avatar_musetalk[%s]: render failed %s, degrading to idle", self.session_id, exc)
             return list(self._idle_frames) or await self._fallback_render(text, pcm, emotion)
         finally:
             self._rendering_text = None
@@ -216,7 +216,7 @@ class MuseTalkAvatar(AvatarPlugin):
                 if isinstance(obj, list):
                     return obj
         except Exception as exc:
-            logger.debug("avatar_musetalk[%s]: disk_get 失败 %s", self.session_id, exc)
+            logger.debug("avatar_musetalk[%s]: disk_get failed %s", self.session_id, exc)
         return None
 
     def _disk_put(self, text: str, frames: list[bytes]) -> None:
@@ -227,41 +227,41 @@ class MuseTalkAvatar(AvatarPlugin):
             with p.open("wb") as f:
                 pickle.dump(frames, f)
         except Exception as exc:
-            logger.debug("avatar_musetalk[%s]: disk_put 失败 %s", self.session_id, exc)
+            logger.debug("avatar_musetalk[%s]: disk_put failed %s", self.session_id, exc)
 
     async def _render_sync(self, text: str, pcm: bytes) -> list[bytes]:
         if not pcm:
             return list(self._idle_frames)
         crop_bgr = self._load_reference_crop()
         if crop_bgr is None:
-            logger.warning("avatar_musetalk[%s]: 无参考人脸, 降级 idle", self.session_id)
+            logger.warning("avatar_musetalk[%s]: no reference face, degrading to idle", self.session_id)
             return list(self._idle_frames)
         wav_path = await self._pcm_to_wav(pcm)
-        # 全流程主线程执行: encode_audio (librosa CPU, 但内部触 mx 算子) +
-        # get_latents + generate_faces — 经 ThreadPoolExecutor 触发
-        # "no Stream(gpu,*) in current thread", mx.default_stream 无法在 worker 持久化。
+        # Full pipeline runs on the main thread: encode_audio (librosa CPU, but internally touches mx ops) +
+        # get_latents + generate_faces — a ThreadPoolExecutor triggers
+        # "no Stream(gpu,*) in current thread"; mx.default_stream cannot be persisted in a worker.
         chunks_tail = self._pipeline.encode_audio_from_wav(wav_path, 25)
         audio_chunks = chunks_tail[0] if isinstance(chunks_tail, tuple) else chunks_tail
         n_frames = audio_chunks.shape[0] if hasattr(audio_chunks, "shape") else 0
         if n_frames == 0:
             return list(self._idle_frames)
-        # 健壮性: 超长音频 (LLM 闲聊 ramble) 触发巨型 batch OOM — 截断到 750 帧 (30s)。
+        # Robustness: over-long audio (LLM chatty ramble) triggers giant-batch OOM — truncate to 750 frames (30s).
         if n_frames > 750:
-            logger.warning("avatar_musetalk[%s]: 帧数 %d 过大, 截断 750 (文本=%d字节)", self.session_id, n_frames, len(text))
+            logger.warning("avatar_musetalk[%s]: frame count %d too large, truncated to 750 (text=%d bytes)", self.session_id, n_frames, len(text))
             n_frames = 750
             audio_chunks = audio_chunks[:750]
         import mlx.core as mx
         latent_single = self._pipeline.get_latents_for_unet(crop_bgr, True)
-        logger.info("avatar_musetalk[%s]: 形状 latent=%s audio=%s n=%d", self.session_id, latent_single.shape, audio_chunks.shape, n_frames)
+        logger.info("avatar_musetalk[%s]: shapes latent=%s audio=%s n=%d", self.session_id, latent_single.shape, audio_chunks.shape, n_frames)
         latent_batch = mx.broadcast_to(latent_single, (n_frames, *latent_single.shape[1:]))
         frames_raw = self._pipeline.generate_faces(latent_batch, audio_chunks, 1)
         frames: list[bytes] = []
         for i, frame in enumerate(frames_raw):
             if self._cancelled:
-                logger.info("avatar_musetalk[%s]: render 在帧 %d 被取消", self.session_id, i)
+                logger.info("avatar_musetalk[%s]: render cancelled at frame %d", self.session_id, i)
                 break
             frames.append(self._encode_jpeg(frame))
-        logger.info("avatar_musetalk[%s]: render 文本=%d字节 帧数=%d", self.session_id, len(text), len(frames))
+        logger.info("avatar_musetalk[%s]: render text=%d bytes frames=%d", self.session_id, len(text), len(frames))
         return frames
 
     def _load_reference_crop(self):
@@ -270,21 +270,21 @@ class MuseTalkAvatar(AvatarPlugin):
         try:
             img = cv2.imread(ref)
             if img is None:
-                logger.warning("avatar_musetalk[%s]: 参考图读取失败 %s", self.session_id, ref)
+                logger.warning("avatar_musetalk[%s]: reference image read failed %s", self.session_id, ref)
                 return None
             h, w = img.shape[:2]
             if h != 256 or w != 256:
                 img = cv2.resize(img, (256, 256))
             return img
         except Exception as exc:
-            logger.warning("avatar_musetalk[%s]: 参考图加载异常 %s", self.session_id, exc)
+            logger.warning("avatar_musetalk[%s]: reference image load error %s", self.session_id, exc)
             return None
 
     async def _pcm_to_wav(self, pcm: bytes) -> str:
         import tempfile
         import wave
         path = tempfile.mkstemp(suffix=".wav", prefix="dh_tts_")[1]
-        # TTS 返回 WAV 时 (RIFF 头) 直接落盘, 避免二次封装破坏采样率/长度。
+        # When TTS already returns WAV (RIFF header), write to disk directly, avoiding re-wrapping that breaks sample rate/length.
         if pcm[:4] == b"RIFF" and b"WAVE" in pcm[:12]:
             Path(path).write_bytes(pcm)
             return path
@@ -316,13 +316,13 @@ class MuseTalkAvatar(AvatarPlugin):
         if crop_bgr is not None and self._pipeline is not None:
             try:
                 import mlx.core as mx
-                # GPU 推理走主线程 (Stream(gpu,0) 限制, 见 _render_sync 注释)
+                # GPU inference runs on the main thread (Stream(gpu,0) limitation, see _render_sync comment)
                 latent = self._pipeline.get_latents_for_unet(crop_bgr, True)
                 idle_raw = self._pipeline.generate_faces(latent, mx.zeros((1, 50, 384)), 1)
                 self._idle_frames = [self._encode_jpeg(f) for f in idle_raw[:1]]
-                logger.info("avatar_musetalk[%s]: 生成 idle 帧=%d", self.session_id, len(self._idle_frames))
+                logger.info("avatar_musetalk[%s]: generated idle frames=%d", self.session_id, len(self._idle_frames))
             except Exception as exc:
-                logger.warning("avatar_musetalk[%s]: idle 帧生成失败 %s, 用 JPEG 兜底", self.session_id, exc)
+                logger.warning("avatar_musetalk[%s]: idle frame generation failed %s, falling back to JPEG", self.session_id, exc)
                 self._idle_frames = [self._encode_jpeg(crop_bgr)]
         else:
             self._idle_frames = [b""]

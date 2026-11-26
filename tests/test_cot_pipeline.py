@@ -1,4 +1,4 @@
-"""issue #20: 两阶段 CoT pipeline 测试 — thinking 提取, cot_enabled, 流式降级。"""
+"""issue #20: two-stage CoT pipeline tests — thinking extraction, cot_enabled, streaming degradation."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ class TestCotEnabled:
         assert cot_enabled() is False
 
 
+# i18n: user-facing (Chinese sample texts below are test fixture data for the thinking extractor)
 class TestExtractThinking:
     def test_think_tag_pair(self):
         raw = "<thinking>深度分析教学路径</thinking>正文内容"
@@ -73,7 +74,8 @@ class TestExtractThinking:
         assert "结尾" in content
 
 
-# ── issue #20 gap 1: extract_dsl 测试 ──────────────────────────────
+# ── issue #20 gap 1: extract_dsl tests ──────────────────────────────
+# i18n: user-facing (Chinese sample texts below are test fixture data for the DSL extractor)
 
 class TestExtractDsl:
     def test_dsl_tag_pair(self):
@@ -116,7 +118,8 @@ class TestExtractDsl:
         assert '"v":1' in dsl or '"v": 1' in dsl
 
 
-# ── issue #20 gap 2: GBNF grammar 测试 ─────────────────────────────
+# ── issue #20 gap 2: GBNF grammar tests ─────────────────────────────
+# i18n: user-facing (Chinese sample topics below are test fixture data)
 
 class TestDslGbnfGrammar:
     def test_grammar_non_empty(self):
@@ -133,7 +136,7 @@ class TestDslGbnfGrammar:
 
     @pytest.mark.asyncio
     async def test_chat_stream_passes_grammar(self):
-        """issue #20 gap 2: chat_stream 应将 grammar 透传到 payload。"""
+        """issue #20 gap 2: chat_stream should pass grammar through to the payload."""
         from fusion_k12_teacher.ai_client import MLXClient
 
         class MockStream:
@@ -161,7 +164,7 @@ class TestDslGbnfGrammar:
 
     @pytest.mark.asyncio
     async def test_chat_non_stream_passes_grammar(self, monkeypatch):
-        """issue #20 gap 2: chat() (non-stream) 也应透传 grammar 到 payload。"""
+        """issue #20 gap 2: chat() (non-stream) should also pass grammar through to the payload."""
         from fusion_k12_teacher.ai_client import MLXClient
 
         class MockResp:
@@ -191,7 +194,7 @@ class TestDslGbnfGrammar:
 
     @pytest.mark.asyncio
     async def test_socratic_tutor_passes_grammar_when_cot_enabled(self, monkeypatch):
-        """issue #20 gap 2: socratic_tutor 在 CoT 开启时应传 grammar=DSL_GBNF_GRAMMAR。"""
+        """issue #20 gap 2: socratic_tutor should pass grammar=DSL_GBNF_GRAMMAR when CoT is enabled."""
         monkeypatch.setenv("FUSION_K12_COT_ENABLED", "true")
         from fusion_k12_teacher.course.cot_pipeline import DSL_GBNF_GRAMMAR
         from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
@@ -211,7 +214,7 @@ class TestDslGbnfGrammar:
 
     @pytest.mark.asyncio
     async def test_socratic_tutor_no_grammar_when_cot_disabled(self, monkeypatch):
-        """issue #20: CoT 关闭时 grammar=None, 不影响原有行为。"""
+        """issue #20: with CoT disabled grammar is None, preserving the original behavior."""
         monkeypatch.delenv("FUSION_K12_COT_ENABLED", raising=False)
         from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier
@@ -248,9 +251,11 @@ class TestCotPrompts:
 
     def test_dsl_prompt_mentions_visual_type(self):
         assert "visual_type" in COT_DSL_PROMPT
+        # i18n: user-facing (asserts Chinese prompt content from cot_pipeline.py, product behavior)
         assert "8 基元" in COT_DSL_PROMPT
 
 
+# i18n: user-facing (Chinese sample texts below are test fixture data for SSE streaming)
 class TestStreamThinking:
     @pytest.mark.asyncio
     async def test_stream_thinking_degrades_on_error(self):

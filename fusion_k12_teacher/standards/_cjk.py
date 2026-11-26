@@ -5,15 +5,19 @@ import re
 
 logger = logging.getLogger(__name__)
 
+# i18n: user-facing (CJK character-range data, functional)
 _CJK_RE = re.compile(r"[一-鿿]")
 
 
 def _cjk_tokens(text: str) -> list[str]:
-    """CJK+拉丁混合分词 — CJK 段取 2-gram, 拉丁段按空白切 (STD-6/7)。
+    """CJK+Latin mixed tokenization — CJK segments take 2-grams, Latin segments
+    split on whitespace (STD-6/7).
 
-    E4: 单一实现, query.py 与 aligner.py 共用此份 (原先各抄一份已分叉)。
-    STD-2: 单字 CJK chunk 产 0 bigram (range(0) 空), 回退保留原 chunk 不丢弃,
-    避空 token 集恒假致对齐全漏。
+    E4: single implementation, shared by query.py and aligner.py (previously
+    two copied versions had diverged).
+    STD-2: a single-char CJK chunk produces 0 bigrams (empty range(0)); the
+    fallback keeps the original chunk instead of dropping it, avoiding an
+    always-false empty token set that would miss all alignments.
     """
     text = text.lower().strip()
     tokens: list[str] = []
@@ -27,11 +31,15 @@ def _cjk_tokens(text: str) -> list[str]:
 
 
 def _word_match(needle: str, haystack: str) -> bool:
-    """CJK 整词命中 — bigram token 交集替代裸子串, 避免"加法"命中"参加法学"。
+    """CJK whole-word match — bigram token intersection instead of raw substring,
+    avoiding a short term (e.g. a 2-char topic word) matching inside an unrelated
+    longer phrase that merely contains the same characters.
 
-    needle/haystack 均 bigram 分词; 至少 1 个 needle bigram 出现在 haystack token 集内才算命中。
-    拉丁词走精确 token 相等。无 bigram(needle<2 字)时回退裸子串(已由 loose 守门)。
-    E4: 单一实现, query.py 与 aligner.py 共用。
+    Both needle and haystack are bigram-tokenized; a hit requires at least 1
+    needle bigram to appear in the haystack token set.
+    Latin words use exact token equality. When no bigram exists (needle < 2
+    chars), fall back to raw substring (already gated by loose matching).
+    E4: single implementation, shared by query.py and aligner.py.
     """
     if not needle:
         return False

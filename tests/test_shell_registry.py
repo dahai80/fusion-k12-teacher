@@ -1,4 +1,5 @@
-"""#30: Union Web shell 网关注册 — env 门控 / manifest 加载 / 注册-心跳-重注册循环。"""
+"""#30: Union Web shell gateway registration — env gating / manifest load /
+register-heartbeat-reregister loop."""
 
 from __future__ import annotations
 
@@ -20,7 +21,8 @@ def _clean_env(monkeypatch, tmp_path):
         "FUSION_K12_WEB_API_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
-    # 签发密钥落盘路径隔离到 tmp — 防止 fixture 密钥污染真实 ~/.fusion-k12/
+    # Isolate the issued-key persistence path into tmp — prevents fixture keys
+    # from polluting the real ~/.fusion-k12/
     from fusion_k12_teacher import shell_registry
 
     monkeypatch.setattr(shell_registry, "MODULE_KEY_PATH", tmp_path / "web_module_key")
@@ -67,7 +69,7 @@ class TestManifestLoad:
         assert m["category"] == "domain"
         assert m["upstream"] == "http://127.0.0.1:11448"
         assert m["entry"] == "/shell/fusion-k12-teacher/"
-        assert "api_key" not in m  # 未配 FUSION_K12_WEB_API_KEY 不注入
+        assert "api_key" not in m  # FUSION_K12_WEB_API_KEY unset: not injected
 
     def test_missing_file_raises(self, monkeypatch, tmp_path):
         from fusion_k12_teacher.shell_registry import load_manifest
@@ -123,7 +125,7 @@ class TestRegistryLoop:
                     return httpx.Response(200, json={"raw_key": "fm-issued-1"})
                 return httpx.Response(200, json={})
             if request.url.path == "/api/v1/shell/manifests/fusion-k12-teacher/heartbeat":
-                # 第 1 拍 200, 第 2 拍 404 → 触发重注册
+                # 1st beat 200, 2nd beat 404 -> triggers re-registration
                 beats = [c for c in calls if c[1].endswith("/heartbeat")]
                 if len(beats) <= 1:
                     return httpx.Response(200, json={})
@@ -174,7 +176,7 @@ class TestRegistryLoop:
                 await task
             except asyncio.CancelledError:
                 pass
-            assert len(attempts) >= 2  # 失败后持续重试, 未崩溃退出
+            assert len(attempts) >= 2  # keeps retrying after failure, no crash exit
 
         asyncio.run(_go())
 
@@ -186,7 +188,7 @@ class TestRegistryLoop:
         monkeypatch.setenv("FUSION_SHELL_MANIFEST", str(tmp_path / "nope.json"))
 
         async def _go():
-            # manifest 缺失 → 直接返回, 不抛
+            # manifest missing -> returns directly, no raise
             await shell_registry_loop(
                 client=httpx.AsyncClient(
                     transport=httpx.MockTransport(lambda r: httpx.Response(200))
@@ -212,7 +214,7 @@ class TestRegistryLoop:
                 state["registered"] = True
                 return httpx.Response(200, json={"raw_key": "fm-issued-abc"})
             if request.url.path == "/api/v1/shell/manifests/fusion-k12-teacher/heartbeat":
-                # 心跳必须用签发密钥而非 admin key
+                # heartbeat must use the issued key, not the admin key
                 assert seen_auth[-1] == "Bearer fm-issued-abc", seen_auth[-1]
                 return httpx.Response(200, json={})
             return httpx.Response(404)
@@ -253,7 +255,7 @@ class TestRegistryLoop:
         def handler(request: httpx.Request) -> httpx.Response:
             seen_auth.append(request.headers.get("authorization", ""))
             if request.url.path == "/api/v1/shell/manifests":
-                # 重注册不回显 raw_key (网关 K1: 只发一次)
+                # re-registration does not echo raw_key (gateway K1: issued once)
                 return httpx.Response(200, json={})
             if request.url.path == "/api/v1/shell/manifests/fusion-k12-teacher/heartbeat":
                 beats.append(seen_auth[-1])
@@ -277,7 +279,7 @@ class TestRegistryLoop:
                 await task
             except asyncio.CancelledError:
                 pass
-            # 失效 key 被 403 拒 → 丢弃文件 → 下拍用 admin key 自愈
+            # stale key rejected by 403 -> file dropped -> next beat self-heals with admin key
             assert "Bearer fm-stale" in beats
             assert "Bearer fg-admin" in beats
             assert not key_path.exists()

@@ -1,4 +1,5 @@
-"""学科课程平台 REST 路由测试 — 平台-内容解耦, subject 参数分发。"""
+"""Subject course platform REST route tests — platform-content decoupling,
+subject parameter dispatching."""
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from fusion_k12_teacher.serve import app
 
+# i18n: user-facing (mock LLM response — teaching/scene product content)
 MOCK_SCRIPT = '{"global_variables": {"L_train": {"label": "车长", "unit": "m", "value": 200, "is_unknown": false}}, "steps": [{"step_id": "step1", "step_title": "观察", "phase": "Engage", "speech_narration": "看火车", "landmarks": [{"timeOffsetMs": 0, "progressRatio": 0.0, "latexHighlightVar": "L_train"}], "animation": {"start_ratio": 0.0, "end_ratio": 0.3}, "checkpoint": {"id": "cp1", "type": "multiple_choice", "prompt": "p", "options": [{"id": "a", "label": "A", "is_correct": true, "feedback": "ok"}], "hints": ["h"], "on_error_action": "rewind", "difficulty_layer": "B"}}]}'
 MOCK_SCENE = '{"scenario": "train_crossing_bridge", "entities": {"bridge": {"length": 800, "label": "大桥"}, "train": {"length": 200, "speed": 20, "label": "火车"}}, "key_milestones": [{"time_ratio": 0.0, "label": "start", "event": "start"}], "question_focus": "t", "misconception_hint": "忘加车长"}'
 
@@ -113,12 +115,13 @@ class TestCourseGraph:
 class TestCourseLessonScript:
     @pytest.mark.asyncio
     async def test_lesson_script(self, client):
+        # i18n: user-facing (teaching topic, request payload)
         r = await client.post("/api/course/math/lesson-script", json={
             "subject": "math", "topic": "火车过桥", "grade": "5", "layer": "B",
         })
         assert r.status_code == 200
         data = r.json()
-        # issue #19 P0: 返回 spec DSL v3.0 合规结构
+        # issue #19 P0: returns a spec DSL v3.0 compliant structure
         assert "meta" in data
         assert "parameters" in data
         assert "entities" in data
@@ -159,9 +162,11 @@ class TestCourseCheckpoint:
 class TestCourseSceneCompile:
     @pytest.mark.asyncio
     async def test_scene_compile(self, client):
-        # 换 mock 返回场景提取 JSON — 赋值到类, 保持方法绑定 (实例赋值不绑 self)
+        # Swap the mock to return the scene-extraction JSON — assign to the class
+        # to keep method binding (instance assignment does not bind self)
         from fusion_k12_teacher import serve as srv
         type(srv.mlx_client).chat = _mock_chat(MOCK_SCENE)
+        # i18n: user-facing (problem text, request payload)
         r = await client.post("/api/course/math/scene-compile", json={
             "problem_text": "200米火车20米每秒过800米大桥求时间",
         })

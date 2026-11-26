@@ -126,6 +126,7 @@ TIER1_MIN_COUNT = {
 
 # Banned words (kept in sync with guidelines/writing-style.md section 4;
 # Chinese core terms live here, English terms in the separate list below)
+# i18n: user-facing (Chinese banned-word list for doc linting, functional data)
 FORBIDDEN_ZH = [
     "强大的",
     "十分强大",

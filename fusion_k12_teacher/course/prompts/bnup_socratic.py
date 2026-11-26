@@ -1,15 +1,17 @@
-"""issue #22: BNUP (北师大版) 苏格拉底教学 prompt 集中注册表。
+"""issue #22: centralized prompt registry for BNUP Socratic teaching.
 
-所有 BNUP 苏格拉底式教学场景共用本模块的 system prompt + visual 路由规则 +
-CoT 格式指令, 避免散落在 9 个 inline prompt 站点造成不一致。
+All BNUP Socratic teaching scenarios share this module's system prompt +
+visual routing rules + CoT format instructions, instead of being scattered
+across 9 inline prompt sites causing inconsistency.
 
-使用方式:
+Usage:
     from .course.prompts.bnup_socratic import (
         BNUP_SYSTEM_PROMPT, BNUP_VISUAL_ROUTING_PROMPT,
         BNUP_COT_FORMAT_PROMPT, route_visual_type,
     )
 
-build_prompt (sanitize_input) 仍在调用方执行 — 本模块只提供 prompt 文本。
+build_prompt (sanitize_input) still runs at the caller — this module only
+provides prompt text.
 """
 
 from __future__ import annotations
@@ -21,11 +23,14 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# ── 8 可视化基元路由规则 ──────────────────────────────────────────
-# 按题型关键词 → visual_type 映射 (issue #19 v3.0 八基元)
+# ── 8 visual primitive routing rules ─────────────────────────────
+# Topic keyword → visual_type mapping (issue #19 v3.0 eight primitives)
+# i18n: user-facing — regex patterns match Chinese student topics and the
+# descriptions are grade-band labels shown in teaching metadata; keep Chinese.
 VISUAL_ROUTING_RULES: list[tuple[str, str, str]] = [
     # (pattern_regex, visual_type, description)
-    # 注意: isometric_3d 须在 geometry_2d 前 (圆柱/圆锥含"圆"字, 先匹配立体)
+    # Note: isometric_3d must precede geometry_2d (cylinder/cone contain the
+    # char for "circle", match solids first)
     (r"计数|数数|圈画|阵列|搭配|排列|认识数|数的认识|数一数", "array_grid", "1-2年级 计数/圈画/阵列"),
     (r"和差|倍比|分数|百分数|比例|按比分配", "tape_diagram", "2-6年级 和差倍比/分数 核心通用"),
     (r"长方体|正方体|圆柱|圆锥|立体|切削|展开图|表面积|体积", "isometric_3d", "5-6年级 立体几何/切削展开"),
@@ -40,9 +45,9 @@ FALLBACK_VISUAL = "flow_card"
 
 
 def route_visual_type(topic: str, problem_text: str = "") -> str:
-    """issue #22: 按题型关键词路由 visual_type (8 基元)。
+    """issue #22: route visual_type by topic keywords (8 primitives).
 
-    优先级: topic 匹配 > problem_text 匹配 > flow_card 兜底。
+    Priority: topic match > problem_text match > flow_card fallback.
     """
     text = f"{topic} {problem_text}"
     for pattern, vtype, _desc in VISUAL_ROUTING_RULES:
@@ -53,7 +58,8 @@ def route_visual_type(topic: str, problem_text: str = "") -> str:
     return FALLBACK_VISUAL
 
 
-# ── BNUP 统一系统 prompt ─────────────────────────────────────────
+# ── BNUP unified system prompt ───────────────────────────────────
+# i18n: user-facing — LLM prompt template (product content), keep Chinese.
 BNUP_SYSTEM_PROMPT = """你是北师大版 (BNUP) K-12 数学苏格拉底式教学设计专家。
 
 核心原则:
@@ -77,7 +83,8 @@ BNUP_SYSTEM_PROMPT = """你是北师大版 (BNUP) K-12 数学苏格拉底式教�
 """
 
 
-# ── 可视化路由 prompt (嵌入各生成 prompt 的 visual 选择段) ────────
+# ── Visual routing prompt (embedded in each generation prompt) ───
+# i18n: user-facing — LLM prompt template (product content), keep Chinese.
 BNUP_VISUAL_ROUTING_PROMPT = """可视化选择规则 (8 基元, 按题型匹配):
 - array_grid: 计数/圈画/阵列/搭配枚举 → 1-2年级
 - tape_diagram: 和差倍比/分数/百分数/比例 → 2-6年级 (核心通用兜底)
@@ -92,7 +99,8 @@ BNUP_VISUAL_ROUTING_PROMPT = """可视化选择规则 (8 基元, 按题型匹配
 """
 
 
-# ── CoT 格式指令 (issue #20 两阶段) ──────────────────────────────
+# ── CoT format instructions (issue #20 two-stage) ────────────────
+# i18n: user-facing — LLM prompt template (product content), keep Chinese.
 BNUP_COT_FORMAT_PROMPT = """两阶段推理格式 (CoT):
 阶段1 <thinking>: 自由推理教学路径 (学生认知起点 → 核心概念 → 障碍分析 → 5E策略 → 可视化选择)
 阶段2 <dsl>: 严格 JSON 输出 (meta.visual_type + steps[].visual_state + checkpoint)
@@ -102,12 +110,15 @@ BNUP_COT_FORMAT_PROMPT = """两阶段推理格式 (CoT):
 
 
 def build_bnup_prompt(topic: str, grade: str = "5", **extra: Any) -> str:
-    """issue #22: 构建 BNUP 苏格拉底 prompt — system + visual 路由 + topic 上下文。
+    """issue #22: build the BNUP Socratic prompt — system + visual routing +
+    topic context.
 
-    返回拼接后的完整 prompt 文本 (未经 sanitize, 调用方负责 build_prompt)。
+    Returns the assembled full prompt text (not sanitized; the caller is
+    responsible for build_prompt).
     """
     vtype = route_visual_type(topic, str(extra.get("problem_text", "")))
     fb = "tape_diagram" if vtype != "tape_diagram" else "flow_card"
+    # i18n: user-facing — prompt context fragments fed to the LLM, keep Chinese.
     parts = [
         BNUP_SYSTEM_PROMPT,
         f"\n课题: {topic} (年级 {grade})",

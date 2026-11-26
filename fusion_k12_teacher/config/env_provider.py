@@ -1,6 +1,7 @@
-"""环境变量提供者 — 单机默认, 启动读静态。
+"""Environment variable provider — single-machine default, static read at startup.
 
-启动时快照 env, 运行期不变 (不轮询)。变更需重启或滚动重启。
+Snapshots env at startup and never changes at runtime (no polling). Changes
+require a restart or rolling restart.
 """
 
 from __future__ import annotations
@@ -14,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 class EnvProvider(ConfigProvider):
-    """静态 env 提供者 — 启动快照, 不热更新。"""
+    """Static env provider — startup snapshot, no hot reload."""
 
     def __init__(self) -> None:
         super().__init__()
         self._snapshot: dict[str, str] = dict(os.environ)
-        logger.info("EnvProvider 初始化, 快照 %d 项", len(self._snapshot))
+        logger.info("EnvProvider initialized, %d entries in snapshot", len(self._snapshot))
 
     def get(self, key: str, default: str = "") -> str:
         return self._snapshot.get(key, default)

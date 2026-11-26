@@ -1,4 +1,4 @@
-"""v0.3 课标+分层教学 模块测试。"""
+"""v0.3 standards + differentiated instruction module tests."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from fusion_k12_teacher.standards import (
 # Standards Models
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample subjects/topics)
 class TestKnowledgePoint:
     def test_from_dict(self):
         data = {
@@ -62,6 +63,7 @@ class TestKnowledgePoint:
         assert kp.prerequisites == []
 
 
+# i18n: user-facing (fixture data below uses Chinese sample subjects/topics)
 class TestCurriculumStandard:
     def test_from_dict(self):
         data = {
@@ -90,6 +92,7 @@ class TestCurriculumStandard:
 # Standards Loader
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample subjects/topics)
 class TestStandardsLoader:
     def test_load_real_data(self):
         loader = StandardsLoader()
@@ -174,6 +177,7 @@ class TestStandardsLoader:
 # Standards Query
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample subjects/topics)
 class TestStandardsQuery:
     def setup_method(self):
         self.loader = StandardsLoader()
@@ -238,6 +242,7 @@ class TestStandardsQuery:
 # Standards Aligner
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample subjects/topics)
 class TestStandardsAligner:
     def setup_method(self):
         self.loader = StandardsLoader()
@@ -274,6 +279,7 @@ class TestStandardsAligner:
 # Differentiation Models & Config
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data below uses Chinese sample content)
 class TestDifferentiationModels:
     def test_layer_content_to_dict(self):
         lc = LayerContent(
@@ -286,7 +292,7 @@ class TestDifferentiationModels:
         assert len(d["examples"]) == 1
 
     def test_differentiated_content_to_dict(self):
-        # E3: layers 改 dict
+        # E3: layers changed to a dict
         dc = DifferentiatedContent(
             topic="分数",
             grade="3",
@@ -333,6 +339,7 @@ class TestLevelConfigs:
 # Differentiation Engine (mock-based)
 # ══════════════════════════════════════════════════════════════════════════════
 
+# i18n: user-facing (fixture data and mock payloads below use Chinese sample content)
 class TestDifferentiationEngineMock:
     def setup_method(self):
         self.loader = StandardsLoader()
@@ -359,6 +366,7 @@ class TestDifferentiationEngineMock:
         assert isinstance(result.layers["struggling"], LayerContent)
         assert isinstance(result.layers["standard"], LayerContent)
         assert isinstance(result.layers["advanced"], LayerContent)
+        # i18n: user-facing (three-tier labels asserted via dict keys above; group names below are product data)
 
     @pytest.mark.asyncio
     async def test_generate_differentiated_quiz(self):
@@ -375,7 +383,7 @@ class TestDifferentiationEngineMock:
         self.engine.mlx.chat = AsyncMock(side_effect=Exception("LLM error"))
         result = await self.engine.generate_differentiated_lesson("数学", "3", "分数")
         assert isinstance(result, DifferentiatedContent)
-        # E3: 失败层降级空 LayerContent, 走 layers dict
+        # E3: failed tier degrades to an empty LayerContent, via the layers dict
         assert result.layers["struggling"].explanation == ""
         assert result.layers["standard"].explanation == ""
         assert result.layers["advanced"].explanation == ""

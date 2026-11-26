@@ -1,6 +1,7 @@
-"""配置文件提供者 — mtime 轮询触发 reload。
+"""Config file provider — mtime polling triggers reload.
 
-读 KEY=VALUE 行 (shell-style), 文件 mtime 变更即重新加载, 仅可热更新项触发回调。
+Reads KEY=VALUE lines (shell-style); reloads when the file mtime changes;
+only hot-reloadable items trigger callbacks.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class FileProvider(ConfigProvider):
-    """配置文件提供者 — mtime 变更触发 reload。"""
+    """Config file provider — mtime change triggers reload."""
 
     def __init__(self, path: str) -> None:
         super().__init__()
@@ -24,12 +25,12 @@ class FileProvider(ConfigProvider):
         self._refresh()
 
     def _refresh(self) -> None:
-        """读文件至内存, 记 mtime。文件不存在则空。"""
+        """Read the file into memory and record mtime. Empty when the file is missing."""
         try:
             st = os.stat(self._path)
             self._mtime = st.st_mtime
         except FileNotFoundError:
-            logger.warning("配置文件不存在: %s", self._path)
+            logger.warning("Config file does not exist: %s", self._path)
             self._mtime = 0.0
             self._values = {}
             return
@@ -39,15 +40,15 @@ class FileProvider(ConfigProvider):
         return self._values.get(key, default)
 
     def refresh(self) -> dict[str, str]:
-        """mtime 变更则重读, 返回可热更新项的变更。"""
+        """Re-read when mtime changed; return changes to hot-reloadable items."""
         try:
             st = os.stat(self._path)
         except FileNotFoundError:
-            logger.warning("配置文件消失: %s", self._path)
+            logger.warning("Config file disappeared: %s", self._path)
             return {}
         if st.st_mtime == self._mtime:
             return {}
-        logger.info("配置文件变更, reload: %s", self._path)
+        logger.info("Config file changed, reload: %s", self._path)
         old = self._values
         self._mtime = st.st_mtime
         self._values = _parse_file(self._path)
@@ -61,7 +62,7 @@ class FileProvider(ConfigProvider):
 
 
 def _parse_file(path: str) -> dict[str, str]:
-    """解析 KEY=VALUE 文件 — 跳过空行/# 注释, 去首尾空白。"""
+    """Parse a KEY=VALUE file — skips empty lines/# comments, strips whitespace."""
     values: dict[str, str] = {}
     try:
         with open(path, encoding="utf-8") as f:
@@ -77,5 +78,5 @@ def _parse_file(path: str) -> dict[str, str]:
                 if k:
                     values[k] = v
     except OSError as e:
-        logger.warning("配置文件读失败 %s: %s", path, e)
+        logger.warning("Failed to read config file %s: %s", path, e)
     return values

@@ -1,7 +1,10 @@
-"""数字人平台层 — 数字人老师 (K2 实时语音 + K3 数字人)。
+"""Digital-human platform layer — digital-human teacher (K2 real-time voice +
+K3 digital human).
 
-学科无关平台能力: 6 大核心设计 (FSM/BargeIn/4 层插件/emotion_tag/滚动记忆/生命周期),
-注入课程内容 (SubjectModule/LessonScripter), LiveKit SFU 传输, 不引入第三方仓库。
+Subject-agnostic platform capabilities: 6 core designs (FSM/BargeIn/4-layer
+plugins/emotion_tag/rolling memory/lifecycle), injects course content
+(SubjectModule/LessonScripter), LiveKit SFU transport, no third-party repos
+introduced.
 """
 
 from __future__ import annotations
