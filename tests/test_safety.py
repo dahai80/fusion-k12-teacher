@@ -1,4 +1,4 @@
-"""Safety module tests — models / wordlist / age_checker / filter."""
+# Safety module tests — models / wordlist / age_checker / filter.
 
 # i18n: user-facing — Chinese literals below are test fixture data (sample
 # sensitive words, texts and student inputs used as data) and assertion

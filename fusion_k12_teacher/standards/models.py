@@ -9,15 +9,14 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_SCHEMA_VERSIONS = {"1.0"}
 
 
+# E7: curriculum standard schema version migration — explicit field-layout conversion between known
+#     versions, instead of the loader silently skipping the whole file.
+#
+#     When adding a new schema version, register its migration function here: map the new version's
+#     fields back to the v1.0 layout and load as v1.0, avoiding "when the standard schema upgrades to
+#     2.0, all new-format files get silently dropped and the standards vanish at runtime with no error".
+#     Unknown versions (no migration path) still raise ValueError so the loader records the failed file explicitly.
 def _migrate_standard(data: dict[str, Any], version: str) -> dict[str, Any]:
-    """E7: curriculum standard schema version migration — explicit field-layout conversion between known
-    versions, instead of the loader silently skipping the whole file.
-
-    When adding a new schema version, register its migration function here: map the new version's
-    fields back to the v1.0 layout and load as v1.0, avoiding "when the standard schema upgrades to
-    2.0, all new-format files get silently dropped and the standards vanish at runtime with no error".
-    Unknown versions (no migration path) still raise ValueError so the loader records the failed file explicitly.
-    """
     if version == "1.0":
         return data
     # Extend future version migrations here, e.g.:

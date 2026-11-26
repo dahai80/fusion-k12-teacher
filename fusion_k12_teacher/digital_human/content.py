@@ -1,10 +1,9 @@
-"""ContentInjector — subject content injector.
-
-Two routes:
-1. Course route (subject injection): SubjectModule.socratic_tutor().generate_lesson_script() -> TeachingStep -> NarrationSegment
-2. Classroom route: LessonScripter.generate() -> ScriptPage -> NarrationSegment
-The platform has zero subject hardcoding and depends only on SubjectModule + SubjectRegistry.
-"""
+# ContentInjector — subject content injector.
+#
+# Two routes:
+# 1. Course route (subject injection): SubjectModule.socratic_tutor().generate_lesson_script() -> TeachingStep -> NarrationSegment
+# 2. Classroom route: LessonScripter.generate() -> ScriptPage -> NarrationSegment
+# The platform has zero subject hardcoding and depends only on SubjectModule + SubjectRegistry.
 
 from __future__ import annotations
 
@@ -141,8 +140,8 @@ class ContentInjector:
         logger.info("content: classroom route subject=%s topic=%s segments=%d", subject, topic, len(segs))
         return segs
 
+    # Extend-by-analogy context: find the graph node matching the topic → (prerequisite nodes, misconceptions, node_id).
     def _graph_context(self, subject: str, topic: str) -> tuple[list[str], list[str], str]:
-        """Extend-by-analogy context: find the graph node matching the topic → (prerequisite nodes, misconceptions, node_id)."""
         try:
             mod = self._registry.get(subject)
             graph = mod.knowledge_graph() if mod else None

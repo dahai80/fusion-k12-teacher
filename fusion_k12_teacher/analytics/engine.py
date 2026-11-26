@@ -1,4 +1,4 @@
-"""Learning analytics engine — class profile, student profile, error attribution, remedial plans."""
+# Learning analytics engine — class profile, student profile, error attribution, remedial plans.
 
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ _coerce_int = coerce_int
 _coerce_str_list = coerce_str_list
 
 
+# Learning analytics engine — class profile, error attribution, remedial plan generation.
 class AnalyticsEngine:
-    """Learning analytics engine — class profile, error attribution, remedial plan generation."""
 
     def __init__(
         self,
@@ -65,6 +65,7 @@ class AnalyticsEngine:
         import hashlib
         return "S" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:6]
 
+    # Build the class learning profile.
     async def build_class_profile(
         self,
         class_id: str,
@@ -72,7 +73,6 @@ class AnalyticsEngine:
         grade: str,
         assessments: list[StudentAssessment],
     ) -> ClassProfile:
-        """Build the class learning profile."""
         if not assessments:
             return ClassProfile(class_id=class_id, subject=subject, grade=grade)
 
@@ -160,6 +160,7 @@ class AnalyticsEngine:
             error=llm_err,
         )
 
+    # Build the individual student profile.
     async def build_student_profile(
         self,
         student_id: str,
@@ -167,7 +168,6 @@ class AnalyticsEngine:
         grade: str,
         history: list[StudentAssessment],
     ) -> StudentProfile:
-        """Build the individual student profile."""
         student_name = history[0].student_name if history else student_id
 
         if not history:
@@ -267,13 +267,13 @@ class AnalyticsEngine:
             error=llm_err,
         )
 
+    # Attribute analysis of wrong answers.
     async def analyze_errors(
         self,
         subject: str,
         grade: str,
         responses: list[dict[str, Any]],
     ) -> list[ErrorAnalysis]:
-        """Attribute analysis of wrong answers."""
         if not responses:
             return []
 
@@ -368,6 +368,7 @@ class AnalyticsEngine:
             remediation="建议人工复核错题",
         )]
 
+    # Generate a remedial teaching plan.
     async def generate_remedial_plan(
         self,
         student_id: str,
@@ -375,7 +376,6 @@ class AnalyticsEngine:
         grade: str,
         weak_points: list[WeakPoint],
     ) -> RemedialPlan:
-        """Generate a remedial teaching plan."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         sid_s = sanitize_input(student_id, 50)
@@ -463,8 +463,8 @@ class AnalyticsEngine:
             error=llm_err,
         )
 
+    # Generate a Markdown-format class learning report.
     async def generate_class_report(self, class_profile: ClassProfile) -> str:
-        """Generate a Markdown-format class learning report."""
         # ENG-10: class profile fields are user-controlled — sanitize before entering the prompt
         cid_s = sanitize_input(class_profile.class_id, 50)
         subject_s = sanitize_input(class_profile.subject, 20)

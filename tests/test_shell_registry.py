@@ -1,5 +1,5 @@
-"""#30: Union Web shell gateway registration — env gating / manifest load /
-register-heartbeat-reregister loop."""
+# #30: Union Web shell gateway registration — env gating / manifest load /
+# register-heartbeat-reregister loop.
 
 from __future__ import annotations
 

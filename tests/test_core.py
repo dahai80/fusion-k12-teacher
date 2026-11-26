@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher core tests."""
+# Fusion-K12-Teacher core tests.
 
 # i18n: user-facing — Chinese literals below are test fixture data (sample
 # names/subjects/topics used as data) and assertion targets on product

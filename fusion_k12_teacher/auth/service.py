@@ -29,12 +29,11 @@ class AuthError(Exception):
     pass
 
 
+# Teacher identity service — register/login/token verification.
+#
+#     token = base64(teacher_id|expiry|hmac) — HMAC verification prevents forgery, expiry prevents staleness.
+#     The session row is written synchronously to the sessions table (supports explicit logout / restart-safe verification).
 class AuthService:
-    """Teacher identity service — register/login/token verification.
-
-    token = base64(teacher_id|expiry|hmac) — HMAC verification prevents forgery, expiry prevents staleness.
-    The session row is written synchronously to the sessions table (supports explicit logout / restart-safe verification).
-    """
 
     def __init__(self, repo: Repository):
         self._repo = repo

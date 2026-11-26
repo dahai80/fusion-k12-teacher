@@ -1,7 +1,6 @@
-"""KokoroTTS — fusion-mlx /v1/audio/speech plugin.
-
-emotion -> speed mapping. Returns wav bytes. Same PCM feeds AvatarPlugin.render.
-"""
+# KokoroTTS — fusion-mlx /v1/audio/speech plugin.
+#
+# emotion -> speed mapping. Returns wav bytes. Same PCM feeds AvatarPlugin.render.
 
 from __future__ import annotations
 

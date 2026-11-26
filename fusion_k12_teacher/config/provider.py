@@ -1,10 +1,9 @@
-"""Config provider abstraction — M3-T17.
-
-Hot-reloadable config keys are polled in the background; change callbacks refresh
-the mutable config held by engines (model/rate limit/log level) without rebuilding
-engines. Non-hot-reloadable items (DB/port/data_key) are injected at startup;
-changing them requires a rolling restart — they do not go through here.
-"""
+# Config provider abstraction — M3-T17.
+#
+# Hot-reloadable config keys are polled in the background; change callbacks refresh
+# the mutable config held by engines (model/rate limit/log level) without rebuilding
+# engines. Non-hot-reloadable items (DB/port/data_key) are injected at startup;
+# changing them requires a rolling restart — they do not go through here.
 
 from __future__ import annotations
 
@@ -23,8 +22,8 @@ HOT_RELOADABLE = (
 )
 
 
+# Config provider base class — get + background polling + change callbacks.
 class ConfigProvider:
-    """Config provider base class — get + background polling + change callbacks."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -33,20 +32,20 @@ class ConfigProvider:
         self._poll_stop = threading.Event()
         self._poll_interval = float(__import__("os").environ.get("FUSION_K12_CONFIG_POLL", "5"))
 
+    # Read a config value — subclasses implement the actual read.
     def get(self, key: str, default: str = "") -> str:
-        """Read a config value — subclasses implement the actual read."""
         return default
 
+    # Re-read config, return {key: new_value} changed this round. Base class is a no-op.
     def refresh(self) -> dict[str, str]:
-        """Re-read config, return {key: new_value} changed this round. Base class is a no-op."""
         return {}
 
+    # Register a change callback cb(key, new_value).
     def on_change(self, cb: Callable[[str, str], None]) -> None:
-        """Register a change callback cb(key, new_value)."""
         self._callbacks.append(cb)
 
+    # Start the background polling thread — only mutable sources like FileProvider need it, static sources are no-op.
     def start(self) -> None:
-        """Start the background polling thread — only mutable sources like FileProvider need it, static sources are no-op."""
         if self._poll_thread is not None:
             return
         self._poll_stop.clear()
@@ -56,8 +55,8 @@ class ConfigProvider:
         self._poll_thread.start()
         logger.info("Config polling thread started interval=%ss", self._poll_interval)
 
+    # Stop the polling thread.
     def stop(self) -> None:
-        """Stop the polling thread."""
         self._poll_stop.set()
         t = self._poll_thread
         if t is not None:
@@ -65,8 +64,8 @@ class ConfigProvider:
             self._poll_thread = None
         logger.info("Config polling thread stopped")
 
+    # Polling loop — detect changes and trigger callbacks.
     def _poll_loop(self) -> None:
-        """Polling loop — detect changes and trigger callbacks."""
         while not self._poll_stop.is_set():
             if self._poll_stop.wait(self._poll_interval):
                 break
@@ -88,8 +87,8 @@ class ConfigProvider:
                         logger.warning("Config change callback %s failed: %s", getattr(cb, "__name__", cb), e)
 
 
+# Redact sensitive config values — never log salt in plaintext.
 def _redact(key: str, val: str) -> str:
-    """Redact sensitive config values — never log salt in plaintext."""
     if "SALT" in key or "KEY" in key:
         return f"<{len(val)} chars>"
     return val

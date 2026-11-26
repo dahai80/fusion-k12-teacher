@@ -1,14 +1,13 @@
-"""T22: cluster deploy templates + gateway integration + load baseline tests.
-
-Coverage:
-  - deploy template yaml parseable + key fields complete (T20)
-  - k12↔gateway integration config closed loop (T21)
-  - multi-instance consistency: config/rate-limit/anonymization consistent
-    across instances (cluster mode)
-  - failover: graceful drain/evict semantics (M3-T19 re-verification)
-  - performance baseline: throughput/latency ceiling with a mock LLM
-    (no real mlx needed)
-"""
+# T22: cluster deploy templates + gateway integration + load baseline tests.
+#
+# Coverage:
+#   - deploy template yaml parseable + key fields complete (T20)
+#   - k12↔gateway integration config closed loop (T21)
+#   - multi-instance consistency: config/rate-limit/anonymization consistent
+#     across instances (cluster mode)
+#   - failover: graceful drain/evict semantics (M3-T19 re-verification)
+#   - performance baseline: throughput/latency ceiling with a mock LLM
+#     (no real mlx needed)
 
 from __future__ import annotations
 

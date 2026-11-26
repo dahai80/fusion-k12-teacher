@@ -1,5 +1,5 @@
-"""Course platform abstraction layer tests — platform-content decoupling,
-subject registration, generic DSL."""
+# Course platform abstraction layer tests — platform-content decoupling,
+# subject registration, generic DSL.
 
 # i18n: user-facing — Chinese literals below are test fixture data (sample
 # titles/topics/labels used as data) and assertion targets on product content
@@ -79,8 +79,8 @@ def test_scene_dsl_version_v3():
     assert dsl.version == "3.0.0"
 
 
+# issue #19 AC: the scene field is of type SceneDSL (unified v3.0 contract).
 def test_fusion_socratic_dsl_scene_is_typed_sceneDSL():
-    """issue #19 AC: the scene field is of type SceneDSL (unified v3.0 contract)."""
     dsl = FusionSocraticDSL(subject="math")
     assert isinstance(dsl.scene, SceneDSL)
     d = dsl.to_dict()
@@ -206,8 +206,8 @@ def test_teaching_step_with_visual_state_round_trip():
 
 # ── issue #22 gap: BNUP prompt registry referenced at all 8 call sites ──
 
+# issue #22: BNUP_SYSTEM_PROMPT must be imported at all 8 prompt sites, not just defined.
 def test_bnup_system_prompt_imported_at_8_sites():
-    """issue #22: BNUP_SYSTEM_PROMPT must be imported at all 8 prompt sites, not just defined."""
     import importlib
 
     sites = [
@@ -226,8 +226,8 @@ def test_bnup_system_prompt_imported_at_8_sites():
             f"{site} does not import BNUP_SYSTEM_PROMPT (issue #22 gap)"
 
 
+# issue #22: BNUP_VISUAL_ROUTING_PROMPT must be imported by the math prompt sites.
 def test_bnup_visual_routing_prompt_imported_at_math_sites():
-    """issue #22: BNUP_VISUAL_ROUTING_PROMPT must be imported by the math prompt sites."""
     import importlib
 
     sites = [
@@ -243,14 +243,14 @@ def test_bnup_visual_routing_prompt_imported_at_math_sites():
             f"{site} does not import BNUP_VISUAL_ROUTING_PROMPT (issue #22 gap)"
 
 
+# issue #22: BNUP_COT_FORMAT_PROMPT must be imported by cot_pipeline.
 def test_bnup_cot_format_prompt_imported_at_cot_pipeline():
-    """issue #22: BNUP_COT_FORMAT_PROMPT must be imported by cot_pipeline."""
     from fusion_k12_teacher.course.cot_pipeline import BNUP_COT_FORMAT_PROMPT
     assert "两阶段" in BNUP_COT_FORMAT_PROMPT or "CoT" in BNUP_COT_FORMAT_PROMPT
 
 
+# issue #22: inline prompt constants must be concatenated with the BNUP_SYSTEM_PROMPT prefix.
 def test_inline_prompts_prefixed_with_bnup():
-    """issue #22: inline prompt constants must be concatenated with the BNUP_SYSTEM_PROMPT prefix."""
     from fusion_k12_teacher.course.prompts.bnup_socratic import BNUP_SYSTEM_PROMPT
     from fusion_k12_teacher.course.subjects.math.generic_pipeline import _GENERIC_PROMPT
     from fusion_k12_teacher.course.subjects.math.scene_compiler import _EXTRACT_PROMPT
@@ -263,8 +263,8 @@ def test_inline_prompts_prefixed_with_bnup():
 
 # ── issue #19 P0: spec DSL v3.0 schema compliance (to_spec_dict) ──────
 
+# Build a FusionSocraticDSL with global variables/steps/scene for to_spec_dict tests.
 def _build_full_dsl() -> FusionSocraticDSL:
-    """Build a FusionSocraticDSL with global variables/steps/scene for to_spec_dict tests."""
     cp = Checkpoint(
         id="cp1", type=CheckpointType.EXPRESSION,
         prompt="车长+桥长=总路程?", expected_expression="(800+200)/20",
@@ -300,15 +300,15 @@ def _build_full_dsl() -> FusionSocraticDSL:
     )
 
 
+# issue #19 P0: to_spec_dict outputs the four spec DSL v3.0 root keys.
 def test_to_spec_dict_root_keys():
-    """issue #19 P0: to_spec_dict outputs the four spec DSL v3.0 root keys."""
     dsl = _build_full_dsl()
     spec = dsl.to_spec_dict()
     assert set(spec.keys()) == {"meta", "parameters", "entities", "pipeline"}
 
 
+# issue #19 P0: meta contains id/grade/topic/visual_type/fallback_type.
 def test_to_spec_dict_meta_fields():
-    """issue #19 P0: meta contains id/grade/topic/visual_type/fallback_type."""
     dsl = _build_full_dsl()
     meta = dsl.to_spec_dict()["meta"]
     assert meta["id"] == "node-5-01"
@@ -318,8 +318,8 @@ def test_to_spec_dict_meta_fields():
     assert meta["fallback_type"] == "tape_diagram"
 
 
+# issue #19 P0: global_variables → parameters, value coerced to float.
 def test_to_spec_dict_parameters_from_global_variables():
-    """issue #19 P0: global_variables → parameters, value coerced to float."""
     dsl = _build_full_dsl()
     params = dsl.to_spec_dict()["parameters"]
     assert "L_train" in params
@@ -330,8 +330,8 @@ def test_to_spec_dict_parameters_from_global_variables():
     assert params["t"]["value"] == 50.0
 
 
+# issue #19 P0: scene.entities → root-level entities array.
 def test_to_spec_dict_entities_from_scene():
-    """issue #19 P0: scene.entities → root-level entities array."""
     dsl = _build_full_dsl()
     entities = dsl.to_spec_dict()["entities"]
     assert len(entities) == 2
@@ -342,8 +342,8 @@ def test_to_spec_dict_entities_from_scene():
     assert ent["properties"]["length"] == 200
 
 
+# issue #19 P0: steps → pipeline, includes step/title/formula/eval/result_unit/visual_state.
 def test_to_spec_dict_pipeline_from_steps():
-    """issue #19 P0: steps → pipeline, includes step/title/formula/eval/result_unit/visual_state."""
     dsl = _build_full_dsl()
     pipeline = dsl.to_spec_dict()["pipeline"]
     assert len(pipeline) == 1
@@ -358,8 +358,8 @@ def test_to_spec_dict_pipeline_from_steps():
     assert p["visual_state"]["action"] == "train_run"
 
 
+# issue #19 P0: an empty DSL does not crash, produces a valid empty structure.
 def test_to_spec_dict_empty_dsl():
-    """issue #19 P0: an empty DSL does not crash, produces a valid empty structure."""
     dsl = FusionSocraticDSL(subject="math")
     spec = dsl.to_spec_dict()
     assert spec["meta"]["visual_type"] == "flow_card"
@@ -370,8 +370,8 @@ def test_to_spec_dict_empty_dsl():
     assert spec["pipeline"] == []
 
 
+# issue #19 P0: visual_type not in the whitelist → flow_card fallback.
 def test_to_spec_dict_invalid_visual_type_falls_back():
-    """issue #19 P0: visual_type not in the whitelist → flow_card fallback."""
     dsl = FusionSocraticDSL(
         subject="math",
         meta={"visual_type": "bogus", "fallback_type": "bogus_fb"},
@@ -381,12 +381,11 @@ def test_to_spec_dict_invalid_visual_type_falls_back():
     assert meta["fallback_type"] == "tape_diagram"
 
 
+# issue #19 P0: to_spec_dict output passes the spec DSL v3.0 JSON Schema validation.
+#
+#     fusion-core SOCRATIC_DSL_V3_SCHEMA inlined (the 3.11 venv cannot install
+#     fusion-core 3.12).
 def test_to_spec_dict_passes_jsonschema():
-    """issue #19 P0: to_spec_dict output passes the spec DSL v3.0 JSON Schema validation.
-
-    fusion-core SOCRATIC_DSL_V3_SCHEMA inlined (the 3.11 venv cannot install
-    fusion-core 3.12).
-    """
     try:
         import jsonschema
     except ImportError:

@@ -1,10 +1,9 @@
-"""#34 (config Phase 2.2): Single-point resolution of gateway credentials.
-
-config-conventions §1/§2: the only implementation lives in fusion_core.config —
-repos must not copy the parsing logic locally. fusion_core is an optional
-dependency (.[core]); when absent, fall back to semantically equivalent legacy
-env reads so isolated environments do not regress.
-"""
+# #34 (config Phase 2.2): Single-point resolution of gateway credentials.
+#
+# config-conventions §1/§2: the only implementation lives in fusion_core.config —
+# repos must not copy the parsing logic locally. fusion_core is an optional
+# dependency (.[core]); when absent, fall back to semantically equivalent legacy
+# env reads so isolated environments do not regress.
 
 from __future__ import annotations
 

@@ -1,9 +1,8 @@
-"""Audit module — v2.0 M3-T13/T14/T15.
-
-Observability: per-request audit events (trace_id/route/status/duration/
-student_hash), persisted to the Repository.audit_events table, scheduled
-archive/purge, admin export.
-"""
+# Audit module — v2.0 M3-T13/T14/T15.
+#
+# Observability: per-request audit events (trace_id/route/status/duration/
+# student_hash), persisted to the Repository.audit_events table, scheduled
+# archive/purge, admin export.
 
 from __future__ import annotations
 

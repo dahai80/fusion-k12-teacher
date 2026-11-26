@@ -1,13 +1,12 @@
-"""BNUP evaluation benchmark generator — 300-500 items, in-domain/out-of-domain/adversarial (issue #24 A5).
-
-Assembles 360 items from train_bridge_bank.json (134 items) + 7 template generators:
-  60% in-domain (216): 134 train_bridge + 82 from the other 7 templates
-  20% OOD (72): PEP/Sujing-edition word problems + middle-school physics
-  20% adversarial (72): unit mixing / redundant conditions / ambiguous wording
-
-Run: python -m fusion_k12_teacher.eval.benchmark_gen
-Output: fusion_k12_teacher/eval/data/bnup_benchmark.json
-"""
+# BNUP evaluation benchmark generator — 300-500 items, in-domain/out-of-domain/adversarial (issue #24 A5).
+#
+# Assembles 360 items from train_bridge_bank.json (134 items) + 7 template generators:
+#   60% in-domain (216): 134 train_bridge + 82 from the other 7 templates
+#   20% OOD (72): PEP/Sujing-edition word problems + middle-school physics
+#   20% adversarial (72): unit mixing / redundant conditions / ambiguous wording
+#
+# Run: python -m fusion_k12_teacher.eval.benchmark_gen
+# Output: fusion_k12_teacher/eval/data/bnup_benchmark.json
 
 from __future__ import annotations
 

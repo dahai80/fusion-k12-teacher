@@ -1,5 +1,5 @@
-"""Safety module — content filtering + age-appropriateness review + data
-desensitization + PII encryption + salt sourcing (M1-T5/T7)."""
+# Safety module — content filtering + age-appropriateness review + data
+# desensitization + PII encryption + salt sourcing (M1-T5/T7).
 
 from .age_checker import AgeChecker
 from .filter import SAFETY_PROMPT_SUFFIX, ContentFilter

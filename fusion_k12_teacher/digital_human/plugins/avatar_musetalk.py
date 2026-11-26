@@ -1,13 +1,12 @@
-"""MuseTalkAvatar — digital human plugin for fusion_mlx.video.musetalk_mlx.
-
-In-process library API (not HTTP): encode_audio_from_wav(wav) -> mel chunks,
-render(latent_batch, audio_chunks) -> (B,256,256,3) BGR uint8 frames.
-No word timestamps needed (TTS only provides PCM; MuseTalk infers lip sync from mel).
-
-2-level degradation: resolution down -> StaticAvatar fallback.
-When fusion_mlx cannot be imported, available=False and the manager auto-falls back to StaticAvatar.
-PTS drives the frame pace (monotonic clock, late frames skipped — linguakids mode).
-"""
+# MuseTalkAvatar — digital human plugin for fusion_mlx.video.musetalk_mlx.
+#
+# In-process library API (not HTTP): encode_audio_from_wav(wav) -> mel chunks,
+# render(latent_batch, audio_chunks) -> (B,256,256,3) BGR uint8 frames.
+# No word timestamps needed (TTS only provides PCM; MuseTalk infers lip sync from mel).
+#
+# 2-level degradation: resolution down -> StaticAvatar fallback.
+# When fusion_mlx cannot be imported, available=False and the manager auto-falls back to StaticAvatar.
+# PTS drives the frame pace (monotonic clock, late frames skipped — linguakids mode).
 
 from __future__ import annotations
 

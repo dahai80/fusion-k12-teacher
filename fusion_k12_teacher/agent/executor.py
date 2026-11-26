@@ -1,4 +1,4 @@
-"""Task executor — dispatches engine methods along the step chain."""
+# Task executor — dispatches engine methods along the step chain.
 
 from __future__ import annotations
 
@@ -41,8 +41,8 @@ _ALLOWED_METHODS: dict[str, set[str]] = {
 }
 
 
+# Engine registry — looks up engine instances by name.
 class EngineRegistry:
-    """Engine registry — looks up engine instances by name."""
 
     def __init__(self):
         self._engines: dict[str, Any] = {}
@@ -61,6 +61,10 @@ class EngineRegistry:
 registry = EngineRegistry()
 
 
+# Registers all engines into the global registry.
+#
+#     A14: the factory (build_engines) is pure construction; callers explicitly call this function to register.
+#     bundle takes priority (pass an EngineBundle to register in one shot), otherwise registers via named params.
 def register_all_engines(
     bundle: Any = None,
     *,
@@ -73,11 +77,6 @@ def register_all_engines(
     analytics=None,
     standards_query=None,
 ) -> EngineRegistry:
-    """Registers all engines into the global registry.
-
-    A14: the factory (build_engines) is pure construction; callers explicitly call this function to register.
-    bundle takes priority (pass an EngineBundle to register in one shot), otherwise registers via named params.
-    """
     # A14: when a bundle is passed, pull fields in one shot; otherwise use named params
     if bundle is not None:
         curriculum = getattr(bundle, "curriculum", None)
@@ -107,8 +106,8 @@ def register_all_engines(
     return registry
 
 
+# Resolves step params — $ref references must already be produced or declared in depends_on, otherwise error out loudly.
 def _resolve_params(step: TaskStep, context: dict[str, Any]) -> dict[str, Any]:
-    """Resolves step params — $ref references must already be produced or declared in depends_on, otherwise error out loudly."""
     resolved = {}
     for k, v in step.params.items():
         if isinstance(v, str) and v.startswith("$"):
@@ -124,8 +123,8 @@ def _resolve_params(step: TaskStep, context: dict[str, Any]) -> dict[str, Any]:
     return resolved
 
 
+# Executes a single step — with timeout and coroutine safety.
 async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
-    """Executes a single step — with timeout and coroutine safety."""
     engine = registry.get(step.engine)
     if not engine:
         raise ValueError(f"engine not registered: {step.engine}")
@@ -170,8 +169,8 @@ async def execute_step(step: TaskStep, context: dict[str, Any]) -> Any:
     return result
 
 
+# Executes the full task — running the step chain in order.
 async def execute_task(task: TeachingTask) -> TaskResult:
-    """Executes the full task — running the step chain in order."""
     result = TaskResult(
         task_id=task.id,
         status="running",

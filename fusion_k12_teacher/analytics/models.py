@@ -1,4 +1,4 @@
-"""Learning analytics data models."""
+# Learning analytics data models.
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ _coerce_str_dict = coerce_str_dict
 _coerce_dict_list = coerce_dict_list
 
 
+# Student assessment record — the input unit for learning analytics.
 @dataclass
 class StudentAssessment:
-    """Student assessment record — the input unit for learning analytics."""
     student_id: str = ""
     student_name: str = ""
     assessment_id: str = ""
@@ -70,9 +70,9 @@ class StudentAssessment:
         )
 
 
+# Weak knowledge point.
 @dataclass
 class WeakPoint:
-    """Weak knowledge point."""
     # E15: question_id separated from knowledge_point_id — the old code wrote resp.question_id as
     # knowledge_point_id, letting question numbers pollute knowledge point ID semantics. Independent
     # fields now; question numbers stay question numbers.
@@ -108,9 +108,9 @@ class WeakPoint:
         )
 
 
+# Class learning profile.
 @dataclass
 class ClassProfile:
-    """Class learning profile."""
     class_id: str = ""
     subject: str = ""
     grade: str = ""
@@ -159,9 +159,9 @@ class ClassProfile:
         )
 
 
+# Individual student profile.
 @dataclass
 class StudentProfile:
-    """Individual student profile."""
     student_id: str = ""
     name: str = ""
     grade: str = ""
@@ -203,9 +203,9 @@ class StudentProfile:
         )
 
 
+# Wrong-answer attribution analysis.
 @dataclass
 class ErrorAnalysis:
-    """Wrong-answer attribution analysis."""
     error_id: str = ""
     knowledge_point_id: str = ""
     error_type: str = ""
@@ -238,9 +238,9 @@ class ErrorAnalysis:
         )
 
 
+# Remedial teaching plan.
 @dataclass
 class RemedialPlan:
-    """Remedial teaching plan."""
     student_id: str = ""
     subject: str = ""
     grade: str = ""

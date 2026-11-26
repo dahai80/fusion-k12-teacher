@@ -1,13 +1,12 @@
-"""BNUP eval harness — automated four-dimension metric evaluation (PRD §384-558, issue #23 A3).
-
-Dimension 1 format hard constraints: tag isolation rate / JSON syntax rate / schema pass rate / eval executability rate
-Dimension 2 math accuracy: final value vs ground-truth agreement rate
-Dimension 3 teaching quality: SxS judge (sxs_judge.py)
-Dimension 4 system performance: TTFT/TPS (collected by compare_models.py)
-
-Reuses cot_pipeline.extract_thinking/extract_dsl for <thinking>/<dsl> tag isolation;
-the inline DSL_SCHEMA is aligned with fusion-core SOCRATIC_DSL_V3_SCHEMA + to_spec_dict output.
-"""
+# BNUP eval harness — automated four-dimension metric evaluation (PRD §384-558, issue #23 A3).
+#
+# Dimension 1 format hard constraints: tag isolation rate / JSON syntax rate / schema pass rate / eval executability rate
+# Dimension 2 math accuracy: final value vs ground-truth agreement rate
+# Dimension 3 teaching quality: SxS judge (sxs_judge.py)
+# Dimension 4 system performance: TTFT/TPS (collected by compare_models.py)
+#
+# Reuses cot_pipeline.extract_thinking/extract_dsl for <thinking>/<dsl> tag isolation;
+# the inline DSL_SCHEMA is aligned with fusion-core SOCRATIC_DSL_V3_SCHEMA + to_spec_dict output.
 
 from __future__ import annotations
 
@@ -180,12 +179,11 @@ class EvalReport:
         )
 
 
+# Automated four-dimension metric evaluator (PRD §434-558).
+#
+#     evaluate_sample: 5-step waterfall validation (tag → json → schema → eval → math).
+#     evaluate_batch: batch evaluation + aggregated report.
 class BNUPEvaluator:
-    """Automated four-dimension metric evaluator (PRD §434-558).
-
-    evaluate_sample: 5-step waterfall validation (tag → json → schema → eval → math).
-    evaluate_batch: batch evaluation + aggregated report.
-    """
 
     def __init__(self) -> None:
         self.report = EvalReport()
@@ -209,16 +207,15 @@ class BNUPEvaluator:
         expr = expr.replace("^", "**")
         return expr
 
+    # Safely execute pipeline eval expressions (PRD §453-471).
+    #
+    #         params.xxx → params_val['xxx'], results[n] → results_val[n].
+    #         CJK operators ×÷− are auto-converted to Python * / -.
+    #         eval restricted globals: __builtins__=None.
+    #         Returns the computed result of the last step.
     def evaluate_eval_expression(
         self, pipeline: list[dict[str, Any]], parameters: dict[str, Any]
     ) -> float:
-        """Safely execute pipeline eval expressions (PRD §453-471).
-
-        params.xxx → params_val['xxx'], results[n] → results_val[n].
-        CJK operators ×÷− are auto-converted to Python * / -.
-        eval restricted globals: __builtins__=None.
-        Returns the computed result of the last step.
-        """
         params_val = {k: v.get("value", 0) for k, v in parameters.items() if isinstance(v, dict)}
         results_val: dict[int, float] = {}
         for step_item in pipeline:
@@ -374,10 +371,10 @@ class BNUPEvaluator:
         self.report.per_sample.append(res)
         return res
 
+    # Batch evaluation. sample: {id, response_text, ground_truth}.
     def evaluate_batch(
         self, samples: list[dict[str, Any]]
     ) -> EvalReport:
-        """Batch evaluation. sample: {id, response_text, ground_truth}."""
         for item in samples:
             self.evaluate_sample(
                 response_text=item.get("response_text", ""),

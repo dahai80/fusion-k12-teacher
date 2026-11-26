@@ -1,4 +1,4 @@
-"""SxSJudge double-blind judge tests — issue #23 A4."""
+# SxSJudge double-blind judge tests — issue #23 A4.
 
 from __future__ import annotations
 

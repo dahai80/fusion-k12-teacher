@@ -1,4 +1,4 @@
-"""Homework grading and assessment — auto grading, feedback generation, learning analytics."""
+# Homework grading and assessment — auto grading, feedback generation, learning analytics.
 
 from __future__ import annotations
 
@@ -34,8 +34,8 @@ def _bound_str_list(val: Any) -> list[str]:
     return [_bound_str(x) for x in val[:_MAX_LIST_ITEMS]]
 
 
+# Clamp score into [0, total], clamp total to a positive number (ENG-10/11).
 def _clamp_score(score: float, total: float) -> tuple[float, float, float]:
-    """Clamp score into [0, total], clamp total to a positive number (ENG-10/11)."""
     total = max(float(total), 1.0)
     score = max(0.0, min(float(score), total))
     percentage = score / total * 100
@@ -62,9 +62,9 @@ def _to_float(value: Any, default: float = 0.0) -> float:
     return float(m.group(0))
 
 
+# Grading result.
 @dataclass
 class GradingResult:
-    """Grading result."""
     score: float = 0.0
     total: float = 0.0
     percentage: float = 0.0
@@ -76,9 +76,9 @@ class GradingResult:
     error: str = ""
 
 
+# Student report.
 @dataclass
 class StudentReport:
-    """Student report."""
     student_name: str = ""
     subject: str = ""
     grade: str = ""
@@ -91,16 +91,16 @@ class StudentReport:
     error: str = ""
 
 
+# Assessment engine — homework grading and assessment on par with Claude K-12 Teacher.
 class AssessmentEngine:
-    """Assessment engine — homework grading and assessment on par with Claude K-12 Teacher."""
 
     def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
         self._filter = content_filter or ContentFilter()
 
+    # ENG-19: pass comments/feedback through safety.check_output, replace
+    #         with mask and warn on hit.
     def _filter_output(self, text: str, grade: str) -> str:
-        """ENG-19: pass comments/feedback through safety.check_output, replace
-        with mask and warn on hit."""
         if not isinstance(text, str) or not text:
             return text
         check = self._filter.check_output(text, grade)
@@ -109,8 +109,8 @@ class AssessmentEngine:
             return check.filtered_text
         return text
 
+    # Grade an essay / essay question.
     async def grade_essay(self, essay: str, rubric: dict[str, int] | None = None) -> GradingResult:
-        """Grade an essay / essay question."""
         # i18n: user-facing — rubric dimension names are Chinese prompt content.
         rubric_str = json.dumps(rubric, ensure_ascii=False) if rubric else '{"内容": 40, "结构": 20, "语言": 20, "创意": 20}'
         essay_raw = sanitize_input(essay, _ESSAY_MAX)
@@ -152,8 +152,8 @@ class AssessmentEngine:
         # i18n: user-facing — feedback text shown to students, keep Chinese.
         return GradingResult(score=0, total=100, percentage=0.0, feedback=f"批改失败: {err_msg}", partial=partial, error=err_msg)
 
+    # Grade a math problem.
     async def grade_math(self, problem: str, answer: str, solution: str = "") -> GradingResult:
-        """Grade a math problem."""
         problem_s = sanitize_input(problem, 1000)
         answer_s = sanitize_input(answer, 1000)
         solution_s = sanitize_input(solution, 1000)
@@ -193,8 +193,8 @@ class AssessmentEngine:
         # i18n: user-facing — feedback text shown to students, keep Chinese.
         return GradingResult(score=0, total=10, percentage=0.0, feedback=f"批改失败: {err_msg}", error=err_msg)
 
+    # Generate a term/unit learning report.
     async def generate_report(self, student: str, subject: str, grade: str, history: list[dict]) -> StudentReport:
-        """Generate a term/unit learning report."""
         student_s = sanitize_input(student, 50)
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
@@ -233,8 +233,8 @@ class AssessmentEngine:
             rethrow_if_fatal(e)
             return StudentReport(student_name=student_s, subject=subject_s, grade=grade_s, error=str(e))
 
+    # Generate a grading rubric.
     async def generate_rubric(self, assignment_type: str, grade: str, criteria: list[str] | None = None) -> dict[str, Any]:
-        """Generate a grading rubric."""
         at_s = sanitize_input(assignment_type, 50)
         grade_s = sanitize_input(grade, 4)
         # i18n: user-facing — default criteria names are Chinese prompt content.

@@ -1,4 +1,4 @@
-"""Agent module data models — TeachingTask, TaskStep, TaskResult."""
+# Agent module data models — TeachingTask, TaskStep, TaskResult.
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from typing import Any
 from .._coerce import coerce_bool, coerce_dict, coerce_str, coerce_str_list
 
 
+# Task step — specifies an engine method and its parameters.
 @dataclass
 class TaskStep:
-    """Task step — specifies an engine method and its parameters."""
 
     engine: str
     method: str
@@ -38,9 +38,9 @@ class TaskStep:
         )
 
 
+# Teaching task — includes scheduling config and the step chain.
 @dataclass
 class TeachingTask:
-    """Teaching task — includes scheduling config and the step chain."""
 
     id: str
     name: str
@@ -78,9 +78,9 @@ class TeachingTask:
         )
 
 
+# Task execution result.
 @dataclass
 class TaskResult:
-    """Task execution result."""
 
     task_id: str
     status: str = "pending"

@@ -1,11 +1,10 @@
-"""AES-256-GCM encryption utilities — M1-T5.
-
-Encrypts PII (name_map) at rest, without relying on file permissions.
-data_key source: env FUSION_K12_DATA_KEY (hex/base64, 32 bytes) or
-                 file FUSION_K12_DATA_KEY_FILE (mode 600, 32 raw bytes or hex).
-cryptography is an optional dependency (cluster extras); if missing, raise —
-encryption must never degrade to plaintext (hard security constraint).
-"""
+# AES-256-GCM encryption utilities — M1-T5.
+#
+# Encrypts PII (name_map) at rest, without relying on file permissions.
+# data_key source: env FUSION_K12_DATA_KEY (hex/base64, 32 bytes) or
+#                  file FUSION_K12_DATA_KEY_FILE (mode 600, 32 raw bytes or hex).
+# cryptography is an optional dependency (cluster extras); if missing, raise —
+# encryption must never degrade to plaintext (hard security constraint).
 
 from __future__ import annotations
 
@@ -20,18 +19,18 @@ logger = logging.getLogger(__name__)
 _KEY_LEN = 32  # AES-256
 
 
+# Encryption/decryption failure.
 class CryptoError(Exception):
-    """Encryption/decryption failure."""
+    pass
 
 
+# Load the 32-byte data_key from env/file.
+#
+#     Prefers env FUSION_K12_DATA_KEY (hex or base64),
+#     then FUSION_K12_DATA_KEY_FILE (raw 32 bytes or a hex line).
+#     Short keys are derived to 32 bytes via sha256 (supports human-memorable
+#     passphrases; not best practice but usable).
 def _load_key() -> bytes:
-    """Load the 32-byte data_key from env/file.
-
-    Prefers env FUSION_K12_DATA_KEY (hex or base64),
-    then FUSION_K12_DATA_KEY_FILE (raw 32 bytes or a hex line).
-    Short keys are derived to 32 bytes via sha256 (supports human-memorable
-    passphrases; not best practice but usable).
-    """
     raw = os.environ.get("FUSION_K12_DATA_KEY", "")
     source = "env"
     if not raw:
@@ -73,11 +72,10 @@ def _load_key() -> bytes:
     return key
 
 
+# AES-256-GCM cipher — built lazily, key loaded on first use.
+#
+#     Ciphertext format: base64(nonce(12) || ciphertext || tag(16))
 class DataCipher:
-    """AES-256-GCM cipher — built lazily, key loaded on first use.
-
-    Ciphertext format: base64(nonce(12) || ciphertext || tag(16))
-    """
 
     def __init__(self):
         try:
@@ -94,16 +92,16 @@ class DataCipher:
             self._key = _load_key()
         return self._AESGCM(self._key)
 
+    # Encrypt a string → base64 ciphertext (nonce included).
     def encrypt(self, plaintext: str, aad: bytes | None = None) -> str:
-        """Encrypt a string → base64 ciphertext (nonce included)."""
         import os as _os
         aes = self._aes()
         nonce = _os.urandom(12)
         ct = aes.encrypt(nonce, plaintext.encode("utf-8"), aad)
         return base64.b64encode(nonce + ct).decode("ascii")
 
+    # Decrypt base64 ciphertext → plaintext.
     def decrypt(self, ciphertext: str, aad: bytes | None = None) -> str:
-        """Decrypt base64 ciphertext → plaintext."""
         try:
             blob = base64.b64decode(ciphertext, validate=True)
         except Exception as e:
@@ -118,8 +116,8 @@ class DataCipher:
             raise CryptoError(f"Decryption failed (key mismatch or corrupted ciphertext): {e}") from e
         return pt.decode("utf-8")
 
+    # Encrypt the given fields of a dict (returns a copy), leaving other fields untouched.
     def encrypt_dict(self, obj: dict[str, Any], fields: list[str]) -> dict[str, Any]:
-        """Encrypt the given fields of a dict (returns a copy), leaving other fields untouched."""
         import copy
         out = copy.deepcopy(obj)
         for f in fields:
@@ -127,8 +125,8 @@ class DataCipher:
                 out[f] = self.encrypt(str(out[f]))
         return out
 
+    # Decrypt the given fields of a dict (returns a copy).
     def decrypt_dict(self, obj: dict[str, Any], fields: list[str]) -> dict[str, Any]:
-        """Decrypt the given fields of a dict (returns a copy)."""
         import copy
         out = copy.deepcopy(obj)
         for f in fields:

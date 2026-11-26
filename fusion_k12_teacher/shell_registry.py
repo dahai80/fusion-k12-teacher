@@ -1,17 +1,16 @@
-"""Union Web shell registration — issue #30 (PRD R-3, aligned with
-cowork/agent-studio shell_registry).
-
-At serve startup, registers web/manifest.json with the fusion-gateway shell
-registry (POST /api/v1/shell/manifests, fg-key auth) and keeps it alive with
-periodic heartbeats (after heartbeat_timeout the gateway greys out the menu
-entry). Env gated — requires both:
-- FUSION_SHELL_GATEWAY_URL + FUSION_ADMIN_KEY
-Optional FUSION_SHELL_MANIFEST overrides the manifest path, FUSION_K12_WEB_UPSTREAM
-overrides the deployment-specific port. Silently skipped when unconfigured
-(default OFF, does not affect local standalone).
-The /shell/fusion-k12-teacher/ dynamic proxy is established by the gateway
-per manifest.upstream.
-"""
+# Union Web shell registration — issue #30 (PRD R-3, aligned with
+# cowork/agent-studio shell_registry).
+#
+# At serve startup, registers web/manifest.json with the fusion-gateway shell
+# registry (POST /api/v1/shell/manifests, fg-key auth) and keeps it alive with
+# periodic heartbeats (after heartbeat_timeout the gateway greys out the menu
+# entry). Env gated — requires both:
+# - FUSION_SHELL_GATEWAY_URL + FUSION_ADMIN_KEY
+# Optional FUSION_SHELL_MANIFEST overrides the manifest path, FUSION_K12_WEB_UPSTREAM
+# overrides the deployment-specific port. Silently skipped when unconfigured
+# (default OFF, does not affect local standalone).
+# The /shell/fusion-k12-teacher/ dynamic proxy is established by the gateway
+# per manifest.upstream.
 
 from __future__ import annotations
 
@@ -222,11 +221,11 @@ def _safe_json(resp: Any) -> Any:
         return None
 
 
+# Register once, keep alive via heartbeats; re-register after a gateway
+#     restart (404). Failures only warn and retry, never affecting the service.
 async def shell_registry_loop(
     client: Any = None, interval: float = REGISTER_INTERVAL_SECONDS
 ) -> None:
-    """Register once, keep alive via heartbeats; re-register after a gateway
-    restart (404). Failures only warn and retry, never affecting the service."""
     try:
         manifest = load_manifest()
     except Exception as e:

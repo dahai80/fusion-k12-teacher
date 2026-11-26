@@ -1,5 +1,5 @@
-"""Subject course platform REST route tests — platform-content decoupling,
-subject parameter dispatching."""
+# Subject course platform REST route tests — platform-content decoupling,
+# subject parameter dispatching.
 
 from __future__ import annotations
 

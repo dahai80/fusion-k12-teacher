@@ -1,11 +1,10 @@
-"""Config module — M3-T17.
-
-Providers: EnvProvider (static env) / FileProvider (mtime polling).
-The get_config() factory uses FileProvider when FUSION_K12_CONFIG_FILE points to
-a file, otherwise EnvProvider.
-A background thread polls and refreshes hot-reloadable items (model/rate
-limit/salt/log level); change callbacks refresh engine-held config.
-"""
+# Config module — M3-T17.
+#
+# Providers: EnvProvider (static env) / FileProvider (mtime polling).
+# The get_config() factory uses FileProvider when FUSION_K12_CONFIG_FILE points to
+# a file, otherwise EnvProvider.
+# A background thread polls and refreshes hot-reloadable items (model/rate
+# limit/salt/log level); change callbacks refresh engine-held config.
 
 from __future__ import annotations
 
@@ -29,13 +28,12 @@ __all__ = [
 _config: ConfigProvider | None = None
 
 
+# Singleton config provider factory.
+#
+#     FUSION_K12_CONFIG_FILE pointing at a config file -> FileProvider (hot
+#     reload); otherwise EnvProvider (static). Built lazily, fixed after the
+#     first call.
 def get_config() -> ConfigProvider:
-    """Singleton config provider factory.
-
-    FUSION_K12_CONFIG_FILE pointing at a config file -> FileProvider (hot
-    reload); otherwise EnvProvider (static). Built lazily, fixed after the
-    first call.
-    """
     global _config
     if _config is not None:
         return _config
@@ -49,8 +47,8 @@ def get_config() -> ConfigProvider:
     return _config
 
 
+# Reset the singleton — for tests.
 def reset_config() -> None:
-    """Reset the singleton — for tests."""
     global _config
     if _config is not None:
         try:

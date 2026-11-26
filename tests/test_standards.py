@@ -1,4 +1,4 @@
-"""v0.3 standards + differentiated instruction module tests."""
+# v0.3 standards + differentiated instruction module tests.
 
 from __future__ import annotations
 

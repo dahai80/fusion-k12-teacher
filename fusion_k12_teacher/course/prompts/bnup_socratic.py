@@ -1,18 +1,17 @@
-"""issue #22: centralized prompt registry for BNUP Socratic teaching.
-
-All BNUP Socratic teaching scenarios share this module's system prompt +
-visual routing rules + CoT format instructions, instead of being scattered
-across 9 inline prompt sites causing inconsistency.
-
-Usage:
-    from .course.prompts.bnup_socratic import (
-        BNUP_SYSTEM_PROMPT, BNUP_VISUAL_ROUTING_PROMPT,
-        BNUP_COT_FORMAT_PROMPT, route_visual_type,
-    )
-
-build_prompt (sanitize_input) still runs at the caller — this module only
-provides prompt text.
-"""
+# issue #22: centralized prompt registry for BNUP Socratic teaching.
+#
+# All BNUP Socratic teaching scenarios share this module's system prompt +
+# visual routing rules + CoT format instructions, instead of being scattered
+# across 9 inline prompt sites causing inconsistency.
+#
+# Usage:
+#     from .course.prompts.bnup_socratic import (
+#         BNUP_SYSTEM_PROMPT, BNUP_VISUAL_ROUTING_PROMPT,
+#         BNUP_COT_FORMAT_PROMPT, route_visual_type,
+#     )
+#
+# build_prompt (sanitize_input) still runs at the caller — this module only
+# provides prompt text.
 
 from __future__ import annotations
 
@@ -44,11 +43,10 @@ VISUAL_ROUTING_RULES: list[tuple[str, str, str]] = [
 FALLBACK_VISUAL = "flow_card"
 
 
+# issue #22: route visual_type by topic keywords (8 primitives).
+#
+#     Priority: topic match > problem_text match > flow_card fallback.
 def route_visual_type(topic: str, problem_text: str = "") -> str:
-    """issue #22: route visual_type by topic keywords (8 primitives).
-
-    Priority: topic match > problem_text match > flow_card fallback.
-    """
     text = f"{topic} {problem_text}"
     for pattern, vtype, _desc in VISUAL_ROUTING_RULES:
         if re.search(pattern, text):
@@ -109,13 +107,12 @@ BNUP_COT_FORMAT_PROMPT = """两阶段推理格式 (CoT):
 """
 
 
+# issue #22: build the BNUP Socratic prompt — system + visual routing +
+#     topic context.
+#
+#     Returns the assembled full prompt text (not sanitized; the caller is
+#     responsible for build_prompt).
 def build_bnup_prompt(topic: str, grade: str = "5", **extra: Any) -> str:
-    """issue #22: build the BNUP Socratic prompt — system + visual routing +
-    topic context.
-
-    Returns the assembled full prompt text (not sanitized; the caller is
-    responsible for build_prompt).
-    """
     vtype = route_visual_type(topic, str(extra.get("problem_text", "")))
     fb = "tape_diagram" if vtype != "tape_diagram" else "flow_card"
     # i18n: user-facing — prompt context fragments fed to the LLM, keep Chinese.

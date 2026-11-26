@@ -1,11 +1,10 @@
-"""Chinese speech-text normalization — TTS pre-processing (issue: Kokoro's Chinese G2P is weak on number normalization).
-
-K12 classroom content is full of fractions/decimals/percent signs/math symbols; Kokoro synthesizes
-them with skipped or wrong readings. This module rewrites such fragments into Chinese spoken form —
-pure functions, no dependencies, called by TTS plugins.
-Coverage is deliberately conservative: only deterministic rules are rewritten, no full Chinese-number
-conversion for arbitrary numbers (multi-digit/year/phone contexts are too ambiguous — left to the TTS engine).
-"""
+# Chinese speech-text normalization — TTS pre-processing (issue: Kokoro's Chinese G2P is weak on number normalization).
+#
+# K12 classroom content is full of fractions/decimals/percent signs/math symbols; Kokoro synthesizes
+# them with skipped or wrong readings. This module rewrites such fragments into Chinese spoken form —
+# pure functions, no dependencies, called by TTS plugins.
+# Coverage is deliberately conservative: only deterministic rules are rewritten, no full Chinese-number
+# conversion for arbitrary numbers (multi-digit/year/phone contexts are too ambiguous — left to the TTS engine).
 
 from __future__ import annotations
 
@@ -29,8 +28,8 @@ _SYMBOL_MAP = {
 _CN_DIGITS = "零一二三四五六七八九"
 
 
+# Converts integers 0-99 to Chinese readings (sufficient for fraction/percent scenarios).
 def _int_to_cn(n: int) -> str:
-    """Converts integers 0-99 to Chinese readings (sufficient for fraction/percent scenarios)."""
     if n < 0 or n > 99:
         return str(n)
     if n <= 10:
@@ -68,8 +67,8 @@ def _decimal_repl(m: re.Match) -> str:
     return f"{int_cn}点{dec_cn}"
 
 
+# Rewrites common K12 math notations into Chinese spoken form — all other text returned as-is.
 def normalize_zh_speech(text: str) -> str:
-    """Rewrites common K12 math notations into Chinese spoken form — all other text returned as-is."""
     if not text:
         return text
     out = text

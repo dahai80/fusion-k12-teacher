@@ -1,8 +1,7 @@
-"""In-process cache — standalone default backend (M2-T12).
-
-LRU + TTL, guarded by asyncio.Lock. Correct for a single process; each of
-multiple instances holds its own copy (independent rate-limit quotas).
-"""
+# In-process cache — standalone default backend (M2-T12).
+#
+# LRU + TTL, guarded by asyncio.Lock. Correct for a single process; each of
+# multiple instances holds its own copy (independent rate-limit quotas).
 
 from __future__ import annotations
 
@@ -16,8 +15,8 @@ from .base import CacheBackend
 _SWEEP_INTERVAL = 60.0
 
 
+# In-process OrderedDict LRU + TTL.
 class LocalCache(CacheBackend):
-    """In-process OrderedDict LRU + TTL."""
 
     def __init__(self, max_entries: int = 4096):
         self._data: OrderedDict[str, tuple[str, float]] = OrderedDict()
@@ -81,8 +80,8 @@ class LocalCache(CacheBackend):
                 self._counters[key] += 1
             return self._counters[key]
 
+    # Batch-clear expired counters — must be called while holding _lock (issue #15).
     def _sweep_expired(self, now: float) -> None:
-        """Batch-clear expired counters — must be called while holding _lock (issue #15)."""
         expired = [k for k, exp in self._counter_ttl.items() if exp > 0 and now >= exp]
         for k in expired:
             self._counters.pop(k, None)

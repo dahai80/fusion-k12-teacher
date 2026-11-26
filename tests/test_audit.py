@@ -1,4 +1,4 @@
-"""M3 audit + metrics tests — T13/T14/T15/T16."""
+# M3 audit + metrics tests — T13/T14/T15/T16.
 
 from __future__ import annotations
 

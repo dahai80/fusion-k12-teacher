@@ -1,16 +1,15 @@
-"""Math SymPy symbolic verification engine — authoritative numeric override (PRD §6 rigor rule).
-
-Dual-gate replacement: the PRD's original GBNF Logits Masker would require changing fusion-mlx (upstream untouchable, issue filed),
-so here it is approximated with structured-output prompting + Pydantic/SymPy post-validation — SymPy computation results
-are the Single Source of Truth, overriding any numeric fields extracted by the LLM.
-
-Capabilities:
-- verify_scene: computes distance/time/relative speed per scene formulas (train-crossing-bridge 5 problem types etc.), overrides entities.
-- judge_checkpoint: SymPy algebraic-equivalence judging / numeric tolerance / string fallback.
-- singularities: function discontinuity detection (renderer breaks fake connections).
-- 1.5s hard timeout: ThreadPool circuit breaker; on timeout returns numeric approximation + annotation.
-- Degradation: sympy unavailable/timeout → exact string comparison + "not verified" annotation; never lets the LLM judge numbers.
-"""
+# Math SymPy symbolic verification engine — authoritative numeric override (PRD §6 rigor rule).
+#
+# Dual-gate replacement: the PRD's original GBNF Logits Masker would require changing fusion-mlx (upstream untouchable, issue filed),
+# so here it is approximated with structured-output prompting + Pydantic/SymPy post-validation — SymPy computation results
+# are the Single Source of Truth, overriding any numeric fields extracted by the LLM.
+#
+# Capabilities:
+# - verify_scene: computes distance/time/relative speed per scene formulas (train-crossing-bridge 5 problem types etc.), overrides entities.
+# - judge_checkpoint: SymPy algebraic-equivalence judging / numeric tolerance / string fallback.
+# - singularities: function discontinuity detection (renderer breaks fake connections).
+# - 1.5s hard timeout: ThreadPool circuit breaker; on timeout returns numeric approximation + annotation.
+# - Degradation: sympy unavailable/timeout → exact string comparison + "not verified" annotation; never lets the LLM judge numbers.
 
 from __future__ import annotations
 
@@ -453,8 +452,8 @@ def _run_with_timeout(fn: Callable[[], Any]) -> tuple[Any, str]:
         return None, f"error:{type(exc).__name__}"
 
 
+# Math SymPy symbolic verification — authoritative numeric override + checkpoint judging.
 class MathSympyVerifier(VerifierBase):
-    """Math SymPy symbolic verification — authoritative numeric override + checkpoint judging."""
 
     def __init__(self) -> None:
         self._handlers = dict(_SCENARIO_HANDLERS)

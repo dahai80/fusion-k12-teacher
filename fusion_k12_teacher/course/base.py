@@ -1,12 +1,11 @@
-"""Subject module protocol — SubjectModule + capability base classes.
-
-Subjects (math/physics/...) implement SubjectModule, declaring which capabilities they
-support and returning instances. The platform fetches the subject module via SubjectRegistry,
-then the capability — never importing concrete subject classes.
-
-Unimplemented capabilities return None; platform/serve routes return 501 NotSupported —
-subjects can be implemented incrementally.
-"""
+# Subject module protocol — SubjectModule + capability base classes.
+#
+# Subjects (math/physics/...) implement SubjectModule, declaring which capabilities they
+# support and returning instances. The platform fetches the subject module via SubjectRegistry,
+# then the capability — never importing concrete subject classes.
+#
+# Unimplemented capabilities return None; platform/serve routes return 501 NotSupported —
+# subjects can be implemented incrementally.
 
 from __future__ import annotations
 
@@ -29,12 +28,13 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+# Subject knowledge graph base class.
 class KnowledgeGraphBase(ABC):
-    """Subject knowledge graph base class."""
 
+    # Load graph data (from curriculum standards/augmentation files). Fail-fast: cyclic dependencies refuse startup.
     @abstractmethod
     def load(self, standards_query: StandardsQuery | None = None) -> None:
-        """Load graph data (from curriculum standards/augmentation files). Fail-fast: cyclic dependencies refuse startup."""
+        pass
 
     @abstractmethod
     def get_node(self, node_id: str) -> GraphNode | None: ...
@@ -52,8 +52,8 @@ class KnowledgeGraphBase(ABC):
     def to_json(self) -> dict[str, Any]: ...
 
 
+# Subject rigor verification base class — authoritative numeric override, prevents subject hallucination.
 class VerifierBase(ABC):
-    """Subject rigor verification base class — authoritative numeric override, prevents subject hallucination."""
 
     @abstractmethod
     def verify_scene(self, scenario: str, entities: dict[str, Any]) -> VerifyResult: ...
@@ -62,15 +62,15 @@ class VerifierBase(ABC):
     def judge_checkpoint(self, checkpoint: Checkpoint, student_answer: str) -> JudgeResult: ...
 
 
+# Problem-to-scene DSL compiler base class.
 class SceneCompilerBase(ABC):
-    """Problem-to-scene DSL compiler base class."""
 
     @abstractmethod
     async def compile(self, problem_text: str, knowledge_node_id: str = "") -> SceneDSL: ...
 
 
+# 5E Socratic lesson script generation base class.
 class SocraticTutorBase(ABC):
-    """5E Socratic lesson script generation base class."""
 
     @abstractmethod
     async def generate_lesson_script(
@@ -84,18 +84,20 @@ class SocraticTutorBase(ABC):
     async def judge_checkpoint(self, checkpoint: Checkpoint, student_answer: str) -> JudgeResult: ...
 
 
+# Subject module — declares subject metadata + supported capabilities. The platform depends only on this protocol.
 class SubjectModule(ABC):
-    """Subject module — declares subject metadata + supported capabilities. The platform depends only on this protocol."""
 
+    # Subject ID: math / physics / chemistry / english / chinese.
     @property
     @abstractmethod
     def subject_id(self) -> str:
-        """Subject ID: math / physics / chemistry / english / chinese."""
+        pass
 
+    # Display name in the product locale (Chinese, e.g. the subject's native name).
     @property
     @abstractmethod
     def display_name(self) -> str:
-        """Display name in the product locale (Chinese, e.g. the subject's native name)."""
+        pass
 
     @property
     def supported_grades(self) -> tuple[int, ...]:
@@ -121,11 +123,11 @@ class SubjectModule(ABC):
     def has_problem_bank(self) -> bool:
         return False
 
+    # Inject shared dependencies (mlx/safety filter/standards query). Subjects persist as needed.
     def init(
         self, mlx: MLXClient, content_filter: ContentFilter,
         standards_query: StandardsQuery | None = None,
     ) -> None:
-        """Inject shared dependencies (mlx/safety filter/standards query). Subjects persist as needed."""
         self._mlx = mlx
         self._content_filter = content_filter
         self._standards_query = standards_query

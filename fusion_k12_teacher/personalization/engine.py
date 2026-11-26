@@ -1,4 +1,4 @@
-"""Personalized learning paths — adaptive learning, skill diagnosis, recommendations."""
+# Personalized learning paths — adaptive learning, skill diagnosis, recommendations.
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from ..safety.filter import ContentFilter, sanitize_input
 logger = logging.getLogger(__name__)
 
 
+# Learning path definition.
 @dataclass
 class LearningPath:
-    """Learning path definition."""
     student_id: str = ""
     grade: str = ""
     subject: str = ""
@@ -28,8 +28,8 @@ class LearningPath:
     error: str = ""
 
 
+# Personalized learning engine — benchmarked against Claude K-12 Teacher's differentiation capability.
 class PersonalizationEngine:
-    """Personalized learning engine — benchmarked against Claude K-12 Teacher's differentiation capability."""
 
     def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
@@ -50,8 +50,8 @@ class PersonalizationEngine:
     def _filter_list(self, items: list, grade: str) -> list:
         return [self._filter_output(x, grade) if isinstance(x, str) else x for x in items]
 
+    # Create a personalized learning path.
     async def create_learning_path(self, student: str, grade: str, subject: str, goal: str) -> LearningPath:
-        """Create a personalized learning path."""
         # ENG-2: sanitize all user-controllable fields
         student = sanitize_input(student, max_len=50)
         grade = sanitize_input(grade, max_len=8)
@@ -94,8 +94,8 @@ class PersonalizationEngine:
             return LearningPath(student_id=student, grade=grade, subject=subject, error=str(e))
         return LearningPath(student_id=student, grade=grade, subject=subject, error="LLM returned empty or unparseable output")
 
+    # Diagnose a student's skill level.
     async def diagnose_skills(self, subject: str, grade: str, responses: list[dict]) -> dict[str, Any]:
-        """Diagnose a student's skill level."""
         # ENG-2: sanitize all user-controllable fields
         subject = sanitize_input(subject, max_len=20)
         grade = sanitize_input(grade, max_len=8)
@@ -128,8 +128,8 @@ class PersonalizationEngine:
             rethrow_if_fatal(e)
             return {"error": str(e)}
 
+    # Recommend personalized learning resources.
     async def recommend_resources(self, student: str, grade: str, subject: str, weakness: str) -> dict[str, Any]:
-        """Recommend personalized learning resources."""
         # ENG-2: sanitize all user-controllable fields
         student = sanitize_input(student, max_len=50)
         grade = sanitize_input(grade, max_len=8)

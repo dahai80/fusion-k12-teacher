@@ -1,4 +1,4 @@
-"""PII encryption utility tests — M1-T5."""
+# PII encryption utility tests — M1-T5.
 
 from __future__ import annotations
 

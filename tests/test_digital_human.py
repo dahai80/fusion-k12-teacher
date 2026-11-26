@@ -1,5 +1,5 @@
-"""Digital-human platform layer tests — Phase A: 6 core patterns +
-session/manager (mock plugins)."""
+# Digital-human platform layer tests — Phase A: 6 core patterns +
+# session/manager (mock plugins).
 
 # i18n: user-facing — Chinese literals below are test fixture data (sample
 # names, topics, narration/answer texts used as data) and assertion targets on

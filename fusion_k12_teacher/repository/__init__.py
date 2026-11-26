@@ -1,4 +1,4 @@
-"""Repository layer — v2.0 persistence decoupling (standalone SQLite / cluster Postgres)."""
+# Repository layer — v2.0 persistence decoupling (standalone SQLite / cluster Postgres).
 
 from .base import Repository
 from .factory import get_repository

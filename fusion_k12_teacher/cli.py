@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher CLI entry point."""
+# Fusion-K12-Teacher CLI entry point.
 
 from __future__ import annotations
 
@@ -27,11 +27,10 @@ def _join_str(items, sep: str = ", ") -> str:
     return sep.join(str(x) for x in items if x is not None)
 
 
+# CLI-4: atomic JSON write — write .tmp first then os.replace, with SRV-3 O_NOFOLLOW.
+#
+#     A crash mid-write leaves only the .tmp temp file; the target keeps its old value or does not exist, never a half-written file.
 def _atomic_write_json(path: str, data, indent: int = 2) -> None:
-    """CLI-4: atomic JSON write — write .tmp first then os.replace, with SRV-3 O_NOFOLLOW.
-
-    A crash mid-write leaves only the .tmp temp file; the target keeps its old value or does not exist, never a half-written file.
-    """
     import json as _json
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     tmp = f"{path}.tmp"
@@ -59,13 +58,15 @@ def _check_engine_result(result, label: str) -> None:
         raise click.ClickException(f"{label} generation failed: {err}")
 
 
-@click.group()
+# Fusion-K12-Teacher — Local AI-powered K-12 education assistant.
+# click reads command help from the docstring by default; the no-docstring
+# convention requires an explicit help= here instead.
+@click.group(help="Fusion-K12-Teacher — Local AI-powered K-12 education assistant.")
 @click.option("--verbose", "-v", is_flag=True)
 @click.option("--model", "-m", default="", help="fusion-mlx model")
 @click.version_option(version=__version__, prog_name=__app_name__)
 @click.pass_context
 def cli(ctx, verbose, model):
-    """Fusion-K12-Teacher — Local AI-powered K-12 education assistant."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(levelname)-8s %(message)s")
     ctx.ensure_object(dict)
@@ -86,11 +87,13 @@ def cli(ctx, verbose, model):
 
 # ── Curriculum ──
 
+# Lesson planning and management.
 @cli.group()
 def lesson():
-    """Lesson planning and management."""
+    pass
 
 
+# Generate a lesson plan.
 @lesson.command("plan")
 @click.argument("subject")
 @click.argument("grade")
@@ -99,7 +102,6 @@ def lesson():
 @click.option("--duration", default=45, help="课时(分钟)")
 @click.pass_context
 def lesson_plan(ctx, subject, grade, topic, duration):
-    """Generate a lesson plan."""
     asyncio.run(_async_lesson_plan(ctx, subject, grade, topic, duration))
 
 
@@ -118,6 +120,7 @@ async def _async_lesson_plan(ctx, subject, grade, topic, duration):
     click.echo()
 
 
+# Generate a quiz.
 @lesson.command("quiz")
 @click.argument("subject")
 @click.argument("grade")
@@ -126,7 +129,6 @@ async def _async_lesson_plan(ctx, subject, grade, topic, duration):
 @click.option("--questions", "-n", default=5, help="题目数量")
 @click.pass_context
 def lesson_quiz(ctx, subject, grade, topic, questions):
-    """Generate a quiz."""
     asyncio.run(_async_lesson_quiz(ctx, subject, grade, topic, questions))
 
 
@@ -145,16 +147,17 @@ async def _async_lesson_quiz(ctx, subject, grade, topic, questions):
 
 # ── Assessment ──
 
+# Assignment grading and assessment.
 @cli.group()
 def assess():
-    """Assignment grading and assessment."""
+    pass
 
 
+# Grade an essay.
 @assess.command("essay")
 @click.argument("essay_text")
 @click.pass_context
 def assess_essay(ctx, essay_text):
-    """Grade an essay."""
     asyncio.run(_async_assess_essay(ctx, essay_text))
 
 
@@ -176,18 +179,19 @@ async def _async_assess_essay(ctx, essay_text):
 
 # ── Subjects ──
 
+# Subject knowledge Q&A and exercises.
 @cli.group()
 def subject():
-    """Subject knowledge Q&A and exercises."""
+    pass
 
 
+# Explain a concept.
 @subject.command("explain")
 @click.argument("subject_name")
 @click.argument("grade")
 @click.argument("concept")
 @click.pass_context
 def subject_explain(ctx, subject_name, grade, concept):
-    """Explain a concept."""
     asyncio.run(_async_subject_explain(ctx, subject_name, grade, concept))
 
 
@@ -206,11 +210,13 @@ async def _async_subject_explain(ctx, subject_name, grade, concept):
 
 # ── Personalization ──
 
+# Personalized learning.
 @cli.group()
 def personalize():
-    """Personalized learning."""
+    pass
 
 
+# Create a learning path.
 @personalize.command("path")
 @click.argument("student")
 @click.argument("grade")
@@ -218,7 +224,6 @@ def personalize():
 @click.argument("goal")
 @click.pass_context
 def personalize_path(ctx, student, grade, subject, goal):
-    """Create a learning path."""
     asyncio.run(_async_personalize_path(ctx, student, grade, subject, goal))
 
 
@@ -238,18 +243,19 @@ async def _async_personalize_path(ctx, student, grade, subject, goal):
 
 # ── Content generation ──
 
+# Teaching material generation.
 @cli.group()
 def content():
-    """Teaching material generation."""
+    pass
 
 
+# Generate a worksheet.
 @content.command("worksheet")
 @click.argument("subject")
 @click.argument("grade")
 @click.argument("topic")
 @click.pass_context
 def content_worksheet(ctx, subject, grade, topic):
-    """Generate a worksheet."""
     asyncio.run(_async_content_worksheet(ctx, subject, grade, topic))
 
 
@@ -264,6 +270,7 @@ async def _async_content_worksheet(ctx, subject, grade, topic):
     click.echo()
 
 
+# Generate a three-tier differentiated worksheet.
 @content.command("worksheet-diff")
 @click.argument("subject")
 @click.argument("grade")
@@ -272,7 +279,6 @@ async def _async_content_worksheet(ctx, subject, grade, topic):
 @click.option("--questions", "-n", default=8, help="每层题目数量")
 @click.pass_context
 def content_worksheet_diff(ctx, subject, grade, topic, questions):
-    """Generate a three-tier differentiated worksheet."""
     asyncio.run(_async_content_worksheet_diff(ctx, subject, grade, topic, questions))
 
 
@@ -295,13 +301,13 @@ async def _async_content_worksheet_diff(ctx, subject, grade, topic, questions):
     click.echo()
 
 
+# Start the HTTP API server.
 @cli.command()
 # i18n: user-facing
 @click.option("--host", default="127.0.0.1", help="监听地址(仅本地回环, 外部绑定请用反向代理+鉴权)")
 # i18n: user-facing
 @click.option("--port", default=0, help="监听端口 (0=读 FUSION_K12_PORT env, 默认 11448)")
 def serve(host, port):
-    """Start the HTTP API server."""
     # Process title shows the service name (recognizable in ps/top), not a bare "python ..." — on macOS
     # exec -a gets argv overwritten by Python.app; setproctitle is the only reliable way
     try:
@@ -337,11 +343,13 @@ def serve(host, port):
 
 # ── Curriculum standards ──
 
+# Curriculum-standard knowledge point queries.
 @cli.group()
 def standards():
-    """Curriculum-standard knowledge point queries."""
+    pass
 
 
+# List curriculum-standard knowledge points.
 @standards.command("list")
 # i18n: user-facing
 @click.option("--subject", "-s", default="", help="学科过滤")
@@ -349,7 +357,6 @@ def standards():
 @click.option("--grade", "-g", default="", help="年级过滤")
 @click.pass_context
 def standards_list(ctx, subject, grade):
-    """List curriculum-standard knowledge points."""
     query = ctx.obj["standards_query"]
     if subject and grade:
         points = query.get_knowledge_points(subject, grade)
@@ -373,11 +380,11 @@ def standards_list(ctx, subject, grade):
     click.echo()
 
 
+# Show knowledge point details.
 @standards.command("show")
 @click.argument("point_id")
 @click.pass_context
 def standards_show(ctx, point_id):
-    """Show knowledge point details."""
     loader = ctx.obj["standards_loader"]
     query = ctx.obj["standards_query"]
     kp = loader.get_point(point_id)
@@ -412,6 +419,7 @@ def standards_show(ctx, point_id):
 
 # ── Differentiated instruction ──
 
+# Generate a three-tier differentiated lesson plan.
 @lesson.command("plan-diff")
 @click.argument("subject")
 @click.argument("grade")
@@ -420,7 +428,6 @@ def standards_show(ctx, point_id):
 @click.option("--duration", default=45, help="课时(分钟)")
 @click.pass_context
 def lesson_plan_diff(ctx, subject, grade, topic, duration):
-    """Generate a three-tier differentiated lesson plan."""
     asyncio.run(_async_lesson_plan_diff(ctx, subject, grade, topic, duration))
 
 
@@ -443,6 +450,7 @@ async def _async_lesson_plan_diff(ctx, subject, grade, topic, duration):
     click.echo()
 
 
+# Generate a three-tier differentiated quiz.
 @lesson.command("quiz-diff")
 @click.argument("subject")
 @click.argument("grade")
@@ -451,7 +459,6 @@ async def _async_lesson_plan_diff(ctx, subject, grade, topic, duration):
 @click.option("--questions", "-n", default=5, help="每层题目数量")
 @click.pass_context
 def lesson_quiz_diff(ctx, subject, grade, topic, questions):
-    """Generate a three-tier differentiated quiz."""
     asyncio.run(_async_lesson_quiz_diff(ctx, subject, grade, topic, questions))
 
 
@@ -475,11 +482,13 @@ async def _async_lesson_quiz_diff(ctx, subject, grade, topic, questions):
 
 # ── Learning analytics ──
 
+# Learning analytics and remediation plans.
 @cli.group()
 def analytics():
-    """Learning analytics and remediation plans."""
+    pass
 
 
+# Generate a class learning profile.
 @analytics.command("class-profile")
 @click.argument("class_id")
 @click.argument("subject")
@@ -488,7 +497,6 @@ def analytics():
 @click.option("--data", "-d", default="", help="评估数据文件路径(JSON/CSV)")
 @click.pass_context
 def analytics_class_profile(ctx, class_id, subject, grade, data):
-    """Generate a class learning profile."""
     asyncio.run(_async_class_profile(ctx, class_id, subject, grade, data))
 
 
@@ -514,6 +522,7 @@ async def _async_class_profile(ctx, class_id, subject, grade, data):
     click.echo()
 
 
+# Generate an individual student profile.
 @analytics.command("student-profile")
 @click.argument("student_id")
 @click.argument("subject")
@@ -522,7 +531,6 @@ async def _async_class_profile(ctx, class_id, subject, grade, data):
 @click.option("--data", "-d", default="", help="评估数据文件路径(JSON/CSV)")
 @click.pass_context
 def analytics_student_profile(ctx, student_id, subject, grade, data):
-    """Generate an individual student profile."""
     asyncio.run(_async_student_profile(ctx, student_id, subject, grade, data))
 
 
@@ -548,6 +556,7 @@ async def _async_student_profile(ctx, student_id, subject, grade, data):
     click.echo()
 
 
+# Error attribution analysis.
 @analytics.command("error-analysis")
 @click.argument("subject")
 @click.argument("grade")
@@ -555,7 +564,6 @@ async def _async_student_profile(ctx, student_id, subject, grade, data):
 @click.option("--data", "-d", default="", help="评估数据文件路径(JSON/CSV)")
 @click.pass_context
 def analytics_error_analysis(ctx, subject, grade, data):
-    """Error attribution analysis."""
     asyncio.run(_async_error_analysis(ctx, subject, grade, data))
 
 
@@ -580,6 +588,7 @@ async def _async_error_analysis(ctx, subject, grade, data):
     click.echo()
 
 
+# Generate a remedial teaching plan.
 @analytics.command("remedial")
 @click.argument("student_id")
 @click.argument("subject")
@@ -588,7 +597,6 @@ async def _async_error_analysis(ctx, subject, grade, data):
 @click.option("--data", "-d", default="", help="评估数据文件路径(JSON/CSV)")
 @click.pass_context
 def analytics_remedial(ctx, student_id, subject, grade, data):
-    """Generate a remedial teaching plan."""
     asyncio.run(_async_remedial(ctx, student_id, subject, grade, data))
 
 
@@ -618,6 +626,7 @@ async def _async_remedial(ctx, student_id, subject, grade, data):
     click.echo()
 
 
+# Generate a class learning report (Markdown).
 @analytics.command("report")
 @click.argument("class_id")
 @click.argument("subject")
@@ -626,7 +635,6 @@ async def _async_remedial(ctx, student_id, subject, grade, data):
 @click.option("--data", "-d", default="", help="评估数据文件路径(JSON/CSV)")
 @click.pass_context
 def analytics_report(ctx, class_id, subject, grade, data):
-    """Generate a class learning report (Markdown)."""
     asyncio.run(_async_report(ctx, class_id, subject, grade, data))
 
 
@@ -653,14 +661,15 @@ def _load_assessments(path: str):
 
 # ── Agent task orchestration ──
 
+# Task orchestration and automated scheduling.
 @cli.group()
 def agent():
-    """Task orchestration and automated scheduling."""
+    pass
 
 
+# List available predefined tasks.
 @agent.command("tasks")
 def agent_tasks():
-    """List available predefined tasks."""
     tasks = list_available_tasks()
     click.echo()
     # i18n: user-facing
@@ -670,10 +679,10 @@ def agent_tasks():
     click.echo()
 
 
+# Enable a task.
 @agent.command("enable")
 @click.argument("task_id")
 def agent_enable(task_id):
-    """Enable a task."""
     if not scheduler.get_task(task_id):
         scheduler.load_default_tasks()
     if scheduler.enable_task(task_id):
@@ -684,10 +693,10 @@ def agent_enable(task_id):
         click.echo(f"❌ 未找到: {task_id}")
 
 
+# Disable a task.
 @agent.command("disable")
 @click.argument("task_id")
 def agent_disable(task_id):
-    """Disable a task."""
     if scheduler.disable_task(task_id):
         # i18n: user-facing
         click.echo(f"⛔ 已禁用: {task_id}")
@@ -696,6 +705,7 @@ def agent_disable(task_id):
         click.echo(f"❌ 未找到: {task_id}")
 
 
+# Run a task immediately — rebuilt from parameters each call, avoiding stale baked-in data (AGT-5).
 @agent.command("run")
 @click.argument("task_id")
 # i18n: user-facing
@@ -705,7 +715,6 @@ def agent_disable(task_id):
 # i18n: user-facing
 @click.option("--data", "data_path", default=None, help="学情数据文件路径 (JSON/CSV)")
 def agent_run(task_id, subject, grade, data_path):
-    """Run a task immediately — rebuilt from parameters each call, avoiding stale baked-in data (AGT-5)."""
     if not scheduler.get_task(task_id):
         scheduler.load_default_tasks(subject=subject, grade=grade)
     run_kwargs = {"subject": subject, "grade": grade}
@@ -724,11 +733,11 @@ def agent_run(task_id, subject, grade, data_path):
         raise click.ClickException(f"task execution failed: {result.summary}")
 
 
+# View execution history.
 @agent.command("history")
 # i18n: user-facing
 @click.option("--limit", "-n", default=10, help="显示条数")
 def agent_history(limit):
-    """View execution history."""
     history = scheduler.get_history(limit=limit)
     click.echo()
     # i18n: user-facing
@@ -738,9 +747,9 @@ def agent_history(limit):
     click.echo()
 
 
+# Start the scheduler daemon.
 @agent.command("start")
 def agent_start():
-    """Start the scheduler daemon."""
     scheduler.load_default_tasks()
     scheduler.start()
     # i18n: user-facing
@@ -755,9 +764,9 @@ def agent_start():
         click.echo("🛑 Agent 调度器已停止")
 
 
+# Stop the scheduler daemon.
 @agent.command("stop")
 def agent_stop():
-    """Stop the scheduler daemon."""
     scheduler.stop()
     # i18n: user-facing
     click.echo("🛑 Agent 调度器已停止")
@@ -765,17 +774,18 @@ def agent_stop():
 
 # ── Content safety ──
 
+# Content safety filtering and review.
 @cli.group()
 def safety():
-    """Content safety filtering and review."""
+    pass
 
 
+# Check text content safety.
 @safety.command("check")
 @click.argument("text")
 # i18n: user-facing
 @click.option("--grade", "-g", default="3", help="目标年级")
 def safety_check(text, grade):
-    """Check text content safety."""
     cf = ContentFilter()
     result = cf.check_text(text, grade)
     click.echo()
@@ -796,10 +806,10 @@ def safety_check(text, grade):
     click.echo()
 
 
+# Filter sensitive words in text.
 @safety.command("filter")
 @click.argument("text")
 def safety_filter(text):
-    """Filter sensitive words in text."""
     cf = ContentFilter()
     filtered = cf.filter_sensitive(text)
     click.echo()
@@ -808,6 +818,7 @@ def safety_filter(text):
     click.echo()
 
 
+# Manage the sensitive-word list.
 @safety.command("wordlist")
 # i18n: user-facing
 @click.option("--add", "add_word", default="", help="添加敏感词")
@@ -821,7 +832,6 @@ def safety_filter(text):
     help="词库文件路径; 默认 ~/.fusion-k12/sensitive_words.txt (避免写只读包目录)",
 )
 def safety_wordlist(add_word, remove_word, list_words, wl_path):
-    """Manage the sensitive-word list."""
     # CLI-3: default to the user data directory, not site-packages inside the package (read-only installs raise PermissionError)
     if not wl_path:
         user_dir = os.path.expanduser("~/.fusion-k12")
@@ -853,11 +863,13 @@ def safety_wordlist(add_word, remove_word, list_words, wl_path):
 
 # ── Data desensitization ──
 
+# Data masking and anonymization.
 @cli.group()
 def desensitize():
-    """Data masking and anonymization."""
+    pass
 
 
+# Anonymize records in a JSON file.
 @desensitize.command("anon")
 @click.argument("input_file")
 # i18n: user-facing
@@ -868,7 +880,6 @@ def desensitize():
 # i18n: user-facing
 @click.option("--output", "-o", default="", help="输出文件路径")
 def desensitize_anon(input_file, mode, prefix, output):
-    """Anonymize records in a JSON file."""
     import json as _json
     try:
         with open(input_file, encoding="utf-8") as f:
@@ -907,6 +918,7 @@ def desensitize_anon(input_file, mode, prefix, output):
     click.echo()
 
 
+# Export anonymized data to a file.
 @desensitize.command("export")
 @click.argument("input_file")
 # i18n: user-facing
@@ -915,7 +927,6 @@ def desensitize_anon(input_file, mode, prefix, output):
 @click.option("--mode", "-m", "mode", default="id", help="匿名模式: id/mask",
               type=click.Choice(["id", "mask"], case_sensitive=False))
 def desensitize_export(input_file, output, mode):
-    """Export anonymized data to a file."""
     import json as _json
     try:
         # SRV-3: O_NOFOLLOW prevents symlink-hijacked reads
@@ -952,6 +963,11 @@ def desensitize_export(input_file, output, mode):
     click.echo(f"✅ 映射表已导出(0600, 独立受限目录): {map_path}")
 
 
+# M1-T3/T9: standalone-to-cluster data migration — export standalone SQLite (history/name_map) and import into Postgres.
+#
+#     The schema is created by the target backend at construction time (CREATE TABLE IF NOT EXISTS); no Alembic needed.
+#     Migration is irreversible with no rollback; the source database is read-only and never deleted.
+#     --encrypt: name_map is written encrypted as name_hash+name_encrypted (PII never stored in plaintext).
 @cli.command()
 # i18n: user-facing
 @click.option("--from-db", "from_db", required=True, help="源 SQLite 路径 (standalone)")
@@ -962,12 +978,6 @@ def desensitize_export(input_file, output, mode):
 # i18n: user-facing
 @click.option("--encrypt", is_flag=True, help="M1-T9: name_map 加密导入 (AES-256-GCM, 需 FUSION_K12_DATA_KEY)")
 def migrate(from_db, to_dsn, dry_run, encrypt):
-    """M1-T3/T9: standalone-to-cluster data migration — export standalone SQLite (history/name_map) and import into Postgres.
-
-    The schema is created by the target backend at construction time (CREATE TABLE IF NOT EXISTS); no Alembic needed.
-    Migration is irreversible with no rollback; the source database is read-only and never deleted.
-    --encrypt: name_map is written encrypted as name_hash+name_encrypted (PII never stored in plaintext).
-    """
     from .repository import SQLiteRepository
     try:
         from .repository import PostgresRepository
@@ -1026,17 +1036,16 @@ def migrate(from_db, to_dsn, dry_run, encrypt):
         raise SystemExit(1)
 
 
+# M1-T9: in-place encryption of the legacy plaintext name_map (name_hash + name_encrypted) in a standalone SQLite database.
+#
+#     Reads the plaintext map_key/reverse and rewrites them into encrypted columns via DataCipher. The original plaintext reverse column is kept
+#     (progressive migration, decryption failures can fall back); the encrypted column becomes authoritative. Requires FUSION_K12_DATA_KEY.
 @cli.command("encrypt-name-map")
 # i18n: user-facing
 @click.option("--db", "db_path", required=True, help="standalone SQLite 路径")
 # i18n: user-facing
 @click.option("--dry-run", is_flag=True, help="仅预览待加密条数, 不写入")
 def encrypt_name_map(db_path, dry_run):
-    """M1-T9: in-place encryption of the legacy plaintext name_map (name_hash + name_encrypted) in a standalone SQLite database.
-
-    Reads the plaintext map_key/reverse and rewrites them into encrypted columns via DataCipher. The original plaintext reverse column is kept
-    (progressive migration, decryption failures can fall back); the encrypted column becomes authoritative. Requires FUSION_K12_DATA_KEY.
-    """
     try:
         from .safety import DataCipher
         cipher = DataCipher()
@@ -1063,17 +1072,16 @@ def encrypt_name_map(db_path, dry_run):
     repo.close()
 
 
+# M1-T8: salt rotation — the current salt is archived as a historical version and a new salt is written to the main file.
+#
+#     Old versions are kept to resolve historical anonymized IDs (reverse lookup); the new salt applies to subsequent writes.
+#     After rotation, historical IDs and new IDs differ for the same name — expected behavior.
 @cli.command("rotate-salt")
 # i18n: user-facing
 @click.option("--salt-file", "salt_file", default=None, help="salt 文件路径 (默认 ~/.fusion-k12/salt)")
 # i18n: user-facing
 @click.option("--show-versions", is_flag=True, help="仅列出所有版本, 不轮换")
 def rotate_salt(salt_file, show_versions):
-    """M1-T8: salt rotation — the current salt is archived as a historical version and a new salt is written to the main file.
-
-    Old versions are kept to resolve historical anonymized IDs (reverse lookup); the new salt applies to subsequent writes.
-    After rotation, historical IDs and new IDs differ for the same name — expected behavior.
-    """
     from .safety.salt_provider import VersionedSaltProvider
 
     prov = VersionedSaltProvider(salt_file)
@@ -1096,16 +1104,17 @@ def rotate_salt(salt_file, show_versions):
 
 # ── BNUP evaluation harness (issues #23 #24) ──
 
+# BNUP evaluation harness — four-dimension metrics / before-after comparison / SxS judge.
 @cli.group()
 def eval():
-    """BNUP evaluation harness — four-dimension metrics / before-after comparison / SxS judge."""
+    pass
 
 
+# Show benchmark testset statistics.
 @eval.command("bench")
 # i18n: user-facing
 @click.option("--testset", "-t", default="", help="测试集路径 (默认内置 bnup_benchmark.json)")
 def eval_bench(testset):
-    """Show benchmark testset statistics."""
     import json as _json
     from pathlib import Path as _P
     path = testset or str(_P(__file__).parent / "eval" / "data" / "bnup_benchmark.json")
@@ -1139,6 +1148,7 @@ def eval_bench(testset):
     click.echo(f"   可视化类型: {dict(sorted(vts.items(), key=lambda x: -x[1]))}")
 
 
+# Run the four-dimension metrics evaluation harness.
 @eval.command("run")
 # i18n: user-facing
 @click.option("--testset", "-t", required=True, help="测试集 JSON 路径")
@@ -1152,7 +1162,6 @@ def eval_bench(testset):
 @click.option("--max-samples", "-n", type=int, default=0, help="最大样本数 (0=全部)")
 @click.pass_context
 def eval_run(ctx, testset, model, output, system_prompt, max_samples):
-    """Run the four-dimension metrics evaluation harness."""
     import asyncio
     import json as _json
 
@@ -1198,6 +1207,7 @@ def eval_run(ctx, testset, model, output, system_prompt, max_samples):
         click.echo(f"📄 报告已保存: {output}")
 
 
+# Before/after comparison — baseline vs fine-tuned.
 @eval.command("compare")
 # i18n: user-facing
 @click.option("--testset", "-t", required=True, help="测试集 JSON 路径")
@@ -1211,7 +1221,6 @@ def eval_run(ctx, testset, model, output, system_prompt, max_samples):
 @click.option("--max-samples", "-n", type=int, default=0, help="最大样本数 (0=全部)")
 @click.pass_context
 def eval_compare(ctx, testset, baseline, finetuned, output, max_samples):
-    """Before/after comparison — baseline vs fine-tuned."""
     import asyncio
 
     from .eval.compare_models import ModelComparator
@@ -1240,6 +1249,7 @@ def eval_compare(ctx, testset, baseline, finetuned, output, max_samples):
     click.echo(report.summary_str())
 
 
+# SxS double-blind LLM judge.
 @eval.command("sxs")
 # i18n: user-facing
 @click.option("--testset", "-t", required=True, help="对比日志 JSON (compare 输出)")
@@ -1251,7 +1261,6 @@ def eval_compare(ctx, testset, baseline, finetuned, output, max_samples):
 @click.option("--max-samples", "-n", type=int, default=0, help="最大样本数 (0=全部)")
 @click.pass_context
 def eval_sxs(ctx, testset, judge_model, output, max_samples):
-    """SxS double-blind LLM judge."""
     import asyncio
     import json as _json
 

@@ -1,8 +1,7 @@
-"""Config file provider — mtime polling triggers reload.
-
-Reads KEY=VALUE lines (shell-style); reloads when the file mtime changes;
-only hot-reloadable items trigger callbacks.
-"""
+# Config file provider — mtime polling triggers reload.
+#
+# Reads KEY=VALUE lines (shell-style); reloads when the file mtime changes;
+# only hot-reloadable items trigger callbacks.
 
 from __future__ import annotations
 
@@ -14,8 +13,8 @@ from .provider import HOT_RELOADABLE, ConfigProvider
 logger = logging.getLogger(__name__)
 
 
+# Config file provider — mtime change triggers reload.
 class FileProvider(ConfigProvider):
-    """Config file provider — mtime change triggers reload."""
 
     def __init__(self, path: str) -> None:
         super().__init__()
@@ -24,8 +23,8 @@ class FileProvider(ConfigProvider):
         self._values: dict[str, str] = {}
         self._refresh()
 
+    # Read the file into memory and record mtime. Empty when the file is missing.
     def _refresh(self) -> None:
-        """Read the file into memory and record mtime. Empty when the file is missing."""
         try:
             st = os.stat(self._path)
             self._mtime = st.st_mtime
@@ -39,8 +38,8 @@ class FileProvider(ConfigProvider):
     def get(self, key: str, default: str = "") -> str:
         return self._values.get(key, default)
 
+    # Re-read when mtime changed; return changes to hot-reloadable items.
     def refresh(self) -> dict[str, str]:
-        """Re-read when mtime changed; return changes to hot-reloadable items."""
         try:
             st = os.stat(self._path)
         except FileNotFoundError:
@@ -61,8 +60,8 @@ class FileProvider(ConfigProvider):
         return changed
 
 
+# Parse a KEY=VALUE file — skips empty lines/# comments, strips whitespace.
 def _parse_file(path: str) -> dict[str, str]:
-    """Parse a KEY=VALUE file — skips empty lines/# comments, strips whitespace."""
     values: dict[str, str] = {}
     try:
         with open(path, encoding="utf-8") as f:

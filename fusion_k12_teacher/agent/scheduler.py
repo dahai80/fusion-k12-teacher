@@ -1,11 +1,10 @@
-"""Task scheduler — APScheduler in-memory scheduling + history.json execution-history persistence.
-
-Constraint: MemoryJobStore has no cross-process persistence and only supports single-worker
-deployment (uvicorn --workers 1). Multiple workers / processes would trigger cron repeatedly.
-A3: cross-process dedup relies on the _pidfile process lock — when cli and serve share the
-singleton, only the lock-holding process arms cron, preventing duplicate registration of the
-same scheduled task.
-"""
+# Task scheduler — APScheduler in-memory scheduling + history.json execution-history persistence.
+#
+# Constraint: MemoryJobStore has no cross-process persistence and only supports single-worker
+# deployment (uvicorn --workers 1). Multiple workers / processes would trigger cron repeatedly.
+# A3: cross-process dedup relies on the _pidfile process lock — when cli and serve share the
+# singleton, only the lock-holding process arms cron, preventing duplicate registration of the
+# same scheduled task.
 
 from __future__ import annotations
 
@@ -55,8 +54,8 @@ _DEFAULT_CONCURRENCY = 2
 _CRON_KEYS = ("minute", "hour", "day", "month", "day_of_week")
 
 
+# Task scheduler — manages task registration, scheduling, and execution history.
 class TaskScheduler:
-    """Task scheduler — manages task registration, scheduling, and execution history."""
 
     def __init__(self, history_path: str = "", repo: object | None = None):
         self._tasks: dict[str, TeachingTask] = {}
@@ -129,8 +128,8 @@ class TaskScheduler:
             except Exception as e:
                 logger.error(f"failed to load task {tid}: {e}")
 
+    # Rebuild a task instance — refreshes stale data in task.params (AGT-5).
     def rebuild_task(self, task_id: str, **kwargs) -> TeachingTask | None:
-        """Rebuild a task instance — refreshes stale data in task.params (AGT-5)."""
         try:
             task = build_task(task_id, **kwargs)
             self._tasks[task_id] = task
@@ -140,9 +139,9 @@ class TaskScheduler:
             logger.error(f"failed to rebuild task {task_id}: {e}")
             return None
 
+    # AGT-4/CLI-7: lazily create loop-bound primitives — bind to the current running loop,
+    #         never reuse primitives bound to a closed loop.
     def _ensure_primitives(self) -> None:
-        """AGT-4/CLI-7: lazily create loop-bound primitives — bind to the current running loop,
-        never reuse primitives bound to a closed loop."""
         loop = asyncio.get_running_loop()
         def _bound(obj):
             # 3.12+ Lock/Semaphore have no public _loop; use the bound loop if visible,
@@ -350,8 +349,8 @@ class TaskScheduler:
             self._owns_pidfile = False
         logger.info("Agent scheduler stopped")
 
+    # AGT-6: async shutdown — cancel and await in-flight coroutines, used by serve lifespan.
     async def aclose(self) -> None:
-        """AGT-6: async shutdown — cancel and await in-flight coroutines, used by serve lifespan."""
         for t in list(self._inflight):
             if not t.done():
                 t.cancel()

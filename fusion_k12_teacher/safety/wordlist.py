@@ -1,4 +1,4 @@
-"""Sensitive word list management."""
+# Sensitive word list management.
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ def _normalize(text: str) -> str:
 DEFAULT_WORDLIST_PATH = os.path.join(os.path.dirname(__file__), "data", "sensitive_words.txt")
 
 
+# Sensitive word list — load/query/add/remove.
 class SensitiveWordList:
-    """Sensitive word list — load/query/add/remove."""
 
     def __init__(self, path: str = ""):
         self._path = path or DEFAULT_WORDLIST_PATH
@@ -45,9 +45,9 @@ class SensitiveWordList:
             raise
         self._matcher = new_matcher
 
+    # E16: incremental concat — only escape+concat the new word, no full alternation recompile.
+    #         O(1) per word instead of O(W). Failure raises re.error for the caller to roll back _words.
     def _extend_matcher(self, word: str) -> None:
-        """E16: incremental concat — only escape+concat the new word, no full alternation recompile.
-        O(1) per word instead of O(W). Failure raises re.error for the caller to roll back _words."""
         if not self._words:
             self._matcher = re.compile(r"$^")
             return

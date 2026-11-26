@@ -1,4 +1,4 @@
-"""issue #20: two-stage CoT pipeline tests — thinking extraction, cot_enabled, streaming degradation."""
+# issue #20: two-stage CoT pipeline tests — thinking extraction, cot_enabled, streaming degradation.
 
 from __future__ import annotations
 
@@ -134,9 +134,9 @@ class TestDslGbnfGrammar:
         assert "string" in DSL_GBNF_GRAMMAR
         assert "number" in DSL_GBNF_GRAMMAR
 
+    # issue #20 gap 2: chat_stream should pass grammar through to the payload.
     @pytest.mark.asyncio
     async def test_chat_stream_passes_grammar(self):
-        """issue #20 gap 2: chat_stream should pass grammar through to the payload."""
         from fusion_k12_teacher.ai_client import MLXClient
 
         class MockStream:
@@ -162,9 +162,9 @@ class TestDslGbnfGrammar:
         )
         assert mock_httpx.last_payload.get("grammar") == "root ::= test"
 
+    # issue #20 gap 2: chat() (non-stream) should also pass grammar through to the payload.
     @pytest.mark.asyncio
     async def test_chat_non_stream_passes_grammar(self, monkeypatch):
-        """issue #20 gap 2: chat() (non-stream) should also pass grammar through to the payload."""
         from fusion_k12_teacher.ai_client import MLXClient
 
         class MockResp:
@@ -192,9 +192,9 @@ class TestDslGbnfGrammar:
         )
         assert mock_httpx.last_payload.get("grammar") == "root ::= test"
 
+    # issue #20 gap 2: socratic_tutor should pass grammar=DSL_GBNF_GRAMMAR when CoT is enabled.
     @pytest.mark.asyncio
     async def test_socratic_tutor_passes_grammar_when_cot_enabled(self, monkeypatch):
-        """issue #20 gap 2: socratic_tutor should pass grammar=DSL_GBNF_GRAMMAR when CoT is enabled."""
         monkeypatch.setenv("FUSION_K12_COT_ENABLED", "true")
         from fusion_k12_teacher.course.cot_pipeline import DSL_GBNF_GRAMMAR
         from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
@@ -212,9 +212,9 @@ class TestDslGbnfGrammar:
         assert len(captured_grammar) > 0
         assert captured_grammar[0] == DSL_GBNF_GRAMMAR
 
+    # issue #20: with CoT disabled grammar is None, preserving the original behavior.
     @pytest.mark.asyncio
     async def test_socratic_tutor_no_grammar_when_cot_disabled(self, monkeypatch):
-        """issue #20: with CoT disabled grammar is None, preserving the original behavior."""
         monkeypatch.delenv("FUSION_K12_COT_ENABLED", raising=False)
         from fusion_k12_teacher.course.subjects.math.socratic_tutor import MathSocraticTutor
         from fusion_k12_teacher.course.subjects.math.sympy_verifier import MathSympyVerifier

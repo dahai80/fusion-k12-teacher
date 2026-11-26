@@ -1,5 +1,5 @@
-"""Math subject tests — SymPy verification, knowledge graph, scene compiler (mock LLM),
-Socratic lesson script (mock LLM)."""
+# Math subject tests — SymPy verification, knowledge graph, scene compiler (mock LLM),
+# Socratic lesson script (mock LLM).
 
 from __future__ import annotations
 
@@ -365,8 +365,8 @@ class TestMathKnowledgeGraph:
 
     # ── issue #21 gap: standards-only nodes backfill ──
 
+    # issue #21: 47 standards-only nodes should have visual_type (non-empty).
     def test_standards_nodes_have_visual_type(self):
-        """issue #21: 47 standards-only nodes should have visual_type (non-empty)."""
         standards = [n for n in self.kg._nodes.values()
                      if n.id not in self.kg._enhanced_ids]
         assert len(standards) > 0, "no standards nodes loaded"
@@ -375,15 +375,15 @@ class TestMathKnowledgeGraph:
             assert n.visual_type in VISUAL_TYPES, \
                 f"standards node {n.id} visual_type={n.visual_type} not in 8 primitives"
 
+    # issue #21: standards-only nodes should have semester (non-empty).
     def test_standards_nodes_have_semester(self):
-        """issue #21: standards-only nodes should have semester (non-empty)."""
         standards = [n for n in self.kg._nodes.values()
                      if n.id not in self.kg._enhanced_ids]
         for n in standards:
             assert n.semester, f"standards node {n.id} has empty semester"
 
+    # issue #21: standards-only nodes should have misconceptions (≥1).
     def test_standards_nodes_have_misconceptions(self):
-        """issue #21: standards-only nodes should have misconceptions (≥1)."""
         standards = [n for n in self.kg._nodes.values()
                      if n.id not in self.kg._enhanced_ids]
         for n in standards:

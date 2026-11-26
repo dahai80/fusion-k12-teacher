@@ -70,9 +70,9 @@ LEVEL_CONFIGS: dict[str, dict[str, Any]] = {
 }
 
 
+# E8: validate each level config's key set is complete at load time — typos/missing keys
+#     raise immediately, no silent empty layers.
 def _validate_level_configs() -> None:
-    """E8: validate each level config's key set is complete at load time — typos/missing keys
-    raise immediately, no silent empty layers."""
     for lvl, cfg in LEVEL_CONFIGS.items():
         missing = _REQUIRED_CONFIG_KEYS - set(cfg.keys())
         extra = set(cfg.keys()) - _REQUIRED_CONFIG_KEYS

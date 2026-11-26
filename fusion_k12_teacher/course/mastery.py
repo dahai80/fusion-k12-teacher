@@ -1,9 +1,8 @@
-"""Mastery tracking — confidence heuristic (DKT replacement, PRD §8.1).
-
-Replaces pretrained DKT Transformer (heavy upstream asset, file an issue):
-approximate P(Mastery) with rolling accuracy + sample count + confidence.
-Cold-start gate: N>=5 and confidence>80% before showing heat (PRD P2 constraint).
-"""
+# Mastery tracking — confidence heuristic (DKT replacement, PRD §8.1).
+#
+# Replaces pretrained DKT Transformer (heavy upstream asset, file an issue):
+# approximate P(Mastery) with rolling accuracy + sample count + confidence.
+# Cold-start gate: N>=5 and confidence>80% before showing heat (PRD P2 constraint).
 
 from __future__ import annotations
 
@@ -66,8 +65,8 @@ class MasteryRecord:
         return "red"
 
 
+# Per-student knowledge-node mastery tracking — local memory/SQLite.
 class MasteryTracker:
-    """Per-student knowledge-node mastery tracking — local memory/SQLite."""
 
     def __init__(self) -> None:
         self._records: dict[str, dict[str, MasteryRecord]] = {}  # student_id -> node_id -> record

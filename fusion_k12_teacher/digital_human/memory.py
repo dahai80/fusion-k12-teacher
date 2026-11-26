@@ -1,9 +1,8 @@
-"""Rolling-window isolated conversation memory — TLive-Omni pattern 5.
-
-MAX_TOKENS budget; when exceeded, oldest non-system messages are truncated
-automatically. Layered system prompt assembly. Token counting: prefers
-tiktoken, falls back to char/4 estimate when missing.
-"""
+# Rolling-window isolated conversation memory — TLive-Omni pattern 5.
+#
+# MAX_TOKENS budget; when exceeded, oldest non-system messages are truncated
+# automatically. Layered system prompt assembly. Token counting: prefers
+# tiktoken, falls back to char/4 estimate when missing.
 
 from __future__ import annotations
 
@@ -59,8 +58,8 @@ class RollingWindowMemory:
         if level:
             self.level = level
 
+    # issue #22: switch to the BNUP math Socratic teaching mode (uses BNUP_SYSTEM_PROMPT).
     def enable_bnup_mode(self) -> None:
-        """issue #22: switch to the BNUP math Socratic teaching mode (uses BNUP_SYSTEM_PROMPT)."""
         self.base_prompt = BNUP_SYSTEM_PROMPT
         logger.info("memory[%s]: BNUP mode enabled", self.session_id)
 

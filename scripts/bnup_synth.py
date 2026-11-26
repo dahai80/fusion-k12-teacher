@@ -1,24 +1,22 @@
+# BNUP SFT corpus programmatic synthesizer (sft-dpo-1013 §2.2).
+#
+# Core design (targets E1 parameter-name drift directly):
+# - Variables-table SSoT: question/thinking/parameters/pipeline.eval all rendered from
+#   the same vars dict — eval-referenced key names and parameters definitions agree by construction.
+# - Inverse-construction sampling: sample intermediate quantities first (e.g. v, t), then derive
+#   the stated quantities (L_bridge=v*t-L_train), keeping ground_truth clean and eval exactly recomputable.
+# - Four gates (any failure discards the sample and counts it, target 0):
+#     gate1 JSON roundtrip
+#     gate2 jsonschema (eval_harness.DSL_SCHEMA — same source as the production 5-step waterfall)
+#     gate3 eval-referenced keys == parameters keys (both directions) + results[n] references existing steps only + ASCII operators
+#     gate4 production evaluator (BNUPEvaluator.evaluate_eval_expression) recompute == independent arithmetic expect (ε=0.01)
+# - thinking uses a fixed four-section structure; section 3 explicitly demonstrates "key-name checking" (behavioral correction for E1).
+#
+# Usage:
+#   python scripts/bnup_synth.py --total 4000 --holdout 200 --seed 2026       --out data/bnup/raw_sft_v1.json
+# Outputs a raw JSON array [{question, thinking, dsl, template_id, category, split, ...}]
+# — direct input for `ft bnup-prep --sft`.
 #!/usr/bin/env python
-"""BNUP SFT corpus programmatic synthesizer (sft-dpo-1013 §2.2).
-
-Core design (targets E1 parameter-name drift directly):
-- Variables-table SSoT: question/thinking/parameters/pipeline.eval all rendered from
-  the same vars dict — eval-referenced key names and parameters definitions agree by construction.
-- Inverse-construction sampling: sample intermediate quantities first (e.g. v, t), then derive
-  the stated quantities (L_bridge=v*t-L_train), keeping ground_truth clean and eval exactly recomputable.
-- Four gates (any failure discards the sample and counts it, target 0):
-    gate1 JSON roundtrip
-    gate2 jsonschema (eval_harness.DSL_SCHEMA — same source as the production 5-step waterfall)
-    gate3 eval-referenced keys == parameters keys (both directions) + results[n] references existing steps only + ASCII operators
-    gate4 production evaluator (BNUPEvaluator.evaluate_eval_expression) recompute == independent arithmetic expect (ε=0.01)
-- thinking uses a fixed four-section structure; section 3 explicitly demonstrates "key-name checking" (behavioral correction for E1).
-
-Usage:
-  python scripts/bnup_synth.py --total 4000 --holdout 200 --seed 2026 \
-      --out data/bnup/raw_sft_v1.json
-Outputs a raw JSON array [{question, thinking, dsl, template_id, category, split, ...}]
-— direct input for `ft bnup-prep --sft`.
-"""
 from __future__ import annotations
 
 import argparse
@@ -67,8 +65,8 @@ def pick(rng: random.Random, seq):
     return rng.choice(seq)
 
 
+# steps: [(title, formula, eval_expr, result_unit)] -> pipeline section (uniform progress).
 def build_pipeline(ents: list[dict], steps) -> list[dict]:
-    """steps: [(title, formula, eval_expr, result_unit)] -> pipeline section (uniform progress)."""
     n = len(steps)
     ent_ids = [e["id"] for e in ents]
     pipe = []
@@ -92,8 +90,8 @@ def param_refs(steps) -> set[str]:
     return refs
 
 
+# Evaluate per prefix (same semantics as the production evaluate_eval_expression); returns {step: value}.
 def _all_step_vals(pipe, vars_d) -> dict[int, float]:
-    """Evaluate per prefix (same semantics as the production evaluate_eval_expression); returns {step: value}."""
     out: dict[int, float] = {}
     for k in range(1, len(pipe) + 1):
         out[k] = float(_EVAL.evaluate_eval_expression(pipe[:k], vars_d))
@@ -105,8 +103,8 @@ def display_eval(expr: str, vars_d: dict, step_vals: dict[int, float]) -> str:
     return RESULT_RE.sub(lambda m: fmt_num(step_vals[int(m.group(1))]), out)
 
 
+# Fixed four-section structure — section 3 does an explicit key-name check (E1 behavioral demonstration).
 def build_thinking(topic: str, vars_d: dict, steps, step_vals: dict[int, float]) -> str:
-    """Fixed four-section structure — section 3 does an explicit key-name check (E1 behavioral demonstration)."""
     # i18n: user-facing
     p1 = "; ".join(f"{fmt_num(d['value'])}{d['unit']}({d['label']}→{name})"
                    for name, d in vars_d.items())
@@ -121,9 +119,9 @@ def build_thinking(topic: str, vars_d: dict, steps, step_vals: dict[int, float])
             f"3. {p3}\n4. 验算: {p4}")
 
 
+# Four gates. Returns (step_vals, "") or (None, reason).
 def check_gates(dsl: dict, vars_d: dict, steps, expect: float,
                 allow_unused: bool) -> tuple[dict[int, float] | None, str]:
-    """Four gates. Returns (step_vals, "") or (None, reason)."""
     # gate1 JSON roundtrip
     s = json.dumps(dsl, ensure_ascii=False)
     if json.loads(s) != dsl:
@@ -1083,8 +1081,8 @@ _t38["question"] = lambda v, x, rng: (
 
 
 # ────────────────────────── Main flow ──────────────────────────
+# Generate one sample; returns None when any of the four gates fails (counted at the caller).
 def synth_one(sid: str, sp: dict, rng: random.Random) -> dict | None:
-    """Generate one sample; returns None when any of the four gates fails (counted at the caller)."""
     vars_d, expect, extra = sp["gen"](rng)
     steps = sp["steps"](vars_d, extra)
     ents = sp["ents"](vars_d, extra)

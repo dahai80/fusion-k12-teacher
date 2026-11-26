@@ -1,4 +1,4 @@
-"""BNUP benchmark test-set structure tests — issue #24 A5."""
+# BNUP benchmark test-set structure tests — issue #24 A5.
 
 from __future__ import annotations
 

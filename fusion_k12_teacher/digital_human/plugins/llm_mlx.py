@@ -1,7 +1,6 @@
-"""MlxLLM — fusion-mlx /v1/chat/completions streaming plugin.
-
-Course context is injected into the system prompt by ContentInjector. SSE token stream.
-"""
+# MlxLLM — fusion-mlx /v1/chat/completions streaming plugin.
+#
+# Course context is injected into the system prompt by ContentInjector. SSE token stream.
 
 from __future__ import annotations
 
@@ -38,13 +37,12 @@ class MlxLLM(LLMPlugin):
         self._available = True
         logger.info("llm_mlx: init")
 
+    # Image question (mode 3): Qwen2.5-VL looks at the image and produces a text description,
+    #         merged into the Q&A context.
+    #
+    #         VLM model configurable via FUSION_K12_VLM_MODEL; missing/failed returns empty string
+    #         (degrades to text-only Q&A).
     async def describe_image(self, image_b64: str, question: str = "") -> str:
-        """Image question (mode 3): Qwen2.5-VL looks at the image and produces a text description,
-        merged into the Q&A context.
-
-        VLM model configurable via FUSION_K12_VLM_MODEL; missing/failed returns empty string
-        (degrades to text-only Q&A).
-        """
         if not self._available or not image_b64:
             return ""
         model = os.environ.get("FUSION_K12_VLM_MODEL", "mlx-community--Qwen2.5-VL-7B-Instruct-4bit")

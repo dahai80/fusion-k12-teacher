@@ -1,10 +1,9 @@
-"""SxS double-blind LLM judge — Socratic teaching quality evaluation (PRD §769-799, issue #23 A4).
-
-Hard assertions alone cannot evaluate teaching quality inside <thinking>.
-A stronger model scores the SxS comparison: A/B positions are shuffled randomly to avoid bias,
-3 dimensions scored 1-5: Socratic guidance / misconception targeting / DSL feasibility,
-with a win/loss/tie verdict.
-"""
+# SxS double-blind LLM judge — Socratic teaching quality evaluation (PRD §769-799, issue #23 A4).
+#
+# Hard assertions alone cannot evaluate teaching quality inside <thinking>.
+# A stronger model scores the SxS comparison: A/B positions are shuffled randomly to avoid bias,
+# 3 dimensions scored 1-5: Socratic guidance / misconception targeting / DSL feasibility,
+# with a win/loss/tie verdict.
 
 from __future__ import annotations
 
@@ -149,11 +148,10 @@ class SxSAggregate:
         return "\n".join(lines)
 
 
+# SxS double-blind judge (PRD §769-799).
+#
+#     Uses MLXClient as the judge model; shuffles base/ft positions randomly to avoid bias.
 class SxSJudge:
-    """SxS double-blind judge (PRD §769-799).
-
-    Uses MLXClient as the judge model; shuffles base/ft positions randomly to avoid bias.
-    """
 
     def __init__(self, mlx: MLXClient, judge_model: str = "") -> None:
         self.mlx = mlx

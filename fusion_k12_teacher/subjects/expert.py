@@ -1,4 +1,4 @@
-"""Subject knowledge base — STEM, languages, humanities and other multi-subject teaching support."""
+# Subject knowledge base — STEM, languages, humanities and other multi-subject teaching support.
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from ..safety.filter import ContentFilter, sanitize_input
 logger = logging.getLogger(__name__)
 
 
+# Subject exercise question.
 @dataclass
 class SubjectExercise:
-    """Subject exercise question."""
     question: str = ""
     difficulty: str = "medium"
     subject: str = ""
@@ -32,11 +32,10 @@ class SubjectExercise:
     error: str = ""
 
 
+# Subject expert — multi-subject teaching on par with Claude K-12 Teacher.
+#
+#     Supports math, science, coding, languages, history, geography and more.
 class SubjectExpert:
-    """Subject expert — multi-subject teaching on par with Claude K-12 Teacher.
-
-    Supports math, science, coding, languages, history, geography and more.
-    """
 
     def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
@@ -68,8 +67,8 @@ class SubjectExpert:
                 out[k] = v
         return out
 
+    # Explain a subject concept (grade-adapted).
     async def explain_concept(self, subject: str, grade: str, concept: str) -> dict[str, Any]:
-        """Explain a subject concept (grade-adapted)."""
         # ENG-2: uniformly sanitize user-controlled fields, prevent prompt injection
         subject = sanitize_input(subject)
         grade = sanitize_input(grade, max_len=8)
@@ -94,8 +93,8 @@ class SubjectExpert:
             rethrow_if_fatal(e)
             return {"error": str(e)}
 
+    # Generate a subject exercise question.
     async def generate_exercise(self, subject: str, grade: str, topic: str, difficulty: str = "medium") -> SubjectExercise:
-        """Generate a subject exercise question."""
         # ENG-2: uniformly sanitize user-controlled fields
         subject = sanitize_input(subject)
         grade = sanitize_input(grade, max_len=8)
@@ -133,8 +132,8 @@ class SubjectExpert:
         return SubjectExercise(question=f"生成失败: {err_msg}", topic=topic, error=err_msg)
 
     # i18n: user-facing — default duration label is Chinese prompt content.
+    # Generate a STEM project-based learning plan.
     async def stem_project(self, grade: str, topic: str, duration: str = "2课时") -> dict[str, Any]:
-        """Generate a STEM project-based learning plan."""
         # ENG-2: uniformly sanitize user-controlled fields
         grade = sanitize_input(grade, max_len=8)
         topic = sanitize_input(topic)
@@ -160,8 +159,8 @@ class SubjectExpert:
             rethrow_if_fatal(e)
             return {"error": str(e)}
 
+    # Generate a language learning activity.
     async def language_activity(self, grade: str, language: str, skill: str, theme: str) -> dict[str, Any]:
-        """Generate a language learning activity."""
         # ENG-2: uniformly sanitize user-controlled fields
         grade = sanitize_input(grade, max_len=8)
         language = sanitize_input(language, max_len=20)

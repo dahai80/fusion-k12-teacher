@@ -1,4 +1,4 @@
-"""pytest global fixtures + live-LLM test gating."""
+# pytest global fixtures + live-LLM test gating.
 
 from __future__ import annotations
 
@@ -24,15 +24,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(skip_live)
 
 
+# Non-live tests always point at an unreachable LLM address, aligning with CI (no fusion-mlx) behavior.
+#
+#     On dev machines fusion-mlx runs persistently and requires an API key; unmocked engine
+#     tests would get 401 NonDegradableError instead of the expected graceful degradation —
+#     forcing base_url removes the environment difference.
+#     live tests (FUSION_K12_LIVE_TESTS=1) are unaffected and must be really reachable.
 @pytest.fixture(autouse=True)
 def _offline_llm(monkeypatch):
-    """Non-live tests always point at an unreachable LLM address, aligning with CI (no fusion-mlx) behavior.
-
-    On dev machines fusion-mlx runs persistently and requires an API key; unmocked engine
-    tests would get 401 NonDegradableError instead of the expected graceful degradation —
-    forcing base_url removes the environment difference.
-    live tests (FUSION_K12_LIVE_TESTS=1) are unaffected and must be really reachable.
-    """
     if not _LIVE_ENABLED:
         monkeypatch.setenv("FUSION_MLX_URL", "http://127.0.0.1:9/v1")
         monkeypatch.delenv("FUSION_MLX_API_KEY", raising=False)
@@ -46,9 +45,9 @@ def _offline_llm(monkeypatch):
     yield
 
 
+# Clear rate-limit counters before each test, avoiding cross-test accumulation triggering 429.
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
-    """Clear rate-limit counters before each test, avoiding cross-test accumulation triggering 429."""
     try:
         from fusion_k12_teacher.serve import _rate_limiter
         _rate_limiter._hits.clear()
@@ -57,16 +56,15 @@ def _reset_rate_limiter():
     yield
 
 
+# TaskScheduler tests must not depend on the global pidfile lock — a same-machine serve holding
+#     the lock would make is_running=False.
+#
+#     Mock _acquire_pidfile to return True directly, bypassing the fcntl cross-process lock
+#     (single-process tests need no dedup).
+#     Note: agent/__init__.py rebinds the scheduler name to an instance; import the TaskScheduler
+#     class from the submodule directly.
 @pytest.fixture(autouse=True)
 def _isolate_scheduler_pidfile(monkeypatch):
-    """TaskScheduler tests must not depend on the global pidfile lock — a same-machine serve holding
-    the lock would make is_running=False.
-
-    Mock _acquire_pidfile to return True directly, bypassing the fcntl cross-process lock
-    (single-process tests need no dedup).
-    Note: agent/__init__.py rebinds the scheduler name to an instance; import the TaskScheduler
-    class from the submodule directly.
-    """
     from fusion_k12_teacher.agent.scheduler import TaskScheduler
     monkeypatch.setattr(TaskScheduler, "_acquire_pidfile", lambda self: True)
     yield

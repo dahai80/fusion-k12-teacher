@@ -1,4 +1,4 @@
-"""Agent module — task orchestration + scheduling + execution."""
+# Agent module — task orchestration + scheduling + execution.
 
 from .executor import EngineRegistry, execute_step, execute_task, register_all_engines
 from .models import TaskResult, TaskStep, TeachingTask

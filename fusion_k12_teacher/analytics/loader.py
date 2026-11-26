@@ -1,4 +1,4 @@
-"""Learning analytics data import — JSON/CSV batch loading."""
+# Learning analytics data import — JSON/CSV batch loading.
 
 from __future__ import annotations
 
@@ -48,12 +48,13 @@ def _allowed_data_dirs() -> list[Path]:
     ]
 
 
+# Data path outside allowed dirs — CLI converts to click.ClickException, serve converts to HTTPException.
 class DataPathError(ValueError):
-    """Data path outside allowed dirs — CLI converts to click.ClickException, serve converts to HTTPException."""
+    pass
 
 
+# AGT-2: validates data_path is inside an allowed directory (exact is_relative_to match, not prefix).
 def validate_data_path(path: str) -> Path:
-    """AGT-2: validates data_path is inside an allowed directory (exact is_relative_to match, not prefix)."""
     resolved = Path(path).resolve()
     for d in _allowed_data_dirs():
         try:
@@ -65,8 +66,8 @@ def validate_data_path(path: str) -> Path:
     raise DataPathError(f"data path not allowed: {resolved}")
 
 
+# Sanitizes a CSV cell — strips formula-injection prefixes (ENG-8).
 def _sanitize_cell(val: Any) -> str:
-    """Sanitizes a CSV cell — strips formula-injection prefixes (ENG-8)."""
     s = str(val) if val is not None else ""
     if s.startswith(_CSV_INJECTION_PREFIXES):
         logger.warning("CSV cell suspected formula injection, leading characters stripped: %r", s[:20])
@@ -74,8 +75,8 @@ def _sanitize_cell(val: Any) -> str:
     return s
 
 
+# Parses a numeric field — empty string returns None (distinct from a real 0), non-numeric returns default (ENG-7).
 def _parse_num(val: Any, default: float = 0.0) -> float | None:
-    """Parses a numeric field — empty string returns None (distinct from a real 0), non-numeric returns default (ENG-7)."""
     if val is None:
         return None
     s = str(val).strip()
@@ -88,19 +89,18 @@ def _parse_num(val: Any, default: float = 0.0) -> float | None:
         return default
 
 
+# Loads learning data from a JSON file (A8: mtime cache, no re-parse while unchanged).
+#
+#     Supports two formats:
+#     1. Array: [{student_id, ...}, ...]
+#     2. Object: {assessments: [...]} or {records: [...]}
+#        When the value is a dict keyed by student_id, it is auto-expanded into a record list (ENG-9).
 def load_from_json(path: str | Path) -> list[StudentAssessment]:
-    """Loads learning data from a JSON file (A8: mtime cache, no re-parse while unchanged).
-
-    Supports two formats:
-    1. Array: [{student_id, ...}, ...]
-    2. Object: {assessments: [...]} or {records: [...]}
-       When the value is a dict keyed by student_id, it is auto-expanded into a record list (ENG-9).
-    """
     return _cached_load(path, _parse_json_file)
 
 
+# Pure JSON file parsing (A8: wrapped by _cached_load, no cache lookup of its own).
 def _parse_json_file(path: str | Path) -> list[StudentAssessment]:
-    """Pure JSON file parsing (A8: wrapped by _cached_load, no cache lookup of its own)."""
     path = Path(path)
     if not path.exists():
         logger.error(f"learning data file not found: {path}")
@@ -136,19 +136,18 @@ def _parse_json_file(path: str | Path) -> list[StudentAssessment]:
     return normalize_assessments(raw_list)
 
 
+# Loads learning data from a CSV file (A8: mtime cache, no re-parse while unchanged).
+#
+#     Expected columns: student_id, student_name, assessment_id, date, subject, grade,
+#             total_score, max_score, question_id, question, student_answer, correct_answer, points, max_points
+#     Each row is one answer record, aggregated by student_id+assessment_id.
+#     Empty cells are never silently zero-filled — when total_score is empty the assessment record is skipped (ENG-7).
 def load_from_csv(path: str | Path) -> list[StudentAssessment]:
-    """Loads learning data from a CSV file (A8: mtime cache, no re-parse while unchanged).
-
-    Expected columns: student_id, student_name, assessment_id, date, subject, grade,
-            total_score, max_score, question_id, question, student_answer, correct_answer, points, max_points
-    Each row is one answer record, aggregated by student_id+assessment_id.
-    Empty cells are never silently zero-filled — when total_score is empty the assessment record is skipped (ENG-7).
-    """
     return _cached_load(path, _parse_csv_file)
 
 
+# Pure CSV file parsing (A8: wrapped by _cached_load, no cache lookup of its own).
 def _parse_csv_file(path: str | Path) -> list[StudentAssessment]:
-    """Pure CSV file parsing (A8: wrapped by _cached_load, no cache lookup of its own)."""
     path = Path(path)
     if not path.exists():
         logger.error(f"learning data file not found: {path}")
@@ -211,8 +210,8 @@ def _parse_csv_file(path: str | Path) -> list[StudentAssessment]:
     return normalize_assessments(results)
 
 
+# Normalizes a list of raw dicts into StudentAssessment records.
 def normalize_assessments(data: list[Any]) -> list[StudentAssessment]:
-    """Normalizes a list of raw dicts into StudentAssessment records."""
     results = []
     for item in data:
         if not isinstance(item, dict):

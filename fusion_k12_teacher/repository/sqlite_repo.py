@@ -1,9 +1,8 @@
-"""SQLite Repository — standalone mode backend.
-
-stdlib sqlite3, zero external dependencies. History full-list overwrite is replaced with
-single-table row storage (auto-increment id); name_map is a KV table. Concurrency relies
-on sqlite3 file locking + short transactions.
-"""
+# SQLite Repository — standalone mode backend.
+#
+# stdlib sqlite3, zero external dependencies. History full-list overwrite is replaced with
+# single-table row storage (auto-increment id); name_map is a KV table. Concurrency relies
+# on sqlite3 file locking + short transactions.
 
 from __future__ import annotations
 
@@ -101,12 +100,11 @@ def _ensure_crypto_cols(conn) -> None:
             pass
 
 
+# Single-machine SQLite persistence backend.
+#
+#     Single connection + module-level lock, single-process serial writes. Sufficient for
+#     standalone mode; multi-process/multi-instance needs PostgresRepository (M1-T2).
 class SQLiteRepository(Repository):
-    """Single-machine SQLite persistence backend.
-
-    Single connection + module-level lock, single-process serial writes. Sufficient for
-    standalone mode; multi-process/multi-instance needs PostgresRepository (M1-T2).
-    """
 
     def __init__(self, db_path: str):
         self._db_path = os.path.expanduser(db_path)

@@ -1,4 +1,4 @@
-"""Classroom module tests — E1-E6 K1 text version (mock LLM)."""
+# Classroom module tests — E1-E6 K1 text version (mock LLM).
 
 from __future__ import annotations
 

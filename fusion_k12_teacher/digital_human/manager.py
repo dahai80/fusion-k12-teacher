@@ -1,9 +1,8 @@
-"""DigitalHumanManager — digital human platform manager (serve.py lifecycle singleton).
-
-Prewarms shared plugin pipelines; create_session carries a concurrency gate
-(BoundedSemaphore MAX_SESSIONS); aclose drains all sessions on shutdown.
-Holds references to mlx_client/subject_registry/session_manager/lesson_scripter.
-"""
+# DigitalHumanManager — digital human platform manager (serve.py lifecycle singleton).
+#
+# Prewarms shared plugin pipelines; create_session carries a concurrency gate
+# (BoundedSemaphore MAX_SESSIONS); aclose drains all sessions on shutdown.
+# Holds references to mlx_client/subject_registry/session_manager/lesson_scripter.
 
 from __future__ import annotations
 
@@ -168,8 +167,8 @@ class DigitalHumanManager:
         logger.info("manager: session created %s subject=%s topic=%s", session_id, subject, topic)
         return sess
 
+    # issue #16: idle-timeout auto-finish callback — reuses the unified finish (pop + gate release).
     def _make_idle_finish_cb(self, session_id: str):
-        """issue #16: idle-timeout auto-finish callback — reuses the unified finish (pop + gate release)."""
         async def _cb() -> None:
             logger.info("manager: session %s idle timeout, auto-finishing", session_id)
             await self.finish(session_id)

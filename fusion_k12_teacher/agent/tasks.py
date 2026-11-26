@@ -1,4 +1,4 @@
-"""Predefined task library — 5 teaching automation tasks."""
+# Predefined task library — 5 teaching automation tasks.
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from .models import TaskStep, TeachingTask
 logger = logging.getLogger(__name__)
 
 
+# Load assessment data from data_path; return an empty list on failure.
 def _load_assessments(data_path: str) -> list:
-    """Load assessment data from data_path; return an empty list on failure."""
     if not data_path:
         return []
     try:
@@ -27,8 +27,8 @@ def _load_assessments(data_path: str) -> list:
         return []
 
 
+# Aggregate all answer records from a StudentAssessment list.
 def _extract_responses(assessments: list) -> list[dict]:
-    """Aggregate all answer records from a StudentAssessment list."""
     responses = []
     for a in assessments:
         if hasattr(a, "responses") and a.responses:
@@ -36,8 +36,8 @@ def _extract_responses(assessments: list) -> list[dict]:
     return responses
 
 
+# Weekly prep — quiz → worksheet → slides.
 def weekly_prep(subject: str = "数学", grade: str = "3", topic: str = "本周主题") -> TeachingTask:
-    """Weekly prep — quiz → worksheet → slides."""
     # i18n: user-facing (task name shown in scheduler UI/API)
     return TeachingTask(
         id="weekly_prep",
@@ -67,8 +67,8 @@ def weekly_prep(subject: str = "数学", grade: str = "3", topic: str = "本周�
     )
 
 
+# Weekly class summary — class_profile → error_analysis → report.
 def weekly_summary(class_id: str = "C1", subject: str = "数学", grade: str = "3", data_path: str = "") -> TeachingTask:
-    """Weekly class summary — class_profile → error_analysis → report."""
     assessments = _load_assessments(data_path)
     # i18n: user-facing (task name shown in scheduler UI/API)
     return TeachingTask(
@@ -100,8 +100,8 @@ def weekly_summary(class_id: str = "C1", subject: str = "数学", grade: str = "
     )
 
 
+# Daily homework error remediation — error_analysis → remedial.
 def daily_homework_review(subject: str = "数学", grade: str = "3", data_path: str = "") -> TeachingTask:
-    """Daily homework error remediation — error_analysis → remedial."""
     assessments = _load_assessments(data_path)
     responses = _extract_responses(assessments)
     # i18n: user-facing (task name shown in scheduler UI/API)
@@ -128,8 +128,8 @@ def daily_homework_review(subject: str = "数学", grade: str = "3", data_path: 
     )
 
 
+# Monthly teaching report — class_profile → report.
 def monthly_report(class_id: str = "C1", subject: str = "数学", grade: str = "3") -> TeachingTask:
-    """Monthly teaching report — class_profile → report."""
     # i18n: user-facing (task name shown in scheduler UI/API)
     return TeachingTask(
         id="monthly_report",
@@ -154,8 +154,8 @@ def monthly_report(class_id: str = "C1", subject: str = "数学", grade: str = "
     )
 
 
+# Batch differentiated materials — generate three-tier content per topic.
 def batch_differentiated_materials(subject: str = "数学", grade: str = "3", topics: str = "分数,小数,百分数") -> TeachingTask:
-    """Batch differentiated materials — generate three-tier content per topic."""
     steps = []
     # AGT-10: reject empty segments — topics.split(",") on an empty string yields [""], and an
     # empty topic would enqueue a step generating meaningless material.
@@ -199,14 +199,14 @@ TASK_BUILDERS: dict[str, Callable] = {
 }
 
 
+# Return available tasks {id: name}.
 def list_available_tasks() -> dict[str, str]:
-    """Return available tasks {id: name}."""
     builder = {tid: fn().name for tid, fn in TASK_BUILDERS.items()}
     return builder
 
 
+# Build a task instance by ID.
 def build_task(task_id: str, **kwargs) -> TeachingTask:
-    """Build a task instance by ID."""
     builder = TASK_BUILDERS.get(task_id)
     if not builder:
         raise ValueError(f"Unknown task: {task_id}")

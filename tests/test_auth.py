@@ -1,4 +1,4 @@
-"""auth module tests — register/login/token verification/logout."""
+# auth module tests — register/login/token verification/logout.
 
 from __future__ import annotations
 

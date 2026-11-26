@@ -1,8 +1,7 @@
-"""Environment variable provider — single-machine default, static read at startup.
-
-Snapshots env at startup and never changes at runtime (no polling). Changes
-require a restart or rolling restart.
-"""
+# Environment variable provider — single-machine default, static read at startup.
+#
+# Snapshots env at startup and never changes at runtime (no polling). Changes
+# require a restart or rolling restart.
 
 from __future__ import annotations
 
@@ -14,8 +13,8 @@ from .provider import ConfigProvider
 logger = logging.getLogger(__name__)
 
 
+# Static env provider — startup snapshot, no hot reload.
 class EnvProvider(ConfigProvider):
-    """Static env provider — startup snapshot, no hot reload."""
 
     def __init__(self) -> None:
         super().__init__()

@@ -1,9 +1,8 @@
-"""BNUP before/after comparison runner — baseline vs fine-tuned (PRD §570-768, issue #23 A4).
-
-Calls both models via MLXClient HTTP (same gateway), strictly controlling variables:
-temp=0.1, max_tokens=2048, identical system prompt + user query.
-Per-question evaluation of 4-dimension metrics + TPS, outputs a Δ comparison table.
-"""
+# BNUP before/after comparison runner — baseline vs fine-tuned (PRD §570-768, issue #23 A4).
+#
+# Calls both models via MLXClient HTTP (same gateway), strictly controlling variables:
+# temp=0.1, max_tokens=2048, identical system prompt + user query.
+# Per-question evaluation of 4-dimension metrics + TPS, outputs a Δ comparison table.
 
 from __future__ import annotations
 
@@ -132,12 +131,11 @@ class ComparisonReport:
         return "\n".join(lines)
 
 
+# Before/after comparison runner (PRD §616-768).
+#
+#     One MLXClient, two model names (baseline / fine-tuned).
+#     Per-question inference + evaluation + Δ statistics.
 class ModelComparator:
-    """Before/after comparison runner (PRD §616-768).
-
-    One MLXClient, two model names (baseline / fine-tuned).
-    Per-question inference + evaluation + Δ statistics.
-    """
 
     def __init__(
         self,

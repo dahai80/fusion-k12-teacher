@@ -63,9 +63,9 @@ class DifferentiatedContent:
     # imperceptible empty content.
     layer_errors: dict[str, str] = field(default_factory=dict)
 
+    # Get LayerContent by level name; return an empty LayerContent when missing
+    #         (read-only access compatibility).
     def get_layer(self, level: str) -> LayerContent:
-        """Get LayerContent by level name; return an empty LayerContent when missing
-        (read-only access compatibility)."""
         return self.layers.get(level, LayerContent())
 
     def to_dict(self) -> dict[str, Any]:

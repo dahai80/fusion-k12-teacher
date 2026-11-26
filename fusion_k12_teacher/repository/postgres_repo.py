@@ -1,15 +1,14 @@
-"""Postgres Repository — cluster mode backend (M1-T2).
-
-asyncpg is an optional dependency, lazily imported — if missing the factory raises
-NonDegradableError and refuses to start (issue #36).
-Schema aligned with SQLiteRepository (task_history / name_map).
-Connection pool via asyncpg.create_pool, fully async API.
-
-Note: this class is fully async; its interface is not in sync with SQLiteRepository (sync).
-Callers (cluster-mode serve) must use the async API; standalone uses sync SQLite.
-Therefore the Repository ABC keeps the sync interface, and Postgres provides async
-adapter methods.
-"""
+# Postgres Repository — cluster mode backend (M1-T2).
+#
+# asyncpg is an optional dependency, lazily imported — if missing the factory raises
+# NonDegradableError and refuses to start (issue #36).
+# Schema aligned with SQLiteRepository (task_history / name_map).
+# Connection pool via asyncpg.create_pool, fully async API.
+#
+# Note: this class is fully async; its interface is not in sync with SQLiteRepository (sync).
+# Callers (cluster-mode serve) must use the async API; standalone uses sync SQLite.
+# Therefore the Repository ABC keeps the sync interface, and Postgres provides async
+# adapter methods.
 
 from __future__ import annotations
 
@@ -62,14 +61,13 @@ _ADD_CRYPTO_COLS = [
 ]
 
 
+# Cluster Postgres persistence backend — asyncpg connection pool.
+#
+#     Constructor lazily imports asyncpg; raises ImportError when missing (factory converts
+#     to NonDegradableError and refuses to start, issue #36).
+#     The pool is created lazily in ensure_pool() (on first use), avoiding a construction-time
+#     DB connection failure blocking startup.
 class PostgresRepository(Repository):
-    """Cluster Postgres persistence backend — asyncpg connection pool.
-
-    Constructor lazily imports asyncpg; raises ImportError when missing (factory converts
-    to NonDegradableError and refuses to start, issue #36).
-    The pool is created lazily in ensure_pool() (on first use), avoiding a construction-time
-    DB connection failure blocking startup.
-    """
 
     def __init__(self, dsn: str, min_size: int = 2, max_size: int = 10):
         try:
@@ -95,8 +93,8 @@ class PostgresRepository(Repository):
                 return redacted
         return self._dsn
 
+    # Lazily create the connection pool + initialize schema — called on first use, avoiding a construction-time DB connection failure.
     async def ensure_pool(self):
-        """Lazily create the connection pool + initialize schema — called on first use, avoiding a construction-time DB connection failure."""
         if self._pool is not None:
             return self._pool
         import asyncpg

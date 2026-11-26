@@ -1,9 +1,8 @@
-"""Fusion-K12-Teacher AI client — the single entry point for all AI inference.
-
-All LLM calls go through fusion-mlx's OpenAI-compatible HTTP API.
-Prefers fusion-core's FusionMLXClient; falls back to direct httpx when fusion-core is missing.
-No direct mlx or mlx-lm imports — every call is routed via fusion-mlx.
-"""
+# Fusion-K12-Teacher AI client — the single entry point for all AI inference.
+#
+# All LLM calls go through fusion-mlx's OpenAI-compatible HTTP API.
+# Prefers fusion-core's FusionMLXClient; falls back to direct httpx when fusion-core is missing.
+# No direct mlx or mlx-lm imports — every call is routed via fusion-mlx.
 
 from __future__ import annotations
 
@@ -32,13 +31,12 @@ def _env_model() -> str:
     return os.environ.get("FUSION_MLX_MODEL", _FALLBACK_MODEL)
 
 
+# Cloud-mode switch (#28 migration review): when FUSION_MLX_CLOUD=1, all requests use strict OpenAI-compatible semantics.
+#
+#     Differences: 1) no chat_template_kwargs injected (strict cloud vendors 4xx-reject unknown fields)
+#     2) no GBNF grammar (mlx-only constrained decoding, no cloud equivalent) 3) auto-select disabled
+#     (cloud model names are unrelated to the local model library, FUSION_MLX_MODEL must be explicit).
 def _cloud_mode() -> bool:
-    """Cloud-mode switch (#28 migration review): when FUSION_MLX_CLOUD=1, all requests use strict OpenAI-compatible semantics.
-
-    Differences: 1) no chat_template_kwargs injected (strict cloud vendors 4xx-reject unknown fields)
-    2) no GBNF grammar (mlx-only constrained decoding, no cloud equivalent) 3) auto-select disabled
-    (cloud model names are unrelated to the local model library, FUSION_MLX_MODEL must be explicit).
-    """
     return os.environ.get("FUSION_MLX_CLOUD", "").strip().lower() in ("1", "true", "yes")
 
 
@@ -94,13 +92,12 @@ except ImportError:
     logger.info("fusion_core unavailable, falling back to direct httpx against fusion-mlx")
 
 
+# fusion-mlx HTTP client — the single entry point for all AI inference.
+#
+#     Prefers fusion-core's FusionMLXClient; when absent, hits /v1/chat/completions directly via httpx.
+#     base_url/model/timeouts are read from environment variables in __init__; changing env after
+#     import and re-instantiating takes effect.
 class MLXClient:
-    """fusion-mlx HTTP client — the single entry point for all AI inference.
-
-    Prefers fusion-core's FusionMLXClient; when absent, hits /v1/chat/completions directly via httpx.
-    base_url/model/timeouts are read from environment variables in __init__; changing env after
-    import and re-instantiating takes effect.
-    """
 
     def __init__(self, model: str = "", base_url: str = ""):
         self.base_url = (base_url or _env_url()).rstrip("/")
@@ -136,15 +133,14 @@ class MLXClient:
             self.base_url, self.model or "(auto)", _HAS_FUSION_CORE, _LLM_MAX_CONCURRENCY,
         )
 
+    # LLM-5/R9: lazily create loop-bound locks — bind to the current running loop on first use.
+    #
+    #         R9: before 3.14, an asyncio.Lock created in __init__ (no loop yet) and reused across
+    #         asyncio.run binds to the old (closed) loop and raises RuntimeError (cross-loop deadlock).
+    #         Create lazily bound to the current loop; this instance must not be reused across loops —
+    #         cli/serve each have their own loop, a shared client needs separate instances or one loop.
+    #         This constraint is documented here, not enforced in code.
     def _ensure_locks(self) -> None:
-        """LLM-5/R9: lazily create loop-bound locks — bind to the current running loop on first use.
-
-        R9: before 3.14, an asyncio.Lock created in __init__ (no loop yet) and reused across
-        asyncio.run binds to the old (closed) loop and raises RuntimeError (cross-loop deadlock).
-        Create lazily bound to the current loop; this instance must not be reused across loops —
-        cli/serve each have their own loop, a shared client needs separate instances or one loop.
-        This constraint is documented here, not enforced in code.
-        """
         if self._cache_lock is None:
             self._cache_lock = asyncio.Lock()
         if self._auto_select_lock is None:
@@ -179,6 +175,13 @@ class MLXClient:
             return {"Authorization": f"Bearer {key}"}
         return {}
 
+    # Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx.
+    #
+    #         A unified retry budget covers transient errors on both the fusion-core and httpx paths;
+    #         a model 404 invalidates the cache and forces a re-select.
+    #         model: override the default model (e.g. temporarily switch to a VLM for image Q&A: Qwen2.5-VL-7B).
+    #         grammar: issue #20 GBNF grammar, passed through via gateway#184 to constrain output format.
+    #         adapters: LoRA/DoRA adapter directory path, mounted in place by fusion-mlx (lora-inplace-swap).
     async def chat(
         self,
         messages: list[dict[str, str]],
@@ -188,14 +191,6 @@ class MLXClient:
         grammar: str | None = None,
         adapters: str | None = None,
     ) -> str:
-        """Call fusion-mlx /v1/chat/completions — all LLM inference goes through fusion-mlx.
-
-        A unified retry budget covers transient errors on both the fusion-core and httpx paths;
-        a model 404 invalidates the cache and forces a re-select.
-        model: override the default model (e.g. temporarily switch to a VLM for image Q&A: Qwen2.5-VL-7B).
-        grammar: issue #20 GBNF grammar, passed through via gateway#184 to constrain output format.
-        adapters: LoRA/DoRA adapter directory path, mounted in place by fusion-mlx (lora-inplace-swap).
-        """
         self._ensure_locks()
         if not self.model:
             self.model = await self._auto_select_model()
@@ -326,8 +321,8 @@ class MLXClient:
             logger.error("unexpected LLM response structure, cannot parse content: %s", type(e).__name__)
             return ""
 
+    # List available fusion-mlx models — with TTL cache and concurrency lock.
     async def list_models(self) -> list[dict[str, Any]]:
-        """List available fusion-mlx models — with TTL cache and concurrency lock."""
         self._ensure_locks()
         now = time.monotonic()
         if self._models_cache is not None and (now - self._models_cache_ts) < self._models_cache_ttl:
@@ -351,13 +346,13 @@ class MLXClient:
         resp.raise_for_status()
         return resp.json().get("data", [])
 
+    # fusion-mlx /v1/audio/speech — Kokoro TTS. Returns audio bytes (wav/mp3/pcm).
     async def speech(
         self, text: str, *,
         voice: str = "",
         response_format: str = "wav",
         speed: float = 1.0,
     ) -> bytes:
-        """fusion-mlx /v1/audio/speech — Kokoro TTS. Returns audio bytes (wav/mp3/pcm)."""
         import time as _time
         _t0 = _time.monotonic()
         payload: dict[str, Any] = {
@@ -394,17 +389,16 @@ class MLXClient:
             logger.error("TTS request failed: %s", e)
             raise
 
+    # ASR — uses the gateway/direct endpoint /v1/audio/transcriptions (Whisper protocol) by default.
+    #
+    #         Cloud mode: the three envs FUSION_MLX_ASR_URL/KEY/MODEL point ASR independently at a
+    #         cloud vendor endpoint (mirroring the TTS FUSION_MLX_TTS_URL/KEY/MODEL pattern);
+    #         behavior is unchanged when unset.
     async def transcribe(
         self, audio: bytes, *,
         model: str = "",
         language: str = "zh",
     ) -> str:
-        """ASR — uses the gateway/direct endpoint /v1/audio/transcriptions (Whisper protocol) by default.
-
-        Cloud mode: the three envs FUSION_MLX_ASR_URL/KEY/MODEL point ASR independently at a
-        cloud vendor endpoint (mirroring the TTS FUSION_MLX_TTS_URL/KEY/MODEL pattern);
-        behavior is unchanged when unset.
-        """
         import time as _time
         _t0 = _time.monotonic()
         if not model:
@@ -447,22 +441,21 @@ class MLXClient:
             return {}
         return {"enable_thinking": False}
 
+    # fusion-mlx /v1/chat/completions stream — SSE token stream. Returns an httpx.Response (streaming).
+    #
+    #         P1-19: streaming is not subject to the chat semaphore — in _answer streaming Q&A, TTS must
+    #         run concurrently with the LLM stream (same semaphore would deadlock). Streaming inference is
+    #         serialized within a single DH session (guaranteed by the fsm); cross-session concurrency is
+    #         indirectly limited by the chat() semaphore.
+    #         issue #20: enable_thinking parameter — None uses _think_kwargs() (env-controlled),
+    #         True/False override explicitly (used by the two-stage CoT pipeline).
+    #         issue #20 gap 2: grammar parameter — GBNF grammar passthrough (supported by gateway#184),
+    #         constraining stage-2 DSL output to valid JSON, eliminating parse failures.
     async def chat_stream(
         self, messages: list[dict[str, str]], *, temperature: float = 0.7, max_tokens: int = 4096,
         enable_thinking: bool | None = None,
         grammar: str | None = None,
     ) -> Any:
-        """fusion-mlx /v1/chat/completions stream — SSE token stream. Returns an httpx.Response (streaming).
-
-        P1-19: streaming is not subject to the chat semaphore — in _answer streaming Q&A, TTS must
-        run concurrently with the LLM stream (same semaphore would deadlock). Streaming inference is
-        serialized within a single DH session (guaranteed by the fsm); cross-session concurrency is
-        indirectly limited by the chat() semaphore.
-        issue #20: enable_thinking parameter — None uses _think_kwargs() (env-controlled),
-        True/False override explicitly (used by the two-stage CoT pipeline).
-        issue #20 gap 2: grammar parameter — GBNF grammar passthrough (supported by gateway#184),
-        constraining stage-2 DSL output to valid JSON, eliminating parse failures.
-        """
         self._ensure_locks()
         if not self.model:
             self.model = await self._auto_select_model()
@@ -490,13 +483,12 @@ class MLXClient:
             "POST", "/chat/completions", json=payload, headers=self._auth_headers(),
         )
 
+    # Auto-select an available chat model — prefer known chat models, skip non-chat models.
+    #
+    #         Disabled in cloud mode (FUSION_MLX_CLOUD=1): cloud model names are unrelated to the local
+    #         mlx library, so scanning /v1/models against _PREFERRED_CHAT_MODELS would mis-select —
+    #         FUSION_MLX_MODEL must be explicit.
     async def _auto_select_model(self, force: bool = False) -> str:
-        """Auto-select an available chat model — prefer known chat models, skip non-chat models.
-
-        Disabled in cloud mode (FUSION_MLX_CLOUD=1): cloud model names are unrelated to the local
-        mlx library, so scanning /v1/models against _PREFERRED_CHAT_MODELS would mis-select —
-        FUSION_MLX_MODEL must be explicit.
-        """
         async with self._auto_select_lock:
             if self.model and not force:
                 return self.model

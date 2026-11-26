@@ -1,4 +1,4 @@
-"""textbook module tests — loader index/grade/unit/lesson queries."""
+# textbook module tests — loader index/grade/unit/lesson queries.
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ def loader():
     return tl
 
 
+# Textbook data integrity — every lesson must anchor a knowledge point, references must resolve in standards (#29).
 class TestDataIntegrity:
-    """Textbook data integrity — every lesson must anchor a knowledge point, references must resolve in standards (#29)."""
 
     def test_every_lesson_has_knowledge_point(self, loader):
         # Any lesson in the data files with empty knowledge_point_ids → silent degradation of variation drills/graph anchoring

@@ -1,9 +1,8 @@
-"""Audit event model — M3-T13.
-
-One audit event per request, including trace_id (trace passthrough), route,
-status, duration, and the hashed student identifier (no raw PII stored).
-Used for persistence + export + alerting baseline.
-"""
+# Audit event model — M3-T13.
+#
+# One audit event per request, including trace_id (trace passthrough), route,
+# status, duration, and the hashed student identifier (no raw PII stored).
+# Used for persistence + export + alerting baseline.
 
 from __future__ import annotations
 
@@ -14,22 +13,22 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
+# Generate a trace_id — short hex string, passed through logs/audit/LLM.
 def new_trace_id() -> str:
-    """Generate a trace_id — short hex string, passed through logs/audit/LLM."""
     return uuid.uuid4().hex
 
 
+# Short PII hash — logs/audit never store the raw value. Empty input returns empty string.
 def hash_pii(value: Any) -> str:
-    """Short PII hash — logs/audit never store the raw value. Empty input returns empty string."""
     s = str(value or "")
     if not s:
         return ""
     return "p" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:10]
 
 
+# Audit event — one audit record of a request/operation.
 @dataclass
 class AuditEvent:
-    """Audit event — one audit record of a request/operation."""
 
     ts: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%S"))
     trace_id: str = ""

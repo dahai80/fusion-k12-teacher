@@ -1,11 +1,10 @@
-"""Classroom module data models — K1 text version (LiveKit/digital-human
-upstream deferred).
-
-Aligned with fusion-k12-classroom-prd E1-E6: course packages/lesson
-scripts/sessions/answers/reports.
-K1 text version: no LiveKit audio/video, session is persisted only without
-token signing; the lesson is presented page by page as text.
-"""
+# Classroom module data models — K1 text version (LiveKit/digital-human
+# upstream deferred).
+#
+# Aligned with fusion-k12-classroom-prd E1-E6: course packages/lesson
+# scripts/sessions/answers/reports.
+# K1 text version: no LiveKit audio/video, session is persisted only without
+# token signing; the lesson is presented page by page as text.
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
-"""Learning analytics module — class profiles, student profiles, error
-attribution, remediation plans."""
+# Learning analytics module — class profiles, student profiles, error
+# attribution, remediation plans.
 
 from .engine import AnalyticsEngine
 from .loader import load_from_csv, load_from_json

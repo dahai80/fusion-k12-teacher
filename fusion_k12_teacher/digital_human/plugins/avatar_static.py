@@ -1,8 +1,7 @@
-"""StaticAvatar — always-available fallback digital human.
-
-No lip-sync, only idle frames (breath/blink via Simulation).
-Used when MuseTalk is unavailable or degraded.
-"""
+# StaticAvatar — always-available fallback digital human.
+#
+# No lip-sync, only idle frames (breath/blink via Simulation).
+# Used when MuseTalk is unavailable or degraded.
 
 from __future__ import annotations
 

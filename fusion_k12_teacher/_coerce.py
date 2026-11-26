@@ -1,12 +1,11 @@
-"""Unified from_dict type coercion (E13).
-
-Previously each module's from_dict coercion strategy diverged: analytics had
-_coerce_* defenses while agent/desensitize/safety used bare d.get with no
-coercion — malformed LLM types were silently swallowed on coerced fields but
-raised TypeError on uncoerced ones. Consolidated here into a single
-implementation; all from_dict paths go through this gate with predictable
-behavior.
-"""
+# Unified from_dict type coercion (E13).
+#
+# Previously each module's from_dict coercion strategy diverged: analytics had
+# _coerce_* defenses while agent/desensitize/safety used bare d.get with no
+# coercion — malformed LLM types were silently swallowed on coerced fields but
+# raised TypeError on uncoerced ones. Consolidated here into a single
+# implementation; all from_dict paths go through this gate with predictable
+# behavior.
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""FastAPI HTTP API entrypoint — exposes the five engines as REST APIs."""
+# FastAPI HTTP API entrypoint — exposes the five engines as REST APIs.
 
 from __future__ import annotations
 
@@ -97,12 +97,11 @@ _RATE_MAX = int(os.environ.get("FUSION_K12_RATE_MAX", "60"))
 _RATE_STATE_FILE = os.environ.get("FUSION_K12_RATE_STATE_FILE", "")
 
 
+# Sliding-window rate limiter (SRV-2) — throttles by client IP.
+#
+#     A1: prefers fcntl file lock + shared state file so multiple workers/nodes share one quota.
+#     Falls back to in-process deque when no shared file is configured (single worker).
 class _RateLimiter:
-    """Sliding-window rate limiter (SRV-2) — throttles by client IP.
-
-    A1: prefers fcntl file lock + shared state file so multiple workers/nodes share one quota.
-    Falls back to in-process deque when no shared file is configured (single worker).
-    """
 
     def __init__(self, window: int, max_req: int, state_file: str = ""):
         self._window = window
@@ -167,8 +166,8 @@ class _RateLimiter:
             return True
 
 
+# Return the shared CacheBackend singleton in cluster mode, None in standalone (in-process rate limiting).
 def _shared_cache():
-    """Return the shared CacheBackend singleton in cluster mode, None in standalone (in-process rate limiting)."""
     if os.environ.get("FUSION_K12_MODE", "").lower() != "cluster":
         return None
     if not os.environ.get("FUSION_K12_REDIS_URL", ""):
@@ -184,8 +183,8 @@ def _shared_cache():
 _rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX, _RATE_STATE_FILE)
 
 
+# M3-T17: hot-reload config change callback — refreshes mutable config held by engines, no engine rebuild.
 def _on_config_change(key: str, value: str) -> None:
-    """M3-T17: hot-reload config change callback — refreshes mutable config held by engines, no engine rebuild."""
     try:
         if key == "FUSION_MLX_MODEL" and mlx_client is not None:
             mlx_client.model = value
@@ -208,8 +207,8 @@ def _on_config_change(key: str, value: str) -> None:
         logger.warning("Failed to apply config change %s=%s: %s", key, value, e)
 
 
+# M3-T17: start config provider polling + register callback. FileProvider is hot-reloadable, EnvProvider is a static no-op.
 def _start_config_hot_reload() -> None:
-    """M3-T17: start config provider polling + register callback. FileProvider is hot-reloadable, EnvProvider is a static no-op."""
     try:
         from .config import get_config
         cfg = get_config()
@@ -219,8 +218,8 @@ def _start_config_hot_reload() -> None:
         logger.warning("Config hot-reload failed to start (config still usable, just no hot reload): %s", e)
 
 
+# Stop the config polling thread.
 def _stop_config_hot_reload() -> None:
-    """Stop the config polling thread."""
     try:
         from .config import get_config
         get_config().stop()
@@ -233,12 +232,11 @@ _mlx_watch_task: asyncio.Task | None = None
 _shell_registry_task: asyncio.Task | None = None
 
 
+# Periodically probe the LLM backend (same source as /api/health: list_models). down -> WARNING, recovery -> INFO.
+#
+#     The mlx engine repeatedly hangs under sustained load (upstream issue) — the only signal used to be
+#     generation requests starting to time out, invisible to ops. The watchdog makes a hang visible within one probe cycle.
 async def _mlx_health_watchdog() -> None:
-    """Periodically probe the LLM backend (same source as /api/health: list_models). down -> WARNING, recovery -> INFO.
-
-    The mlx engine repeatedly hangs under sustained load (upstream issue) — the only signal used to be
-    generation requests starting to time out, invisible to ops. The watchdog makes a hang visible within one probe cycle.
-    """
     interval = float(os.environ.get("FUSION_K12_HEALTH_PROBE_INTERVAL", "60"))
     cloud = False
     try:
@@ -286,8 +284,8 @@ def _drain_timeout() -> float:
     return float(os.environ.get("FUSION_K12_DRAIN_TIMEOUT", "30"))
 
 
+# M3-T19: wait for in-flight requests to drain to zero, or force shutdown on timeout.
 async def _drain_inflight() -> None:
-    """M3-T19: wait for in-flight requests to drain to zero, or force shutdown on timeout."""
     global _draining
     _draining = True
     if _inflight <= 0:
@@ -304,9 +302,9 @@ async def _drain_inflight() -> None:
         logger.warning("Drain timed out after %ss, %d requests still in flight, forcing shutdown", timeout, _inflight)
 
 
+# M3-T19: SIGTERM -> trigger graceful drain (uvicorn calls lifespan shutdown on SIGTERM,
+#     here we additionally set _draining early to reject new requests, and log for ops visibility).
 def _install_sigterm_handler() -> None:
-    """M3-T19: SIGTERM -> trigger graceful drain (uvicorn calls lifespan shutdown on SIGTERM,
-    here we additionally set _draining early to reject new requests, and log for ops visibility)."""
     import signal
     try:
         loop = asyncio.get_running_loop()
@@ -317,8 +315,8 @@ def _install_sigterm_handler() -> None:
         logger.warning("SIGTERM handler registration failed, drain relies on lifespan shutdown: %s", e)
 
 
+# SIGTERM callback — mark draining, reject new requests. Actual shutdown is done by lifespan shutdown.
 def _on_sigterm() -> None:
-    """SIGTERM callback — mark draining, reject new requests. Actual shutdown is done by lifespan shutdown."""
     global _draining, _ready
     _draining = True
     _ready = False
@@ -470,8 +468,8 @@ _MAT_MAX_PER_TEACHER = int(os.environ.get("FUSION_K12_MATERIAL_MAX_PER_TEACHER",
 _UPLOAD_MAX_AGE_DAYS = int(os.environ.get("FUSION_K12_UPLOAD_RETENTION_DAYS", "90"))
 
 
+# Purge old upload_*.json files — both data/ and fusion_k12_teacher/data/.
 def _purge_old_uploads() -> int:
-    """Purge old upload_*.json files — both data/ and fusion_k12_teacher/data/."""
     import glob
     now = time.time()
     cutoff = now - _UPLOAD_MAX_AGE_DAYS * 86400
@@ -489,8 +487,8 @@ def _purge_old_uploads() -> int:
     return purged
 
 
+# Purge old material records — by age in days plus per-teacher cap.
 def _purge_old_materials() -> int:
-    """Purge old material records — by age in days plus per-teacher cap."""
     if _materials_repo is None:
         return 0
     before_ts = ""
@@ -683,9 +681,9 @@ app = FastAPI(
 )
 
 
+# SRV-2: sliding-window rate limiting, prevents a single client from overwhelming local inference resources.
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """SRV-2: sliding-window rate limiting, prevents a single client from overwhelming local inference resources."""
     if request.url.path.startswith("/api/"):
         key = await _client_key(request)
         if not await _rate_limiter.check(key):
@@ -698,13 +696,12 @@ async def rate_limit_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# M3-T13: audit instrumentation — generate a trace_id per request, record route/method/status/duration.
+#
+#     trace_id is propagated to the X-Trace-Id response header; student identifier hash is extracted from the request body student_id field.
+#     Probe/metrics endpoints are excluded (no audit needed). Audit events are recorded asynchronously into AuditLogger (T14 persistence).
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
-    """M3-T13: audit instrumentation — generate a trace_id per request, record route/method/status/duration.
-
-    trace_id is propagated to the X-Trace-Id response header; student identifier hash is extracted from the request body student_id field.
-    Probe/metrics endpoints are excluded (no audit needed). Audit events are recorded asynchronously into AuditLogger (T14 persistence).
-    """
     path = request.url.path
     if not path.startswith("/api/") or path in ("/api/health", "/api/ready", "/api/metrics"):
         return await call_next(request)
@@ -778,8 +775,8 @@ async def audit_middleware(request: Request, call_next):
 _bg_tasks: set[asyncio.Task] = set()
 
 
+# Spawn a background task holding a strong reference — auto-removed when done, exceptions go to structured logs.
 def _spawn_bg_task(coro) -> asyncio.Task:
-    """Spawn a background task holding a strong reference — auto-removed when done, exceptions go to structured logs."""
     task = asyncio.ensure_future(coro)
     _bg_tasks.add(task)
 
@@ -855,12 +852,11 @@ def _save_material_if_teacher(
         logger.warning("Material save failed (does not affect the response): %s", e)
 
 
+# After a generation route succeeds, if X-Auth-Token is present, auto-save the material to the resource library.
+#
+#     Reads the request body (cached so downstream can still read it) + response body; skips non-200 or non-generation routes.
 @app.middleware("http")
 async def auto_save_material_middleware(request: Request, call_next):
-    """After a generation route succeeds, if X-Auth-Token is present, auto-save the material to the resource library.
-
-    Reads the request body (cached so downstream can still read it) + response body; skips non-200 or non-generation routes.
-    """
     path = request.url.path
     if request.method != "POST" or path not in _GEN_ROUTE_TYPES:
         return await call_next(request)
@@ -1004,10 +1000,10 @@ class AuthLoginRequest(BaseModel):
 _AUTH_TOKEN_HEADER = APIKeyHeader(name="X-Auth-Token", auto_error=False)
 
 
+# Soft identity — verify and return teacher_id when a token is present, otherwise None (not persisted in api_key-only mode).
 async def get_optional_teacher(
     x_auth_token: str = Security(_AUTH_TOKEN_HEADER),
 ) -> str | None:
-    """Soft identity — verify and return teacher_id when a token is present, otherwise None (not persisted in api_key-only mode)."""
     if not x_auth_token or not auth_service:
         return None
     try:
@@ -1016,10 +1012,10 @@ async def get_optional_teacher(
         return None
 
 
+# Hard identity — a valid token is required, otherwise 401. Used by /me, /logout, and materials read/write.
 async def require_teacher(
     x_auth_token: str = Security(_AUTH_TOKEN_HEADER),
 ) -> str:
-    """Hard identity — a valid token is required, otherwise 401. Used by /me, /logout, and materials read/write."""
     if not auth_service:
         raise HTTPException(status_code=503, detail="auth service unavailable")
     tid = await asyncio.to_thread(auth_service.verify_token, x_auth_token) if x_auth_token else None
@@ -1612,9 +1608,9 @@ class StandardsQueryRequest(BaseModel):
 
 # ── Standards (v0.3) ──
 
+# List curriculum-standard knowledge points.
 @app.get("/api/standards/list")
 async def standards_list(subject: str = "", grade: str = "", _: str = Depends(require_api_key)):
-    """List curriculum-standard knowledge points."""
     logger.info("standards/list: subject=%s grade=%s", subject, grade)
     if subject and grade:
         points = standards_query.get_knowledge_points(subject, grade)
@@ -1630,9 +1626,9 @@ async def standards_list(subject: str = "", grade: str = "", _: str = Depends(re
     }
 
 
+# Query curriculum-standard knowledge points.
 @app.post("/api/standards/query")
 async def standards_query_endpoint(req: StandardsQueryRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Query curriculum-standard knowledge points."""
     logger.info("standards/query: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     if req.topic:
         points = standards_query.find_by_topic(req.subject, req.grade, req.topic)
@@ -1667,9 +1663,9 @@ class StandardsRemediateRequest(BaseModel):
     missing_points: list[str] = Field(..., min_length=1, max_length=30, description="缺失知识点ID列表")
 
 
+# Standards alignment — returns knowledge points / must-cover / optional-advanced / prerequisites for the topic.
 @app.post("/api/standards/align")
 async def standards_align(req: StandardsAlignRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Standards alignment — returns knowledge points / must-cover / optional-advanced / prerequisites for the topic."""
     if standards_aligner is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
     ctx = standards_aligner.align(subject=req.subject, grade=req.grade, topic=req.topic)
@@ -1686,9 +1682,9 @@ async def standards_align(req: StandardsAlignRequest, _: str = Depends(require_a
     }
 
 
+# Standards coverage report — validates how well teaching objectives cover the knowledge points.
 @app.post("/api/standards/coverage")
 async def standards_coverage(req: StandardsCoverageRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Standards coverage report — validates how well teaching objectives cover the knowledge points."""
     if standards_query is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
     report = standards_query.validate_coverage(
@@ -1705,9 +1701,9 @@ async def standards_coverage(req: StandardsCoverageRequest, _: str = Depends(req
     }
 
 
+# Generate a remediation teaching plan for missing knowledge points — no learner data needed, based on standard knowledge points + prerequisites.
 @app.post("/api/standards/remediate")
 async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a remediation teaching plan for missing knowledge points — no learner data needed, based on standard knowledge points + prerequisites."""
     logger.info("standards/remediate: subject=%s grade=%s missing=%d", req.subject, req.grade, len(req.missing_points))
     if standards_query is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
@@ -1794,9 +1790,9 @@ async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(r
         "error": llm_err,
     }
 
+# Generate a three-tier differentiated lesson plan.
 @app.post("/api/curriculum/plan-diff")
 async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a three-tier differentiated lesson plan."""
     logger.info("curriculum/plan-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_lesson(
         subject=req.subject, grade=req.grade, topic=req.topic, duration=req.duration,
@@ -1805,9 +1801,9 @@ async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(
     return result.to_dict()
 
 
+# Generate a three-tier differentiated quiz.
 @app.post("/api/curriculum/quiz-diff")
 async def curriculum_quiz_diff(req: DifferentiatedQuizRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a three-tier differentiated quiz."""
     logger.info("curriculum/quiz-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_quiz(
         subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
@@ -1886,8 +1882,8 @@ _ALLOWED_DATA_DIRS: list[Path] = []
 _UPLOAD_KEEP = int(os.environ.get("FUSION_K12_UPLOAD_KEEP", "500"))
 
 
+# Rolling cleanup of upload_*.json — keep only the newest `keep` files; failures do not affect the upload flow.
 def _sweep_upload_files(dest_dir: Path, keep: int = _UPLOAD_KEEP) -> None:
-    """Rolling cleanup of upload_*.json — keep only the newest `keep` files; failures do not affect the upload flow."""
     try:
         files = sorted(
             dest_dir.glob("upload_*.json"),
@@ -1911,11 +1907,10 @@ def _init_allowed_dirs():
     logger.info("allowed data dirs: %s", [str(d) for d in _ALLOWED_DATA_DIRS])
 
 
+# Validate that data_path is inside an allowed directory (SRV-5: exact is_relative_to match, not prefix).
+#
+#     AGT-2/R7: reuse the loader.validate_data_path whitelist so CLI/tasks/serve validate from the same source.
 def _check_allowed_path(path: str) -> Path:
-    """Validate that data_path is inside an allowed directory (SRV-5: exact is_relative_to match, not prefix).
-
-    AGT-2/R7: reuse the loader.validate_data_path whitelist so CLI/tasks/serve validate from the same source.
-    """
     try:
         from .analytics.loader import DataPathError, validate_data_path
         return validate_data_path(path)
@@ -1926,8 +1921,8 @@ def _check_allowed_path(path: str) -> Path:
         )
 
 
+# SRV-4: run synchronous file I/O in a thread pool so the event loop is not blocked.
 async def _load_assessments(path: str):
-    """SRV-4: run synchronous file I/O in a thread pool so the event loop is not blocked."""
     if not path:
         return []
     _check_allowed_path(path)
@@ -1938,9 +1933,9 @@ async def _load_assessments(path: str):
 
 # ── Analytics (v0.4) ──
 
+# Generate a class learning profile.
 @app.post("/api/analytics/class-profile")
 async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a class learning profile."""
     logger.info("analytics/class-profile: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
     assessments = await _load_assessments(req.data_path)
     profile = await analytics_engine.build_class_profile(
@@ -1950,9 +1945,9 @@ async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(req
     return profile.to_dict()
 
 
+# Generate an individual student profile.
 @app.post("/api/analytics/student-profile")
 async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate an individual student profile."""
     logger.info("analytics/student-profile: student=%s subject=%s grade=%s", _mask_sid(req.student_id), req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
@@ -1963,9 +1958,9 @@ async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends
     return profile.to_dict()
 
 
+# Error attribution analysis.
 @app.post("/api/analytics/error-analysis")
 async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Error attribution analysis."""
     logger.info("analytics/error-analysis: subject=%s grade=%s", req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     responses = []
@@ -1985,9 +1980,9 @@ async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(r
     return {"total": len(errors), "errors": [e.to_dict() for e in errors]}
 
 
+# Generate a remedial teaching plan.
 @app.post("/api/analytics/remedial")
 async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a remedial teaching plan."""
     logger.info("analytics/remedial: student=%s subject=%s grade=%s", _mask_sid(req.student_id), req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
@@ -2013,9 +2008,9 @@ async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_
     return plan.to_dict()
 
 
+# Generate a class learning report (Markdown).
 @app.post("/api/analytics/class-report")
 async def analytics_class_report(req: ClassReportRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a class learning report (Markdown)."""
     logger.info("analytics/class-report: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
     assessments = await _load_assessments(req.data_path)
     profile = await analytics_engine.build_class_profile(
@@ -2026,9 +2021,9 @@ async def analytics_class_report(req: ClassReportRequest, _: str = Depends(requi
     return {"class_id": req.class_id, "report": report}
 
 
+# Learning analytics data JSON template — two students each with scores/responses, upload-ready for validation.
 @app.get("/api/analytics/template/json")
 async def analytics_template_json(_: str = Depends(require_api_key)):
-    """Learning analytics data JSON template — two students each with scores/responses, upload-ready for validation."""
     logger.info("analytics/template/json: returning JSON template")
     # i18n: user-facing (sample assessment data)
     sample = [
@@ -2066,9 +2061,9 @@ async def analytics_template_json(_: str = Depends(require_api_key)):
     return sample
 
 
+# Learning analytics data CSV template — one answer record per row, aggregated by student_id+assessment_id.
 @app.get("/api/analytics/template/csv")
 async def analytics_template_csv(_: str = Depends(require_api_key)):
-    """Learning analytics data CSV template — one answer record per row, aggregated by student_id+assessment_id."""
     logger.info("analytics/template/csv: returning CSV template")
     # i18n: user-facing (sample assessment data)
     csv = (
@@ -2082,13 +2077,12 @@ async def analytics_template_csv(_: str = Depends(require_api_key)):
     return PlainTextResponse(content=csv, media_type="text/csv", headers=headers)
 
 
+# Upload learning analytics data — persisted to an allowed directory and the path returned for later analytics calls (SRV-6).
+#
+#     R6: minors' names are force-anonymized before persisting (PII never stored in plaintext); per-record schema validation rejects malformed injection;
+#     logs record only counts and file names, never absolute paths.
 @app.post("/api/analytics/upload")
 async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Upload learning analytics data — persisted to an allowed directory and the path returned for later analytics calls (SRV-6).
-
-    R6: minors' names are force-anonymized before persisting (PII never stored in plaintext); per-record schema validation rejects malformed injection;
-    logs record only counts and file names, never absolute paths.
-    """
     logger.info("analytics/upload: %d records, format=%s", len(req.data), req.format)
     if req.format != "json":
         raise HTTPException(
@@ -2178,9 +2172,9 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
 
 # ── Content worksheet-diff (v1.0) ──
 
+# Generate a three-tier differentiated worksheet.
 @app.post("/api/content/worksheet-diff")
 async def content_worksheet_diff(req: ContentWorksheetDiffRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Generate a three-tier differentiated worksheet."""
     logger.info("content/worksheet-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_worksheet(
         subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
@@ -2206,9 +2200,9 @@ class AgentScheduleRequest(BaseModel):
 
 # ── Agent (v0.5) ──
 
+# List available tasks.
 @app.get("/api/agent/tasks")
 async def agent_list_tasks(_: str = Depends(require_api_key)):
-    """List available tasks."""
     tasks = list_available_tasks()
     registered = scheduler.list_tasks()
     return {
@@ -2217,12 +2211,11 @@ async def agent_list_tasks(_: str = Depends(require_api_key)):
     }
 
 
+# Run a task immediately — built fresh from request parameters each call, avoiding shared _tasks cross-request pollution (SRV-7).
+#
+#     data_path is passed in and reloaded every call, so stale data is never baked in at task-build time (AGT-5).
 @app.post("/api/agent/run")
 async def agent_run_task(req: AgentRunRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Run a task immediately — built fresh from request parameters each call, avoiding shared _tasks cross-request pollution (SRV-7).
-
-    data_path is passed in and reloaded every call, so stale data is never baked in at task-build time (AGT-5).
-    """
     logger.info("agent/run: task_id=%s subject=%s grade=%s", req.task_id, req.subject, req.grade)
     run_kwargs = {"subject": req.subject, "grade": req.grade}
     if req.data_path:
@@ -2233,9 +2226,9 @@ async def agent_run_task(req: AgentRunRequest, _: str = Depends(require_api_key)
     return result.to_dict()
 
 
+# Enable/disable task scheduling.
 @app.post("/api/agent/schedule")
 async def agent_schedule_task(req: AgentScheduleRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Enable/disable task scheduling."""
     logger.info("agent/schedule: task_id=%s enable=%s", req.task_id, req.enable)
     if req.enable:
         ok = scheduler.enable_task(req.task_id)
@@ -2244,9 +2237,9 @@ async def agent_schedule_task(req: AgentScheduleRequest, _: str = Depends(requir
     return {"task_id": req.task_id, "enabled": req.enable, "success": ok}
 
 
+# View execution history.
 @app.get("/api/agent/history")
 async def agent_history(limit: int = 20, _: str = Depends(require_api_key)):
-    """View execution history."""
     history = scheduler.get_history(limit=limit)
     return {"total": len(history), "history": [r.to_dict() for r in history]}
 
@@ -2270,29 +2263,29 @@ class SafetyWordlistRequest(BaseModel):
 
 # ── Safety (v0.6) ──
 
+# Check content safety.
 @app.post("/api/safety/check")
 async def safety_check(req: SafetyCheckRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Check content safety."""
     logger.info("safety/check: grade=%s text=%s...", req.grade, req.text[:30])
     result = content_filter.check_text(req.text, req.grade)
     return result.to_dict()
 
 
+# Filter sensitive words.
 @app.post("/api/safety/filter")
 async def safety_filter(req: SafetyFilterRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Filter sensitive words."""
     logger.info("safety/filter: text=%s...", req.text[:30])
     filtered = content_filter.filter_sensitive(req.text)
     return {"filtered_text": filtered}
 
 
+# Manage the sensitive-word list.
 @app.post("/api/safety/wordlist")
 async def safety_wordlist(
     req: SafetyWordlistRequest,
     _: str = Depends(require_admin_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Manage the sensitive-word list."""
     logger.info("safety/wordlist: action=%s word=%s", req.action, req.word)
     if req.action == "add":
         sensitive_wordlist.add(req.word)
@@ -2305,9 +2298,9 @@ async def safety_wordlist(
     return {"error": "unknown action"}
 
 
+# List the sensitive-word list.
 @app.get("/api/safety/wordlist")
 async def safety_wordlist_list(_: str = Depends(require_api_key)):
-    """List the sensitive-word list."""
     return {"count": sensitive_wordlist.count, "words": sensitive_wordlist.list_words()}
 
 
@@ -2327,13 +2320,13 @@ class DesensitizeExportRequest(BaseModel):
 
 # ── Desensitize (v0.6) ──
 
+# Anonymize a list of records.
 @app.post("/api/desensitize/anonymize")
 async def desensitize_anonymize(
     req: DesensitizeAnonRequest,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Anonymize a list of records."""
     logger.info("desensitize/anonymize: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode, id_prefix=req.id_prefix)
     anon = DataAnonymizer(cfg)
@@ -2345,13 +2338,13 @@ async def desensitize_anonymize(
     }
 
 
+# Export anonymized data.
 @app.post("/api/desensitize/export")
 async def desensitize_export(
     req: DesensitizeExportRequest,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Export anonymized data."""
     logger.info("desensitize/export: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode)
     anon = DataAnonymizer(cfg)
@@ -2374,14 +2367,15 @@ async def desensitize_export(
 # ============================================================================
 
 
+# List registered subjects and their capability manifests.
 @app.get("/api/course/subjects")
 async def course_subjects(_: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """List registered subjects and their capability manifests."""
     if subject_registry is None:
         raise HTTPException(503, "subject registry not ready")
     return {"subjects": subject_registry.manifests()}
 
 
+# Subject knowledge-graph node list (filter by stage/strand/grade/node_type).
 @app.get("/api/course/{subject}/graph/nodes")
 async def course_graph_nodes(
     subject: str,
@@ -2392,7 +2386,6 @@ async def course_graph_nodes(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Subject knowledge-graph node list (filter by stage/strand/grade/node_type)."""
     mod = _get_subject_module(subject)
     kg = mod.knowledge_graph()
     if kg is None:
@@ -2401,6 +2394,7 @@ async def course_graph_nodes(
     return {"subject": subject, "count": len(nodes), "nodes": [n.to_dict() for n in nodes[:200]]}
 
 
+# Subject knowledge-graph node detail (formula / common mistakes / related problem types / prerequisite chain).
 @app.get("/api/course/{subject}/graph/node/{node_id}")
 async def course_graph_node(
     subject: str,
@@ -2408,7 +2402,6 @@ async def course_graph_node(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Subject knowledge-graph node detail (formula / common mistakes / related problem types / prerequisite chain)."""
     mod = _get_subject_module(subject)
     kg = mod.knowledge_graph()
     if kg is None:
@@ -2433,6 +2426,10 @@ class CourseLessonScriptRequest(BaseModel):
     layer: str = "B"
 
 
+# Generate a subject Socratic lesson-script DSL following 5E (UC-M1).
+#
+#     issue #19 P0: returns a spec DSL v3.0 compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
+#     for downstream artifacts-engine/trainer/bench consumption. to_dict() preserves the internal teaching-script format.
 @app.post("/api/course/{subject}/lesson-script")
 async def course_lesson_script(
     subject: str,
@@ -2440,11 +2437,6 @@ async def course_lesson_script(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Generate a subject Socratic lesson-script DSL following 5E (UC-M1).
-
-    issue #19 P0: returns a spec DSL v3.0 compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
-    for downstream artifacts-engine/trainer/bench consumption. to_dict() preserves the internal teaching-script format.
-    """
     mod = _get_subject_module(subject)
     tutor = mod.socratic_tutor()
     if tutor is None:
@@ -2462,6 +2454,7 @@ class CourseCheckpointRequest(BaseModel):
     student_answer: str
 
 
+# Checkpoint judging — the subject verifier is the numeric authority (UC-M2).
 @app.post("/api/course/{subject}/checkpoint")
 async def course_checkpoint(
     subject: str,
@@ -2469,7 +2462,6 @@ async def course_checkpoint(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Checkpoint judging — the subject verifier is the numeric authority (UC-M2)."""
     from .course.models import Checkpoint
     mod = _get_subject_module(subject)
     tutor = mod.socratic_tutor()
@@ -2492,6 +2484,7 @@ class CourseSceneCompileRequest(BaseModel):
     knowledge_node_id: str = ""
 
 
+# Problem to parameterized scene DSL (SymPy numeric overwrite, UC-M2 animation rendering).
 @app.post("/api/course/{subject}/scene-compile")
 async def course_scene_compile(
     subject: str,
@@ -2499,7 +2492,6 @@ async def course_scene_compile(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Problem to parameterized scene DSL (SymPy numeric overwrite, UC-M2 animation rendering)."""
     mod = _get_subject_module(subject)
     compiler = mod.scene_compiler()
     if compiler is None:
@@ -2513,6 +2505,7 @@ class CourseErrorAttributionRequest(BaseModel):
     max_depth: int = 3
 
 
+# Wrong-answer GraphRAG reverse attribution — trace the faulty path along prerequisite dependencies (UC-M4).
 @app.post("/api/course/{subject}/error-attribution")
 async def course_error_attribution(
     subject: str,
@@ -2520,7 +2513,6 @@ async def course_error_attribution(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Wrong-answer GraphRAG reverse attribution — trace the faulty path along prerequisite dependencies (UC-M4)."""
     mod = _get_subject_module(subject)
     kg = mod.knowledge_graph()
     if kg is None:
@@ -2535,6 +2527,7 @@ async def course_error_attribution(
     }
 
 
+# Student subject-mastery heatmap (confidence heuristic, DKT alternative, UC-M3).
 @app.get("/api/course/{subject}/mastery/{student_id}")
 async def course_mastery(
     subject: str,
@@ -2542,7 +2535,6 @@ async def course_mastery(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Student subject-mastery heatmap (confidence heuristic, DKT alternative, UC-M3)."""
     if subject_registry is None:
         raise HTTPException(503, "subject registry not ready")
     return {
@@ -2553,8 +2545,8 @@ async def course_mastery(
     }
 
 
+# Fetch the subject module from the registry; unregistered returns 404.
 def _get_subject_module(subject: str):
-    """Fetch the subject module from the registry; unregistered returns 404."""
     if subject_registry is None:
         raise HTTPException(503, "subject registry not ready")
     try:
@@ -2563,6 +2555,7 @@ def _get_subject_module(subject: str):
         raise HTTPException(404, f"subject not registered: {subject}")
 
 
+# Subject problem-bank list (triplet tagging: knowledge point + cognitive level + error cause).
 @app.get("/api/course/{subject}/problem-bank")
 async def course_problem_bank(
     subject: str,
@@ -2574,7 +2567,6 @@ async def course_problem_bank(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Subject problem-bank list (triplet tagging: knowledge point + cognitive level + error cause)."""
     mod = _get_subject_module(subject)
     bank = mod.problem_bank()
     if bank is None:
@@ -2591,6 +2583,7 @@ async def course_problem_bank(
     }
 
 
+# Single problem detail (variables / expected answer / cognitive points).
 @app.get("/api/course/{subject}/problem-bank/{problem_id}")
 async def course_problem_detail(
     subject: str,
@@ -2598,7 +2591,6 @@ async def course_problem_detail(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Single problem detail (variables / expected answer / cognitive points)."""
     mod = _get_subject_module(subject)
     bank = mod.problem_bank()
     if bank is None:
@@ -2651,13 +2643,13 @@ class ClassroomSessionRequest(BaseModel):
     student_id: str = "guest"
 
 
+# E1 teaching script generation — page-by-page narration + question points + emotion_tag.
 @app.post("/api/classroom/script")
 async def classroom_script(
     req: ClassroomScriptRequest,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E1 teaching script generation — page-by-page narration + question points + emotion_tag."""
     if lesson_scripter is None:
         raise HTTPException(503, "classroom module not ready")
     script = await lesson_scripter.generate(
@@ -2667,13 +2659,13 @@ async def classroom_script(
     return script.to_dict()
 
 
+# E2 course pack packaging — lesson plan + slides + quiz + script into a class_id + 6-digit classroom code.
 @app.post("/api/classroom/pack")
 async def classroom_pack(
     req: ClassroomPackRequest,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E2 course pack packaging — lesson plan + slides + quiz + script into a class_id + 6-digit classroom code."""
     if packager is None:
         raise HTTPException(503, "classroom module not ready")
     pkg = packager.pack(
@@ -2684,13 +2676,13 @@ async def classroom_pack(
     return pkg.to_dict()
 
 
+# E3 student-side pack fetch — by classroom code or class_id.
 @app.get("/api/classroom/pack/{code_or_id}")
 async def classroom_get_pack(
     code_or_id: str,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E3 student-side pack fetch — by classroom code or class_id."""
     if packager is None:
         raise HTTPException(503, "classroom module not ready")
     pkg = packager.get_by_code(code_or_id) or packager.get_by_id(code_or_id)
@@ -2699,25 +2691,25 @@ async def classroom_get_pack(
     return pkg.to_dict()
 
 
+# Teacher-side course pack list.
 @app.get("/api/classroom/packs")
 async def classroom_list_packs(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Teacher-side course pack list."""
     if packager is None:
         raise HTTPException(503, "classroom module not ready")
     pkgs = packager.list_all()
     return {"count": len(pkgs), "packs": [p.to_manifest() for p in pkgs]}
 
 
+# E5 create classroom session — K1 text mode only persists to the store (no LiveKit token).
 @app.post("/api/classroom/session")
 async def classroom_create_session(
     req: ClassroomSessionRequest,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E5 create classroom session — K1 text mode only persists to the store (no LiveKit token)."""
     if packager is None or session_manager is None:
         raise HTTPException(503, "classroom module not ready")
     pkg = packager.get_by_code(req.code)
@@ -2727,6 +2719,7 @@ async def classroom_create_session(
     return {"session": sess.to_dict(), "package": pkg.to_dict()}
 
 
+# E5 class dismissal — submit the classroom record.
 @app.patch("/api/classroom/session/{session_id}/finish")
 async def classroom_finish_session(
     session_id: str,
@@ -2734,7 +2727,6 @@ async def classroom_finish_session(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E5 class dismissal — submit the classroom record."""
     if session_manager is None:
         raise HTTPException(503, "classroom module not ready")
     sess = session_manager.finish_session(session_id, abandoned=abandoned)
@@ -2743,13 +2735,13 @@ async def classroom_finish_session(
     return {"session": sess.to_dict()}
 
 
+# E4 in-class answer judging — reuses AssessmentEngine / course checkpoint.
 @app.post("/api/classroom/answer")
 async def classroom_answer(
     req: ClassroomAnswerRequest,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E4 in-class answer judging — reuses AssessmentEngine / course checkpoint."""
     if session_manager is None:
         raise HTTPException(503, "classroom module not ready")
     correct, feedback, detail = await _judge_classroom_answer(req)
@@ -2760,8 +2752,8 @@ async def classroom_answer(
     return rec.to_dict()
 
 
+# Judging dispatch: numeric/multiple_choice use local logic, open/expression delegate to AssessmentEngine.
 async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, str, str]:
-    """Judging dispatch: numeric/multiple_choice use local logic, open/expression delegate to AssessmentEngine."""
     qtype = req.question_type
     if qtype == "multiple_choice":
         expected = str(req.expected_answer).strip().upper()
@@ -2804,6 +2796,7 @@ async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, st
     return ok, "参考答案匹配" if ok else "未匹配参考答案", "string_fallback"
 
 
+# Record page-view progress (E5 pages_viewed).
 @app.get("/api/classroom/session/{session_id}/page/{page_index}")
 async def classroom_page_view(
     session_id: str,
@@ -2811,33 +2804,32 @@ async def classroom_page_view(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Record page-view progress (E5 pages_viewed)."""
     if session_manager is None:
         raise HTTPException(503, "classroom module not ready")
     session_manager.record_page_view(session_id, page_index)
     return {"session_id": session_id, "page_index": page_index, "recorded": True}
 
 
+# E6 classroom report — attendance/pages/quiz_stat/question_stat/weak_points.
 @app.get("/api/classroom/report/{session_id}")
 async def classroom_report(
     session_id: str,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E6 classroom report — attendance/pages/quiz_stat/question_stat/weak_points."""
     if session_manager is None:
         raise HTTPException(503, "classroom module not ready")
     report = session_manager.build_report(session_id)
     return report.to_dict()
 
 
+# Teacher-side session list for one course pack.
 @app.get("/api/classroom/sessions/{class_id}")
 async def classroom_list_sessions(
     class_id: str,
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """Teacher-side session list for one course pack."""
     if session_manager is None:
         raise HTTPException(503, "classroom module not ready")
     sessions = session_manager.store.list_sessions(class_id)
@@ -2846,13 +2838,12 @@ async def classroom_list_sessions(
 
 # WebSocket: Socratic lesson-script streaming generation (PRD §12.2, 5-event protocol)
 # issue #20: two-stage CoT pipeline — enable_thinking streams reasoning into a structured DSL
+# Stream lesson-script generation: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error.
+#
+#     issue #20: with FUSION_K12_COT_ENABLED=true the real two-stage path runs — thinking tokens are streamed;
+#     otherwise a placeholder hint is sent (backward compatible).
 @app.websocket("/ws/socratic-dsl")
 async def ws_socratic_dsl(websocket: WebSocket):
-    """Stream lesson-script generation: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error.
-
-    issue #20: with FUSION_K12_COT_ENABLED=true the real two-stage path runs — thinking tokens are streamed;
-    otherwise a placeholder hint is sent (backward compatible).
-    """
     from ._prompt import build_prompt
     from .course.cot_pipeline import (
         COT_THINKING_PROMPT,
@@ -2942,13 +2933,12 @@ async def ws_socratic_dsl(websocket: WebSocket):
 # ==================== Digital-human platform layer (K2/K3) ====================
 
 
+# Create a digital-human session — load the script, prewarm plugins, return session_id + page manifest.
+#
+#     mode: topic=free topic (default) | course=teach by lesson plan (class_id required, reuses the classroom pack script_pages)
+#         | expand=variation drills (class_id optional, graph context + extended narration) | qa=pure Q&A (ask directly)
 @app.post("/api/digital-human/session")
 async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Create a digital-human session — load the script, prewarm plugins, return session_id + page manifest.
-
-    mode: topic=free topic (default) | course=teach by lesson plan (class_id required, reuses the classroom pack script_pages)
-        | expand=variation drills (class_id optional, graph context + extended narration) | qa=pure Q&A (ask directly)
-    """
     if digital_human_manager is None:
         raise HTTPException(503, "digital_human_manager not initialized")
     subject = str(req.get("subject", "math"))
@@ -3006,9 +2996,9 @@ async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: No
     }
 
 
+# Sign a LiveKit token + room name. When livekit is unavailable a WS-only flag is returned.
 @app.post("/api/digital-human/token")
 async def dh_token(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Sign a LiveKit token + room name. When livekit is unavailable a WS-only flag is returned."""
     if digital_human_manager is None:
         raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
@@ -3031,9 +3021,9 @@ async def dh_token(req: dict, _: str = Depends(require_api_key), _r: None = Depe
     }
 
 
+# Narrate a given page — TTS synthesis + Avatar rendering, returns audio/frame metadata (Phase B: audio over WS).
 @app.post("/api/digital-human/narrate")
 async def dh_narrate(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Narrate a given page — TTS synthesis + Avatar rendering, returns audio/frame metadata (Phase B: audio over WS)."""
     if digital_human_manager is None:
         raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
@@ -3049,9 +3039,9 @@ async def dh_narrate(req: dict, _: str = Depends(require_api_key), _r: None = De
     return res
 
 
+# Raise-hand question — LLM streaming answer (student text input, Phase D adds voice).
 @app.post("/api/digital-human/raise-hand")
 async def dh_raise_hand(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """Raise-hand question — LLM streaming answer (student text input, Phase D adds voice)."""
     if digital_human_manager is None:
         raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
@@ -3070,9 +3060,9 @@ async def dh_raise_hand(req: dict, _: str = Depends(require_api_key), _r: None =
     return res
 
 
+# End the digital-human session — release resources, persist the classroom record.
 @app.post("/api/digital-human/finish")
 async def dh_finish(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """End the digital-human session — release resources, persist the classroom record."""
     if digital_human_manager is None:
         raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
@@ -3086,12 +3076,11 @@ async def dh_finish(req: dict, _: str = Depends(require_api_key), _r: None = Dep
     return res
 
 
+# Digital-human WS — pushes status events/emotion/audio, receives student actions (narrate/raise_hand/finish).
+#
+#     Phase B: TTS audio over WS binary frames. Phase C: video over LiveKit.
 @app.websocket("/ws/digital-human/{session_id}")
 async def ws_digital_human(websocket: WebSocket, session_id: str):
-    """Digital-human WS — pushes status events/emotion/audio, receives student actions (narrate/raise_hand/finish).
-
-    Phase B: TTS audio over WS binary frames. Phase C: video over LiveKit.
-    """
     await websocket.accept()
     if digital_human_manager is None:
         await websocket.send_json({"event": "error", "data": {"message": "manager not initialized"}})

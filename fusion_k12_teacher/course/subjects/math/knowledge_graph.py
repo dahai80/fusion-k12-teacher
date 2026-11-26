@@ -1,12 +1,11 @@
-"""Math knowledge graph — networkx DAG + Tarjan cycle validation + GraphRAG reverse attribution (PRD §3, §8).
-
-Replaces Neo4j (upstream untouchable, issue filed): networkx is pure-Python offline, with native
-Tarjan SCC validating the DAG, preventing UI freezes from circular tracing (PRD §3.4 cycle protection).
-
-Data sources: standards/data/math_g*.json knowledge_points → PRE_REQUIRES edges (prerequisites)
-+ progression_next (DERIVES_FROM). Enhanced nodes (Concept/Theorem/Misconception + EXEMPLIFIES/
-CROSS edges) are overlaid from data/math_enhanced.json.
-"""
+# Math knowledge graph — networkx DAG + Tarjan cycle validation + GraphRAG reverse attribution (PRD §3, §8).
+#
+# Replaces Neo4j (upstream untouchable, issue filed): networkx is pure-Python offline, with native
+# Tarjan SCC validating the DAG, preventing UI freezes from circular tracing (PRD §3.4 cycle protection).
+#
+# Data sources: standards/data/math_g*.json knowledge_points → PRE_REQUIRES edges (prerequisites)
+# + progression_next (DERIVES_FROM). Enhanced nodes (Concept/Theorem/Misconception + EXEMPLIFIES/
+# CROSS edges) are overlaid from data/math_enhanced.json.
 
 from __future__ import annotations
 
@@ -28,8 +27,8 @@ _EDGE_EXEMPLIFIES = "EXEMPLIFIES"
 _EDGE_CROSS = "CROSS_DISCIPLINE"
 
 
+# Math knowledge graph — load/validate/query/reverse attribution. Fail-fast: cycles reject startup (PRD M6-E05).
 class MathKnowledgeGraph(KnowledgeGraphBase):
-    """Math knowledge graph — load/validate/query/reverse attribution. Fail-fast: cycles reject startup (PRD M6-E05)."""
 
     def __init__(self) -> None:
         try:
@@ -50,8 +49,8 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
     def loaded(self) -> bool:
         return self._nx_ok and self._loaded
 
+    # Builds the base graph from StandardsLoader knowledge_points + overlays enhanced nodes.
     def load(self, standards_query: StandardsQuery | None = None) -> None:
-        """Builds the base graph from StandardsLoader knowledge_points + overlays enhanced nodes."""
         if not self._nx_ok:
             return
         kps: list[dict[str, Any]] = []
@@ -156,9 +155,9 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
         self._nodes[node.id] = node
         self._digraph.add_node(node.id)
 
+    # Extracts knowledge_points from a single standard — supports both dict and CurriculumStandard dataclass.
     @staticmethod
     def _extract_kps(std: Any) -> list[dict[str, Any]]:
-        """Extracts knowledge_points from a single standard — supports both dict and CurriculumStandard dataclass."""
         if std is None:
             return []
         kps = getattr(std, "knowledge_points", None) if not isinstance(std, dict) else std.get("knowledge_points")
@@ -251,17 +250,17 @@ class MathKnowledgeGraph(KnowledgeGraphBase):
             return "Junior"
         return "Senior"
 
+    # issue #21: standard nodes carry no semester info; derive a default semester from grade.
     @staticmethod
     def _semester_for_grade(grade: str) -> str:
-        """issue #21: standard nodes carry no semester info; derive a default semester from grade."""
         if not grade:
             return ""
         # i18n: user-facing (Chinese curriculum semester label, matches standards data)
         return f"{grade}-上"
 
+    # issue #21: standard nodes carry no misconceptions; derive common ones from title keywords.
     @staticmethod
     def _default_misconceptions(title: str) -> list[str]:
-        """issue #21: standard nodes carry no misconceptions; derive common ones from title keywords."""
         # i18n: user-facing (Chinese misconception labels + keyword matching against Chinese titles, teaching content)
         if not title:
             return ["概念混淆"]

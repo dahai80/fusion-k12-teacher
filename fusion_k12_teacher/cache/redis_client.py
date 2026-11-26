@@ -1,11 +1,10 @@
-"""Redis cache backend — cluster mode (M2-T12).
-
-redis-py is an optional dependency, imported lazily — raises ImportError when
-missing (the factory falls back to LocalCache).
-Uses the redis.asyncio client, fully async API.
-Shared across instances: rate-limit counters (INCR+EXPIRE), sessions (SETEX),
-salt (GET/SET).
-"""
+# Redis cache backend — cluster mode (M2-T12).
+#
+# redis-py is an optional dependency, imported lazily — raises ImportError when
+# missing (the factory falls back to LocalCache).
+# Uses the redis.asyncio client, fully async API.
+# Shared across instances: rate-limit counters (INCR+EXPIRE), sessions (SETEX),
+# salt (GET/SET).
 
 from __future__ import annotations
 
@@ -16,8 +15,8 @@ from .base import CacheBackend
 logger = logging.getLogger(__name__)
 
 
+# Async Redis backend — redis.asyncio connection.
 class RedisCache(CacheBackend):
-    """Async Redis backend — redis.asyncio connection."""
 
     def __init__(self, url: str):
         try:

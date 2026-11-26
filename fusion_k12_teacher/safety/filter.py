@@ -1,4 +1,4 @@
-"""Content filter engine — multi-layer filtering strategy."""
+# Content filter engine — multi-layer filtering strategy.
 
 from __future__ import annotations
 
@@ -37,14 +37,13 @@ _INJECTION_PATTERNS = re.compile(
 )
 
 
+# Sanitizes user input — scans injection, strips control chars, truncates length (ENG-1, SEC-13/14).
+#
+#     SEC-13: scan the full text for injection before truncating, so keywords crossing the max_len
+#     boundary are not cut and missed.
+#     SEC-14: on detection, replace matched phrases with a placeholder (not just wrap), so the LLM
+#     cannot read the original instructions.
 def sanitize_input(text: str, max_len: int = _MAX_INPUT_LEN) -> str:
-    """Sanitizes user input — scans injection, strips control chars, truncates length (ENG-1, SEC-13/14).
-
-    SEC-13: scan the full text for injection before truncating, so keywords crossing the max_len
-    boundary are not cut and missed.
-    SEC-14: on detection, replace matched phrases with a placeholder (not just wrap), so the LLM
-    cannot read the original instructions.
-    """
     if not isinstance(text, str):
         text = str(text)
     # SEC-13: scan the full untruncated text first
@@ -62,8 +61,8 @@ def _bypass_pattern(word: str) -> re.Pattern:
     return re.compile(BYPASS_CLASS.join(chars), re.IGNORECASE | re.UNICODE)
 
 
+# Content filter — sensitive words + age appropriateness + output verification.
 class ContentFilter:
-    """Content filter — sensitive words + age appropriateness + output verification."""
 
     def __init__(
         self,
@@ -101,10 +100,10 @@ class ContentFilter:
         # A15: reuses _run_pipeline (single rule-layer implementation), no duplicated check_text logic fork
         return self._run_pipeline(text, grade, scope="output")
 
+    # A15: pluggable rule pipeline — each filter layer is an independent callable, applied in order.
+    #         scope=input is gated by sensitive_words+age_check, scope=output by output_check.
+    #         New filter rules only need to append a callable to self._filters, core pipeline unchanged.
     def _run_pipeline(self, text: str, grade: str, scope: str) -> ContentCheckResult:
-        """A15: pluggable rule pipeline — each filter layer is an independent callable, applied in order.
-        scope=input is gated by sensitive_words+age_check, scope=output by output_check.
-        New filter rules only need to append a callable to self._filters, core pipeline unchanged."""
         result = ContentCheckResult(filtered_text=text)
         try:
             # SEC-12: wordlist missing/disabled means the last line of defense is down, fail-closed block

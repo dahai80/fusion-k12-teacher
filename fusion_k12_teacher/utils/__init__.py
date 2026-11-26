@@ -1,1 +1,1 @@
-"""Fusion-K12-Teacher utility functions."""
+# Fusion-K12-Teacher utility functions.

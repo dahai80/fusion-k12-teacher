@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher personalized learning module."""
+# Fusion-K12-Teacher personalized learning module.
 
 from .engine import LearningPath, PersonalizationEngine
 

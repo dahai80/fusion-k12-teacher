@@ -1,11 +1,10 @@
-"""LiveKitAdapter — LiveKit SFU adapter layer.
-
-Token signing / room connection / audio-video track publishing / DataChannel state broadcast.
-- Video track: VideoSource(256,256) ← BGR frames (MuseTalk output) converted to RGBA.
-- Audio track: AudioSource(24kHz,1) ← TTS PCM int16.
-- Data: publish_state broadcasts FSM/emotion; on_data receives student raise_hand/mic events.
-When the livekit package is missing, degrades to WS-only (no media; text + TTS audio via WS).
-"""
+# LiveKitAdapter — LiveKit SFU adapter layer.
+#
+# Token signing / room connection / audio-video track publishing / DataChannel state broadcast.
+# - Video track: VideoSource(256,256) ← BGR frames (MuseTalk output) converted to RGBA.
+# - Audio track: AudioSource(24kHz,1) ← TTS PCM int16.
+# - Data: publish_state broadcasts FSM/emotion; on_data receives student raise_hand/mic events.
+# When the livekit package is missing, degrades to WS-only (no media; text + TTS audio via WS).
 
 from __future__ import annotations
 

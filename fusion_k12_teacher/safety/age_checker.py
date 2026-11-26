@@ -1,4 +1,4 @@
-"""Age-appropriate content review."""
+# Age-appropriate content review.
 
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ def _grade_index(grade: str) -> int:
         return 0
 
 
+# Age-appropriate content review — checks whether content exceeds the target grade range.
 class AgeChecker:
-    """Age-appropriate content review — checks whether content exceeds the target grade range."""
 
     def __init__(self, ratings_path: str = ""):
         self._path = ratings_path or DEFAULT_RATINGS_PATH

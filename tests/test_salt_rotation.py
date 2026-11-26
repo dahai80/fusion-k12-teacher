@@ -1,4 +1,4 @@
-"""Salt rotation + versioning tests — M1-T8."""
+# Salt rotation + versioning tests — M1-T8.
 
 from __future__ import annotations
 

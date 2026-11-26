@@ -1,14 +1,13 @@
-"""SubjectRegistry — subject registry + auto-discovery.
-
-The platform (engines/serve) only holds the registry, never imports concrete subject classes.
-Adding a subject:
-1. Create the course/subjects/{subject}/ package implementing SubjectModule.
-2. Add one line to the _BUILTIN registry in course/subjects/__init__.py.
-3. Zero platform changes.
-
-discover_and_init iterates registered subjects, injects mlx/content_filter/standards_query and inits.
-A subject load failure does not block other subjects (loud logs; fail-fast with a contained blast radius).
-"""
+# SubjectRegistry — subject registry + auto-discovery.
+#
+# The platform (engines/serve) only holds the registry, never imports concrete subject classes.
+# Adding a subject:
+# 1. Create the course/subjects/{subject}/ package implementing SubjectModule.
+# 2. Add one line to the _BUILTIN registry in course/subjects/__init__.py.
+# 3. Zero platform changes.
+#
+# discover_and_init iterates registered subjects, injects mlx/content_filter/standards_query and inits.
+# A subject load failure does not block other subjects (loud logs; fail-fast with a contained blast radius).
 
 from __future__ import annotations
 
@@ -28,8 +27,8 @@ class SubjectNotFoundError(Exception):
     pass
 
 
+# Subject registry — the key to platform/content decoupling.
 class SubjectRegistry:
-    """Subject registry — the key to platform/content decoupling."""
 
     def __init__(self) -> None:
         self._modules: dict[str, SubjectModule] = {}
@@ -57,11 +56,11 @@ class SubjectRegistry:
     def mastery(self) -> MasteryTracker:
         return self._mastery
 
+    # Auto-discover and initialize built-in subjects. One subject failing does not block others.
     def discover_and_init(
         self, mlx: MLXClient, content_filter: ContentFilter,
         standards_query: StandardsQuery | None = None,
     ) -> None:
-        """Auto-discover and initialize built-in subjects. One subject failing does not block others."""
         from .subjects import get_builtin_subjects
         for module_cls in get_builtin_subjects():
             try:

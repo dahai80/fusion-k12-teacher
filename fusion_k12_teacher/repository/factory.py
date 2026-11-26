@@ -1,9 +1,8 @@
-"""Repository factory — selects the backend by FUSION_K12_MODE.
-
-standalone (default): SQLiteRepository
-cluster: PostgresRepository (asyncpg, M1-T2) — missing DSN or missing asyncpg
-          raises NonDegradableError and refuses startup (issue #36 fail-closed, no SQLite fallback)
-"""
+# Repository factory — selects the backend by FUSION_K12_MODE.
+#
+# standalone (default): SQLiteRepository
+# cluster: PostgresRepository (asyncpg, M1-T2) — missing DSN or missing asyncpg
+#           raises NonDegradableError and refuses startup (issue #36 fail-closed, no SQLite fallback)
 
 from __future__ import annotations
 
@@ -24,16 +23,15 @@ def _default_sqlite_path() -> str:
     )
 
 
+# Return a Repository instance for the deployment mode.
+#
+#     standalone: SQLiteRepository, env FUSION_K12_REPO_DB (default ~/.fusion-k12/k12.db)
+#     cluster:    PostgresRepository, env FUSION_K12_PG_DSN holds the connection string;
+#                 missing DSN or missing asyncpg raises NonDegradableError and refuses startup —
+#                 a silent SQLite fallback would let replicas accumulate divergent data
+#                 (split-brain) while reporting Healthy, with no signal for monitoring/ops
+#                 (issue #36 fail-closed).
 def get_repository() -> Repository:
-    """Return a Repository instance for the deployment mode.
-
-    standalone: SQLiteRepository, env FUSION_K12_REPO_DB (default ~/.fusion-k12/k12.db)
-    cluster:    PostgresRepository, env FUSION_K12_PG_DSN holds the connection string;
-                missing DSN or missing asyncpg raises NonDegradableError and refuses startup —
-                a silent SQLite fallback would let replicas accumulate divergent data
-                (split-brain) while reporting Healthy, with no signal for monitoring/ops
-                (issue #36 fail-closed).
-    """
     mode = os.environ.get("FUSION_K12_MODE", "standalone").lower()
 
     if mode == "cluster":

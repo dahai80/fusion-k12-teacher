@@ -1,9 +1,8 @@
-"""E2/E3 course package packager — lesson plan + slides + quiz + script ->
-class_id + 6-digit class code, persisted in SQLite.
-
-Class code: 6 digits; uniqueness relies on the store's code UNIQUE constraint
-plus retries.
-"""
+# E2/E3 course package packager — lesson plan + slides + quiz + script ->
+# class_id + 6-digit class code, persisted in SQLite.
+#
+# Class code: 6 digits; uniqueness relies on the store's code UNIQUE constraint
+# plus retries.
 
 from __future__ import annotations
 

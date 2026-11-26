@@ -1,4 +1,4 @@
-"""BNUPEvaluator four-dimension metric tests — issue #23 A3."""
+# BNUPEvaluator four-dimension metric tests — issue #23 A3.
 
 from __future__ import annotations
 

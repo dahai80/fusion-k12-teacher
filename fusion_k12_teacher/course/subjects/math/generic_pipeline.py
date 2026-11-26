@@ -1,12 +1,11 @@
-"""Generic scene compilation path — new problem types no longer depend on enumerated templates.
-
-Architecture: S1 natural-language parsing (LLM openly extracts knowns/equations) -> S2 structured JSON DSL
-(SymPy solves the equation system + visualization primitives) -> S3 physics/math topology Canvas rendering (frontend primitives).
-
-Relationship to the template path (_KNOWN_SCENARIOS): template hits get premium rendering; misses
-(scenario=unknown or verification failure) land in this path with SymPy generic solving as the fallback,
-and only LLM extraction failure or unsolvable equations truly degrade to static derivation.
-"""
+# Generic scene compilation path — new problem types no longer depend on enumerated templates.
+#
+# Architecture: S1 natural-language parsing (LLM openly extracts knowns/equations) -> S2 structured JSON DSL
+# (SymPy solves the equation system + visualization primitives) -> S3 physics/math topology Canvas rendering (frontend primitives).
+#
+# Relationship to the template path (_KNOWN_SCENARIOS): template hits get premium rendering; misses
+# (scenario=unknown or verification failure) land in this path with SymPy generic solving as the fallback,
+# and only LLM extraction failure or unsolvable equations truly degrade to static derivation.
 
 from __future__ import annotations
 
@@ -174,8 +173,8 @@ _GENERIC_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" 
 只输出 JSON, 不要解释。"""
 
 
+# Pipeline whitelist filter — keep only controlled fields and safe eval strings (Gemini-approach fusion).
 def _sanitize_pipeline(raw: Any) -> list[dict[str, Any]]:
-    """Pipeline whitelist filter — keep only controlled fields and safe eval strings (Gemini-approach fusion)."""
     if not isinstance(raw, list):
         return []
     out: list[dict[str, Any]] = []
@@ -208,8 +207,8 @@ _ALLOWED_NODES = (
 )
 
 
+# Statically validate an eval string — arithmetic + params.x/results[n] + extra_names (bare judgment-criterion names).
 def _eval_safe(expr: str, extra_names: set[str] | None = None) -> bool:
-    """Statically validate an eval string — arithmetic + params.x/results[n] + extra_names (bare judgment-criterion names)."""
     allowed = {"params", "results"} | (extra_names or set())
     try:
         tree = ast.parse(expr, mode="eval")
@@ -229,11 +228,10 @@ def _eval_safe(expr: str, extra_names: set[str] | None = None) -> bool:
     return True
 
 
+# Execute the step-by-step pipeline (sandboxed AST evaluation, not new Function).
+#
+#     Returns {"steps": [...steps with value...], "final": the final value}; any failing step returns None.
 def eval_pipeline(parsed: dict[str, Any]) -> dict[str, Any] | None:
-    """Execute the step-by-step pipeline (sandboxed AST evaluation, not new Function).
-
-    Returns {"steps": [...steps with value...], "final": the final value}; any failing step returns None.
-    """
     pipeline = parsed.get("pipeline") or []
     if not pipeline:
         return None
@@ -294,8 +292,8 @@ def _ast_eval(node: ast.AST, params: dict[str, float], results: dict[int, float]
     raise ValueError(f"unsupported expression node: {type(node).__name__}")
 
 
+# Clean LLM equation strings — full-width symbols / Chinese punctuation / equal signs converted to a SymPy-parseable form; discarded when empty after cleaning.
 def _clean_equation(eq: str) -> str:
-    """Clean LLM equation strings — full-width symbols / Chinese punctuation / equal signs converted to a SymPy-parseable form; discarded when empty after cleaning."""
     out = eq.strip()
     for a, b in (("＝", "="), ("＋", "+"), ("－", "-"), ("×", "*"), ("÷", "/"),
                  ("（", "("), ("）", ")"), ("，", ","), (":", "/"), ("：", "/")):
@@ -319,9 +317,9 @@ def _clean_equation(eq: str) -> str:
     return out
 
 
+# Solve the equation system with SymPy — timeout/exception/non-numeric solutions all return None (caller degrades).
 def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
                       unknowns: list[str], answer_expr: str) -> dict[str, Any] | None:
-    """Solve the equation system with SymPy — timeout/exception/non-numeric solutions all return None (caller degrades)."""
     try:
         import sympy
         from sympy.parsing.sympy_parser import (
@@ -387,8 +385,8 @@ def _safe_sympy_solve(knowns: dict[str, float], equations: list[str],
         return None
 
 
+# issue #19/#22: v3.0 visualization-primitive whitelist filter — 8 primitives + old-value mapping + problem-type routing fallback.
 def _sanitize_visual(raw: Any, problem_text: str = "") -> dict[str, Any]:
-    """issue #19/#22: v3.0 visualization-primitive whitelist filter — 8 primitives + old-value mapping + problem-type routing fallback."""
     if not isinstance(raw, dict) or not raw.get("kind"):
         # issue #22: when the LLM does not specify a visual, route on problem-type keywords
         if problem_text:
@@ -423,8 +421,8 @@ def build_generic_prompt(problem: str) -> str:
     return _GENERIC_PROMPT.replace("__PROBLEM__", problem)
 
 
+# Parse judgment-type (question_kind=judgment) output — the criterion must be valid.
 def parse_judgment(raw: str) -> dict[str, Any] | None:
-    """Parse judgment-type (question_kind=judgment) output — the criterion must be valid."""
     from ...._parse import parse_json
     data = parse_json(raw)
     if not isinstance(data, dict) or str(data.get("question_kind", "")) != "judgment":
@@ -463,8 +461,8 @@ def parse_judgment(raw: str) -> dict[str, Any] | None:
     }
 
 
+# Evaluate the criterion expression (sandboxed AST), returning {criterion_value, verdict, verdict_text}.
 def solve_judgment(parsed: dict[str, Any]) -> dict[str, Any] | None:
-    """Evaluate the criterion expression (sandboxed AST), returning {criterion_value, verdict, verdict_text}."""
     try:
         tree = ast.parse(parsed["criterion_expr"], mode="eval")
         val = float(_ast_eval(tree.body, parsed["knowns"], {}))
@@ -480,8 +478,8 @@ def solve_judgment(parsed: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+# Parse the S1 output and validate its structure — returns None when invalid or missing key fields.
 def parse_generic_extraction(raw: str) -> dict[str, Any] | None:
-    """Parse the S1 output and validate its structure — returns None when invalid or missing key fields."""
     from ...._parse import parse_json
     data = parse_json(raw)
     if not isinstance(data, dict):
@@ -528,7 +526,7 @@ def parse_generic_extraction(raw: str) -> dict[str, Any] | None:
     }
 
 
+# S2: solve the equation system with SymPy, returning {unknown: value, __answer__: value} or None.
 def solve_generic(parsed: dict[str, Any]) -> dict[str, Any] | None:
-    """S2: solve the equation system with SymPy, returning {unknown: value, __answer__: value} or None."""
     return _safe_sympy_solve(parsed["knowns"], parsed["equations"],
                              parsed["unknowns"], parsed["answer_expr"])

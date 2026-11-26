@@ -1,4 +1,4 @@
-"""SaltProvider tests — M1-T7."""
+# SaltProvider tests — M1-T7.
 
 from __future__ import annotations
 

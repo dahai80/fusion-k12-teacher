@@ -1,5 +1,5 @@
-"""issue #22: BNUP Socratic teaching prompt registry — centrally manages the 8
-primitive routes + system instructions."""
+# issue #22: BNUP Socratic teaching prompt registry — centrally manages the 8
+# primitive routes + system instructions.
 
 from .bnup_socratic import (
     BNUP_COT_FORMAT_PROMPT,

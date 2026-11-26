@@ -1,4 +1,4 @@
-"""Engine factory — builds all engine instances uniformly for cli/serve, avoiding duplicated DI wiring."""
+# Engine factory — builds all engine instances uniformly for cli/serve, avoiding duplicated DI wiring.
 
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 _close_tasks: set[asyncio.Task[None]] = set()
 
 
+# All engine instances + shared MLXClient + shared ContentFilter.
 @dataclass
 class EngineBundle:
-    """All engine instances + shared MLXClient + shared ContentFilter."""
     mlx: MLXClient
     curriculum: CurriculumEngine
     assessment: AssessmentEngine
@@ -48,11 +48,10 @@ class EngineBundle:
     subject_registry: SubjectRegistry = None  # type: ignore[assignment]
 
 
+# Build all engines — single wiring point, shared by cli/serve.
+#
+#     model/mlx are mutually exclusive: pass mlx to reuse it, otherwise create a new one from model.
 def build_engines(model: str = "", mlx: MLXClient | None = None) -> EngineBundle:
-    """Build all engines — single wiring point, shared by cli/serve.
-
-    model/mlx are mutually exclusive: pass mlx to reuse it, otherwise create a new one from model.
-    """
     _owns_mlx = mlx is None
     if mlx is None:
         mlx = MLXClient(model=model)

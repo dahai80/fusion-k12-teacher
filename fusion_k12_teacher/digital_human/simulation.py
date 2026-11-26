@@ -1,8 +1,7 @@
-"""IdleMotion — pure-CPU micro motions (blink/gaze/breath/barge-in 3 stages).
-
-No MLX dependency. Used by StaticAvatar/MuseTalkAvatar to generate idle frames.
-Ported from the linguakids simulation approach.
-"""
+# IdleMotion — pure-CPU micro motions (blink/gaze/breath/barge-in 3 stages).
+#
+# No MLX dependency. Used by StaticAvatar/MuseTalkAvatar to generate idle frames.
+# Ported from the linguakids simulation approach.
 
 from __future__ import annotations
 

@@ -1,10 +1,9 @@
-"""E4/E5/E6 session management + grading + reporting.
-
-E4 grading: reuses AssessmentEngine.grade_math or the course checkpoint judge.
-E5 sessions: K1 text version, persistence only (no LiveKit token issuance).
-E6 report: aligned with lesson_report fields (attendance/pages_viewed/quiz_stat/question_stat/weak_points).
-Abnormal sessions write no snapshot (dirty-data fields=null), following the LinguaKids constraint.
-"""
+# E4/E5/E6 session management + grading + reporting.
+#
+# E4 grading: reuses AssessmentEngine.grade_math or the course checkpoint judge.
+# E5 sessions: K1 text version, persistence only (no LiveKit token issuance).
+# E6 report: aligned with lesson_report fields (attendance/pages_viewed/quiz_stat/question_stat/weak_points).
+# Abnormal sessions write no snapshot (dirty-data fields=null), following the LinguaKids constraint.
 
 from __future__ import annotations
 

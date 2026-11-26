@@ -12,24 +12,23 @@ from .models import CoverageReport, KnowledgePoint
 logger = logging.getLogger(__name__)
 
 
+# Curriculum-standards query API — search by subject/grade/knowledge point.
 class StandardsQuery:
-    """Curriculum-standards query API — search by subject/grade/knowledge point."""
 
     def __init__(self, loader: StandardsLoader | None = None):
         self._loader = loader or StandardsLoader()
 
+    # Get all knowledge points for a subject and grade.
+    #
+    #         E6: goes through the loader (subject, grade) index, avoiding all_points()'s shallow
+    #         copy of the whole dict + O(N) scan.
     def get_knowledge_points(self, subject: str, grade: str) -> list[KnowledgePoint]:
-        """Get all knowledge points for a subject and grade.
-
-        E6: goes through the loader (subject, grade) index, avoiding all_points()'s shallow
-        copy of the whole dict + O(N) scan.
-        """
         result = self._loader.get_knowledge_points(subject, grade)
         logger.debug(f"Standards query: {subject}/{grade} → {len(result)} knowledge points")
         return result
 
+    # Get the prerequisite knowledge points of a knowledge point.
     def get_prerequisites(self, point_id: str) -> list[KnowledgePoint]:
-        """Get the prerequisite knowledge points of a knowledge point."""
         kp = self._loader.get_point(point_id)
         if not kp:
             logger.warning(f"Knowledge point not found: {point_id}")
@@ -43,8 +42,8 @@ class StandardsQuery:
                 logger.warning(f"Prerequisite knowledge point missing: {pre_id} (referenced by {point_id})")
         return result
 
+    # Get the progression (next) knowledge points of a knowledge point.
     def get_progression(self, point_id: str) -> list[KnowledgePoint]:
-        """Get the progression (next) knowledge points of a knowledge point."""
         kp = self._loader.get_point(point_id)
         if not kp:
             logger.warning(f"Knowledge point not found: {point_id}")
@@ -58,14 +57,13 @@ class StandardsQuery:
                 logger.warning(f"Progression knowledge point missing: {next_id} (referenced by {point_id})")
         return result
 
+    # Find knowledge points by topic keyword — single characters skip fuzzy matching to avoid
+    #         false hits (STD-4).
+    #
+    #         STD-3: CJK has no word boundaries; `topic in description` substring matching over-hits
+    #         ("加" matches "加权/增加/参加"); switched to topic-field substring + description whole-word
+    #         boundary matching.
     def find_by_topic(self, subject: str, grade: str, topic: str) -> list[KnowledgePoint]:
-        """Find knowledge points by topic keyword — single characters skip fuzzy matching to avoid
-        false hits (STD-4).
-
-        STD-3: CJK has no word boundaries; `topic in description` substring matching over-hits
-        ("加" matches "加权/增加/参加"); switched to topic-field substring + description whole-word
-        boundary matching.
-        """
         points = self.get_knowledge_points(subject, grade)
         topic_lower = topic.strip().lower()
         result = []
@@ -99,10 +97,10 @@ class StandardsQuery:
         logger.debug(f"Topic query: {subject}/{grade}/{topic} → {len(result)} knowledge points")
         return result
 
+    # Validate how well teaching objectives cover the curriculum-standard knowledge points.
     def validate_coverage(
         self, subject: str, grade: str, objectives: list[str]
     ) -> CoverageReport:
-        """Validate how well teaching objectives cover the curriculum-standard knowledge points."""
         all_points = self.get_knowledge_points(subject, grade)
         if not all_points:
             logger.warning(f"Standards not found: {subject}/{grade}")
@@ -160,17 +158,17 @@ class StandardsQuery:
             details=details,
         )
 
+    # Get the list of knowledge strands for a subject and grade.
     def get_strands(self, subject: str, grade: str) -> list[str]:
-        """Get the list of knowledge strands for a subject and grade."""
         points = self.get_knowledge_points(subject, grade)
         return sorted({kp.strand for kp in points if kp.strand})
 
+    # Get knowledge points by knowledge strand.
     def get_by_strand(self, subject: str, grade: str, strand: str) -> list[KnowledgePoint]:
-        """Get knowledge points by knowledge strand."""
         points = self.get_knowledge_points(subject, grade)
         return [kp for kp in points if kp.strand == strand]
 
+    # Get knowledge points by difficulty level.
     def get_by_difficulty(self, subject: str, grade: str, level: str) -> list[KnowledgePoint]:
-        """Get knowledge points by difficulty level."""
         points = self.get_knowledge_points(subject, grade)
         return [kp for kp in points if kp.difficulty_level == level]

@@ -1,15 +1,14 @@
-"""Prometheus-style metrics — v2.0 M3-T16.
-
-stdlib implementation (zero external deps): counters + histograms + gauges, thread-safe.
-/api/metrics outputs Prometheus exposition format.
-6 core metrics (§4.5):
-  k12_request_total{route,status}
-  k12_request_duration_seconds{route} (histogram)
-  k12_llm_call_total{model,status}
-  k12_llm_duration_seconds (histogram)
-  k12_active_jobs (gauge)
-  k12_db_pool_inuse (gauge)
-"""
+# Prometheus-style metrics — v2.0 M3-T16.
+#
+# stdlib implementation (zero external deps): counters + histograms + gauges, thread-safe.
+# /api/metrics outputs Prometheus exposition format.
+# 6 core metrics (§4.5):
+#   k12_request_total{route,status}
+#   k12_request_duration_seconds{route} (histogram)
+#   k12_llm_call_total{model,status}
+#   k12_llm_duration_seconds (histogram)
+#   k12_active_jobs (gauge)
+#   k12_db_pool_inuse (gauge)
 
 from __future__ import annotations
 
@@ -19,8 +18,8 @@ import threading
 _HIST_BUCKETS = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 
 
+# Counter with labels.
 class _Counter:
-    """Counter with labels."""
 
     def __init__(self, name: str, help: str, labels: tuple[str, ...] = ()):
         self.name = name
@@ -48,8 +47,8 @@ class _Counter:
         return "\n".join(lines)
 
 
+# Histogram — cumulative bucket counts + sum + count.
 class _Histogram:
-    """Histogram — cumulative bucket counts + sum + count."""
 
     def __init__(self, name: str, help: str, labels: tuple[str, ...] = ()):
         self.name = name
@@ -95,8 +94,8 @@ class _Histogram:
         return "\n".join(lines)
 
 
+# Gauge with labels.
 class _Gauge:
-    """Gauge with labels."""
 
     def __init__(self, name: str, help: str, labels: tuple[str, ...] = ()):
         self.name = name
@@ -124,8 +123,8 @@ class _Gauge:
         return "\n".join(lines)
 
 
+# Metrics registry — 6 core metrics + render Prometheus exposition format.
 class MetricsRegistry:
-    """Metrics registry — 6 core metrics + render Prometheus exposition format."""
 
     def __init__(self):
         self.request_total = _Counter(
@@ -176,14 +175,14 @@ class MetricsRegistry:
 _registry: MetricsRegistry | None = None
 
 
+# Singleton metrics registry.
 def get_metrics() -> MetricsRegistry:
-    """Singleton metrics registry."""
     global _registry
     if _registry is None:
         _registry = MetricsRegistry()
     return _registry
 
 
+# Render the Prometheus exposition format text.
 def render_prometheus() -> str:
-    """Render the Prometheus exposition format text."""
     return get_metrics().render()

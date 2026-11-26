@@ -1,8 +1,7 @@
-"""4-layer standardized plugin interface — TLive-Omni pattern 3.
-
-ASR/LLM/TTS/Avatar abstract base classes, decoupling scheduling from inference.
-Each plugin declares name/init/close/cancel/clear.
-"""
+# 4-layer standardized plugin interface — TLive-Omni pattern 3.
+#
+# ASR/LLM/TTS/Avatar abstract base classes, decoupling scheduling from inference.
+# Each plugin declares name/init/close/cancel/clear.
 
 from __future__ import annotations
 

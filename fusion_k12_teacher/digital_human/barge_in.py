@@ -1,10 +1,9 @@
-"""Barge-in event bus — TLive-Omni pattern 2.
-
-Centrally manages all plugin aborts and Task lifecycles. One broadcast, instead
-of interrupt code scattered across plugins.
-fire(reason) iterates registered plugins -> cancel_fn (abort asyncio task) +
-clear_fn (drop queued frames/PCM).
-"""
+# Barge-in event bus — TLive-Omni pattern 2.
+#
+# Centrally manages all plugin aborts and Task lifecycles. One broadcast, instead
+# of interrupt code scattered across plugins.
+# fire(reason) iterates registered plugins -> cancel_fn (abort asyncio task) +
+# clear_fn (drop queued frames/PCM).
 
 from __future__ import annotations
 

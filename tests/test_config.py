@@ -1,4 +1,4 @@
-"""M3-T17 config hot-reload tests."""
+# M3-T17 config hot-reload tests.
 
 from __future__ import annotations
 

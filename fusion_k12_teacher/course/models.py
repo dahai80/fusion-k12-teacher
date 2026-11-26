@@ -1,9 +1,8 @@
-"""Course platform data models — subject-agnostic generic DSL.
-
-Subject implementations fill these dataclasses; platform/frontend only recognizes these
-structures, not subject-private types. Maps to PRD §5 FusionSocraticDSL + §12.3 SceneDSL,
-abstracted into subject-neutral field names.
-"""
+# Course platform data models — subject-agnostic generic DSL.
+#
+# Subject implementations fill these dataclasses; platform/frontend only recognizes these
+# structures, not subject-private types. Maps to PRD §5 FusionSocraticDSL + §12.3 SceneDSL,
+# abstracted into subject-neutral field names.
 
 from __future__ import annotations
 
@@ -51,9 +50,9 @@ VISUAL_TYPES = tuple(v.value for v in VisualType)
 FALLBACK_TYPES = tuple(v.value for v in FallbackType)
 
 
+# In-class interactive checkpoint — Socratic style, never hands out the answer directly.
 @dataclass
 class Checkpoint:
-    """In-class interactive checkpoint — Socratic style, never hands out the answer directly."""
     id: str
     type: CheckpointType
     prompt: str
@@ -101,9 +100,9 @@ class Checkpoint:
         )
 
 
+# issue #19: DSL v3.0 — step-level visual state (driven by visual_type routing).
 @dataclass
 class VisualState:
-    """issue #19: DSL v3.0 — step-level visual state (driven by visual_type routing)."""
     visual_type: str = ""
     action: str = ""
     progress_range: tuple[float, float] = (0.0, 1.0)
@@ -166,9 +165,9 @@ class Landmark:
         }
 
 
+# 5E lesson step — subject-neutral. phase ∈ Engage/Explore/Explain/Elaborate/Evaluate/Transfer.
 @dataclass
 class TeachingStep:
-    """5E lesson step — subject-neutral. phase ∈ Engage/Explore/Explain/Elaborate/Evaluate/Transfer."""
     step_id: str
     step_title: str
     speech_narration: str
@@ -219,15 +218,14 @@ class Milestone:
         }
 
 
+# Scene animation DSL — subject-neutral (PRD §12.3 schema abstraction).
+#
+#     issue #19 v3.0: acts as the typed sub-contract of FusionSocraticDSL.scene,
+#     no longer a standalone peer model. scene_compiler may still return SceneDSL
+#     (backward compatible), but the FusionSocraticDSL.scene field holds a SceneDSL
+#     instance to implement the unified contract.
 @dataclass
 class SceneDSL:
-    """Scene animation DSL — subject-neutral (PRD §12.3 schema abstraction).
-
-    issue #19 v3.0: acts as the typed sub-contract of FusionSocraticDSL.scene,
-    no longer a standalone peer model. scene_compiler may still return SceneDSL
-    (backward compatible), but the FusionSocraticDSL.scene field holds a SceneDSL
-    instance to implement the unified contract.
-    """
     version: str = "3.0.0"
     subject: str = ""
     template_type: str = ""
@@ -249,16 +247,15 @@ class SceneDSL:
         }
 
 
+# Socratic lesson DSL v3.0 — subject-neutral (issue #19).
+#
+#     v3.0 changes:
+#     - meta gains visual_type (8-primitive routing) + fallback_type (2 fallbacks)
+#     - step.visual_state carries step-level visual actions
+#     - scene field is typed SceneDSL (unified v3.0 contract, no longer a plain dict)
+#     - to_spec_dict() outputs spec DSL v3.0 JSON Schema compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
 @dataclass
 class FusionSocraticDSL:
-    """Socratic lesson DSL v3.0 — subject-neutral (issue #19).
-
-    v3.0 changes:
-    - meta gains visual_type (8-primitive routing) + fallback_type (2 fallbacks)
-    - step.visual_state carries step-level visual actions
-    - scene field is typed SceneDSL (unified v3.0 contract, no longer a plain dict)
-    - to_spec_dict() outputs spec DSL v3.0 JSON Schema compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
-    """
     version: str = "3.0.0"
     subject: str = ""
     meta: dict[str, str] = field(default_factory=dict)
@@ -276,19 +273,18 @@ class FusionSocraticDSL:
             "error": self.error,
         }
 
+    # issue #19 P0: converts to a spec DSL v3.0 JSON Schema compliant structure.
+    #
+    #         The spec (architecture/k12-train-model-autumation-1009.md §417-432) requires root-level
+    #         required: ["meta", "parameters", "entities", "pipeline"], additionalProperties=False.
+    #         fusion-core SOCRATIC_DSL_V3_SCHEMA matches this (core#26).
+    #
+    #         Field mapping:
+    #           meta:         internal meta + backfilled id/grade/topic/visual_type/fallback_type
+    #           parameters:   global_variables → {label, value, unit} (value coerced to float)
+    #           entities:     scene.entities → {id, type, label, properties}
+    #           pipeline:     steps → {step, title, formula, eval, result_unit, visual_state}
     def to_spec_dict(self) -> dict[str, Any]:
-        """issue #19 P0: converts to a spec DSL v3.0 JSON Schema compliant structure.
-
-        The spec (architecture/k12-train-model-autumation-1009.md §417-432) requires root-level
-        required: ["meta", "parameters", "entities", "pipeline"], additionalProperties=False.
-        fusion-core SOCRATIC_DSL_V3_SCHEMA matches this (core#26).
-
-        Field mapping:
-          meta:         internal meta + backfilled id/grade/topic/visual_type/fallback_type
-          parameters:   global_variables → {label, value, unit} (value coerced to float)
-          entities:     scene.entities → {id, type, label, properties}
-          pipeline:     steps → {step, title, formula, eval, result_unit, visual_state}
-        """
         meta_out = self._spec_meta()
         params_out = self._spec_parameters()
         entities_out = self._spec_entities()
@@ -392,18 +388,18 @@ class FusionSocraticDSL:
         return out
 
 
+# Subject verifier result.
 @dataclass
 class VerifyResult:
-    """Subject verifier result."""
     verified: bool = False
     variables: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     fallback: bool = False
 
 
+# Checkpoint judging result — subject-neutral.
 @dataclass
 class JudgeResult:
-    """Checkpoint judging result — subject-neutral."""
     correct: bool
     method: str = ""  # "verifier" | "numeric" | "string_fallback" | "multiple_choice"
     detail: str = ""
@@ -417,9 +413,9 @@ class JudgeResult:
         }
 
 
+# Knowledge graph node — subject-neutral (PRD §3.2 schema abstraction, issue #21 extension).
 @dataclass
 class GraphNode:
-    """Knowledge graph node — subject-neutral (PRD §3.2 schema abstraction, issue #21 extension)."""
     id: str
     title: str
     node_type: str = "Concept"  # Concept | Theorem | Method | Misconception
@@ -456,9 +452,9 @@ class GraphNode:
         }
 
 
+# Course package — subject-neutral, for classroom orchestration.
 @dataclass
 class CoursePackage:
-    """Course package — subject-neutral, for classroom orchestration."""
     class_id: str
     subject: str
     grade: str

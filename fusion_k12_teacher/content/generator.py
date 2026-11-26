@@ -1,4 +1,4 @@
-"""Educational content generator — slides, worksheets, flashcards, educational games."""
+# Educational content generator — slides, worksheets, flashcards, educational games.
 
 from __future__ import annotations
 
@@ -31,9 +31,9 @@ def _bound_str_list(val: Any) -> list[str]:
     return [_bound_str(x) for x in val[:_MAX_LIST_ITEMS]]
 
 
+# Worksheet / exercise book.
 @dataclass
 class Worksheet:
-    """Worksheet / exercise book."""
     title: str = ""
     subject: str = ""
     grade: str = ""
@@ -43,16 +43,16 @@ class Worksheet:
     error: str = ""
 
 
+# Educational content generator — teaching material production on par with Claude K-12 Teacher.
 class ContentGenerator:
-    """Educational content generator — teaching material production on par with Claude K-12 Teacher."""
 
     def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
         self._filter = content_filter or ContentFilter()
 
+    # SEC-4: generated content passes safety.check_output before reaching
+    #         students, replaced with mask and warned on hit.
     def _filter_output(self, text: str, grade: str) -> str:
-        """SEC-4: generated content passes safety.check_output before reaching
-        students, replaced with mask and warned on hit."""
         if not isinstance(text, str) or not text:
             return text
         check = self._filter.check_output(text, grade)
@@ -61,8 +61,8 @@ class ContentGenerator:
             return check.filtered_text
         return text
 
+    # Generate a worksheet / exercise book.
     async def generate_worksheet(self, subject: str, grade: str, topic: str, num_questions: int = 10) -> Worksheet:
-        """Generate a worksheet / exercise book."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         topic_s = sanitize_input(topic)
@@ -118,8 +118,8 @@ class ContentGenerator:
             # i18n: user-facing — default title shown to users, keep Chinese.
             return Worksheet(title=f"{topic_s}练习", subject=subject_s, grade=grade_s, error=str(e))
 
+    # Generate flashcards.
     async def generate_flashcards(self, subject: str, grade: str, topic: str, count: int = 10) -> list[dict[str, str]]:
-        """Generate flashcards."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         topic_s = sanitize_input(topic)
@@ -154,8 +154,8 @@ class ContentGenerator:
             rethrow_if_fatal(e)
             return []
 
+    # Generate a slide deck outline.
     async def generate_lesson_slides(self, subject: str, grade: str, topic: str, num_slides: int = 8) -> list[dict[str, str]]:
-        """Generate a slide deck outline."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         topic_s = sanitize_input(topic)
@@ -189,9 +189,9 @@ class ContentGenerator:
             rethrow_if_fatal(e)
             return []
 
+    # Generate an educational game design — whitelisted schema + bounded
+    #         lengths (CNT-1).
     async def generate_educational_game(self, subject: str, grade: str, topic: str, game_type: str = "quiz") -> dict[str, Any]:
-        """Generate an educational game design — whitelisted schema + bounded
-        lengths (CNT-1)."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         topic_s = sanitize_input(topic)
@@ -231,9 +231,9 @@ class ContentGenerator:
             # i18n: user-facing — default title shown to users, keep Chinese.
             return {"title": f"{topic_s}游戏", "error": str(e)}
 
+    # Generate a parent-communication letter template — content filtered +
+    #         length capped, error strings never leak on failure (CNT-2/4).
     async def generate_parent_communication(self, student: str, grade: str, subject: str, topic: str) -> str:
-        """Generate a parent-communication letter template — content filtered +
-        length capped, error strings never leak on failure (CNT-2/4)."""
         student_s = sanitize_input(student, 50)
         grade_s = sanitize_input(grade, 4)
         subject_s = sanitize_input(subject, 20)
@@ -262,7 +262,7 @@ class ContentGenerator:
             rethrow_if_fatal(e)
             return ""
 
+    # Parse LLM JSON — E1: converge on the single _parse.parse_json
+    #         (bounded length + balanced-brace scan).
     def _parse_json(self, text: Any) -> Any:
-        """Parse LLM JSON — E1: converge on the single _parse.parse_json
-        (bounded length + balanced-brace scan)."""
         return parse_json(text)

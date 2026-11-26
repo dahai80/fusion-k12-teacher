@@ -1,6 +1,6 @@
+# Misconception problem batch scene-compile test — calls DeepSeek per problem, records pass/fail through the five-step waterfall.
 #!/usr/bin/env python
 # ruff: noqa: E402
-"""Misconception problem batch scene-compile test — calls DeepSeek per problem, records pass/fail through the five-step waterfall."""
 import asyncio
 import json
 import os

@@ -1,6 +1,6 @@
-"""#34 (config Phase 2.2): Single-point resolution of gateway credentials/port —
-fusion_core.config first, falling back to semantically equivalent legacy env
-reads when absent (optional-dependency constraint, see CLAUDE.md)."""
+# #34 (config Phase 2.2): Single-point resolution of gateway credentials/port —
+# fusion_core.config first, falling back to semantically equivalent legacy env
+# reads when absent (optional-dependency constraint, see CLAUDE.md).
 
 from __future__ import annotations
 

@@ -1,8 +1,7 @@
+# One-time MuseTalk asset conversion: .pth (torch) -> MLX-native safetensors (torch-free).
+#
+# Run in fusion-mlx venv (has torch). Produces dist/ usable by from_pretrained_mlx.
 #!/usr/bin/env python3
-"""One-time MuseTalk asset conversion: .pth (torch) -> MLX-native safetensors (torch-free).
-
-Run in fusion-mlx venv (has torch). Produces dist/ usable by from_pretrained_mlx.
-"""
 import json
 import sys
 from pathlib import Path

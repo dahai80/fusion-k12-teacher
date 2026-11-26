@@ -1,4 +1,4 @@
-"""Agent module tests — models / executor / tasks / scheduler."""
+# Agent module tests — models / executor / tasks / scheduler.
 
 import asyncio
 import os

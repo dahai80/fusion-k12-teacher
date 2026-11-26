@@ -1,4 +1,4 @@
-"""Full-coverage tests for the analytics module — models, loader, engine."""
+# Full-coverage tests for the analytics module — models, loader, engine.
 
 from __future__ import annotations
 

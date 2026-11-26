@@ -1,19 +1,18 @@
-"""SaltProvider — anonymization salt source abstraction (M1-T7).
-
-v1.3.0 anonymizer._resolve_salt inlined env/file/random three-way resolution,
-not extensible. v2.0 abstracts it into SaltProvider, supporting standalone
-(env/file) and cluster (config center + Redis cache).
-
-Implementations:
-- EnvSaltProvider: FUSION_K12_SALT env (standalone)
-- FileSaltProvider: FUSION_K12_SALT_FILE (standalone, 0600)
-- ConfigCenterSaltProvider: Redis cache (TTL 300s), miss falls back to the
-  config center (cluster)
-
-Selection: get_salt_provider() picks by FUSION_K12_SALT_PROVIDER; the default
-chain is env→file→random fallback (preserves v1.3.0 standalone behavior).
-Redis is an optional dependency; a missing install raises a clear ImportError.
-"""
+# SaltProvider — anonymization salt source abstraction (M1-T7).
+#
+# v1.3.0 anonymizer._resolve_salt inlined env/file/random three-way resolution,
+# not extensible. v2.0 abstracts it into SaltProvider, supporting standalone
+# (env/file) and cluster (config center + Redis cache).
+#
+# Implementations:
+# - EnvSaltProvider: FUSION_K12_SALT env (standalone)
+# - FileSaltProvider: FUSION_K12_SALT_FILE (standalone, 0600)
+# - ConfigCenterSaltProvider: Redis cache (TTL 300s), miss falls back to the
+#   config center (cluster)
+#
+# Selection: get_salt_provider() picks by FUSION_K12_SALT_PROVIDER; the default
+# chain is env→file→random fallback (preserves v1.3.0 standalone behavior).
+# Redis is an optional dependency; a missing install raises a clear ImportError.
 
 from __future__ import annotations
 
@@ -30,15 +29,17 @@ _PROVIDER_ENV = "FUSION_K12_SALT_PROVIDER"
 _DEFAULT_SALT_FILE = os.path.expanduser("~/.fusion-k12/salt")
 
 
+# Salt source abstraction — get_salt() returns the currently active salt.
 class SaltProvider(ABC):
-    """Salt source abstraction — get_salt() returns the currently active salt."""
 
+    # Return the current salt.
     @abstractmethod
     def get_salt(self) -> str:
-        """Return the current salt."""
+        pass
 
+    # Release resources (Redis connections etc.). No-op by default.
     def close(self) -> None:
-        """Release resources (Redis connections etc.). No-op by default."""
+        pass
 
 
 class EnvSaltProvider(SaltProvider):
@@ -219,8 +220,8 @@ class VersionedSaltProvider(SaltProvider):
         except OSError as e:
             logger.warning("VersionedSaltProvider write failed: %s", e)
 
+    # Archived historic versions [(version, salt)] ascending (excluding current).
     def _archive_versions(self) -> list[tuple[int, str]]:
-        """Archived historic versions [(version, salt)] ascending (excluding current)."""
         import re
         versions: list[tuple[int, str]] = []
         d = os.path.dirname(self._path) or "."
@@ -246,28 +247,27 @@ class VersionedSaltProvider(SaltProvider):
         archived = self._archive_versions()
         return (max(v for v, _ in archived) + 1) if archived else 1
 
+    # Return [(version, salt)] ascending — historic archives + current (current is the highest version).
     def list_versions(self) -> list[tuple[int, str]]:
-        """Return [(version, salt)] ascending — historic archives + current (current is the highest version)."""
         versions = self._archive_versions()
         cur_ver = self.current_version()
         versions.append((cur_ver, self.get_salt()))
         return versions
 
+    # Fetch a historic salt by version — used to resolve old IDs.
     def get_salt_for_version(self, version: int) -> str:
-        """Fetch a historic salt by version — used to resolve old IDs."""
         for v, s in self.list_versions():
             if v == version:
                 return s
         logger.warning("salt version %d does not exist, falling back to current salt", version)
         return self.get_salt()
 
+    # Rotate the salt — archive the current one under its version number,
+    #         generate a new salt and write the main file (version number +1).
+    #
+    #         Returns (new version, new salt). Old versions are kept for
+    #         get_salt_for_version to look up historic IDs.
     def rotate(self) -> tuple[int, str]:
-        """Rotate the salt — archive the current one under its version number,
-        generate a new salt and write the main file (version number +1).
-
-        Returns (new version, new salt). Old versions are kept for
-        get_salt_for_version to look up historic IDs.
-        """
         cur_ver = self.current_version()
         cur = self.get_salt()
         archive_path = f"{self._path}.v{cur_ver}"
@@ -299,14 +299,13 @@ class _ExplicitSaltProvider(SaltProvider):
         return self._salt
 
 
+# Pick a salt provider by env — explicit salt wins, otherwise
+#     FUSION_K12_SALT_PROVIDER selects.
+#
+#     Default chain: env → file → random fallback (preserves v1.3.0 standalone
+#     behavior). Non-empty explicit returns _ExplicitSaltProvider directly
+#     (compatible with config.salt injection).
 def get_salt_provider(explicit: str = "") -> SaltProvider:
-    """Pick a salt provider by env — explicit salt wins, otherwise
-    FUSION_K12_SALT_PROVIDER selects.
-
-    Default chain: env → file → random fallback (preserves v1.3.0 standalone
-    behavior). Non-empty explicit returns _ExplicitSaltProvider directly
-    (compatible with config.salt injection).
-    """
     if explicit:
         logger.info("Using explicitly injected salt (config.salt)")
         return _ExplicitSaltProvider(explicit)

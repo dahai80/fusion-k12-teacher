@@ -1,12 +1,11 @@
-"""Math scene animation compiler — LLM structured extraction, SymPy overwrite, SceneDSL (PRD §4).
-
-Three-stage pipeline (the LLM must never generate drawing code / video directly):
-1. The LLM extracts scenario/entities/units/key_milestones/question_focus (Structured Output).
-2. MathSympyVerifier overwrites the numbers with scenario formulas (Single Source of Truth).
-3. Outputs SceneDSL (course.models, subject-neutral) for frontend template rendering.
-
-Fallback: template miss -> static diagram + KaTeX step-by-step derivation (PRD M5-B01).
-"""
+# Math scene animation compiler — LLM structured extraction, SymPy overwrite, SceneDSL (PRD §4).
+#
+# Three-stage pipeline (the LLM must never generate drawing code / video directly):
+# 1. The LLM extracts scenario/entities/units/key_milestones/question_focus (Structured Output).
+# 2. MathSympyVerifier overwrites the numbers with scenario formulas (Single Source of Truth).
+# 3. Outputs SceneDSL (course.models, subject-neutral) for frontend template rendering.
+#
+# Fallback: template miss -> static diagram + KaTeX step-by-step derivation (PRD M5-B01).
 
 from __future__ import annotations
 
@@ -131,8 +130,8 @@ _EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" 
 只输出 JSON, 不要解释。"""
 
 
+# Problem -> structured JSON -> SymPy overwrite -> SceneDSL.
 class MathSceneCompiler(SceneCompilerBase):
-    """Problem -> structured JSON -> SymPy overwrite -> SceneDSL."""
 
     def __init__(self, mlx: MLXClient, verifier: MathSympyVerifier, content_filter=None) -> None:
         self.mlx = mlx
@@ -386,9 +385,9 @@ class MathSceneCompiler(SceneCompilerBase):
         logger.info("scene_compiler: scenario=%s verified=%s fallback=%s", scenario, dsl.verified, dsl.fallback)
         return dsl
 
+    # Judgment-type problem DSL — criterion value + verdict reveal for frontend rendering.
     def _build_judgment_dsl(self, problem: str, knowledge_node_id: str,
                             parsed: dict[str, Any], jres: dict[str, Any]) -> SceneDSL:
-        """Judgment-type problem DSL — criterion value + verdict reveal for frontend rendering."""
         is_true = jres["verdict"]
         val = jres["criterion_value"]
         knowns = parsed["knowns"]
@@ -459,11 +458,11 @@ class MathSceneCompiler(SceneCompilerBase):
                                                 # i18n: user-facing
                                                 "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
+    # Deterministic fallback DSL — numeric relations computed directly from the problem text via regex, never via the LLM; verified always true.
     def _build_direct_dsl(self, problem: str, knowledge_node_id: str, *,
                           answer: float, answer_unit: str, steps: list[str],
                           visual_kind: str, focus: str, misconception: str,
                           knowns: dict[str, float]) -> SceneDSL:
-        """Deterministic fallback DSL — numeric relations computed directly from the problem text via regex, never via the LLM; verified always true."""
         entities = [SceneEntity(id=k, type="reference_line", label=k, value=v, unit="")
                     for k, v in knowns.items()]
         # i18n: user-facing (milestone event names and answer formula rendered to students)
@@ -515,8 +514,8 @@ class MathSceneCompiler(SceneCompilerBase):
             fallback=False,
         )
 
+    # Deterministic fallback for change-a-number average problems — original = new value - (new avg - old avg) x count, taken via problem-text regex.
     def _try_average_change(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
-        """Deterministic fallback for change-a-number average problems — original = new value - (new avg - old avg) x count, taken via problem-text regex."""
         # i18n: user-facing (matches Chinese problem-text keywords)
         if "平均" not in problem or "原来" not in problem:
             return None
@@ -560,8 +559,8 @@ class MathSceneCompiler(SceneCompilerBase):
                           "改成更大的数平均才升, 原数 = 新值 − 总分差 (减法)",
         )
 
+    # Deterministic fallback for transfer-to-equal problems — after moving m the two sides are equal, so the original difference is 2m and the larger = (sum + diff)/2.
     def _try_transfer_equal(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
-        """Deterministic fallback for transfer-to-equal problems — after moving m the two sides are equal, so the original difference is 2m and the larger = (sum + diff)/2."""
         # i18n: user-facing (matches Chinese problem-text keywords)
         if "原来" not in problem or not re.search(r"同样重|一样重|相等|一样多", problem):
             return None
@@ -597,11 +596,10 @@ class MathSceneCompiler(SceneCompilerBase):
             misconception="移动 m 后相等 → 原差是 2m 不是 m; 和差公式: 大数=(和+差)/2",
         )
 
+    # Generic path — any new problem type: open extraction -> SymPy solving -> visualization-primitive DSL.
+    #
+    #         Returning None means the generic path also failed (extraction unavailable / equations unsolvable); the caller keeps the degraded state.
     async def _compile_generic(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
-        """Generic path — any new problem type: open extraction -> SymPy solving -> visualization-primitive DSL.
-
-        Returning None means the generic path also failed (extraction unavailable / equations unsolvable); the caller keeps the degraded state.
-        """
         # Deterministic fallbacks first — change-a-number average / transfer-to-equal: fixed numeric relations, computed
         # directly by problem-text regex, never via the LLM (observed LLM repeatedly errs on direction/semantics: 51/-15/unknown)
         direct = self._try_average_change(problem, knowledge_node_id) or self._try_transfer_equal(problem, knowledge_node_id)

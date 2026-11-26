@@ -67,8 +67,8 @@ def _sgt(subject: str, grade: str, topic: str) -> tuple[str, str, str]:
     )
 
 
+# Differentiated instruction engine — three-tier differentiated content generation.
 class DifferentiationEngine:
-    """Differentiated instruction engine — three-tier differentiated content generation."""
 
     def __init__(
         self,
@@ -83,8 +83,8 @@ class DifferentiationEngine:
         self._aligner = aligner or StandardsAligner(standards_query)
         self._filter = content_filter or ContentFilter()
 
+    # ENG-17: tiered text passes safety.check_output; on hit, replaced with the mask and a warning is logged.
     def _filter_output(self, text: str, grade: str) -> str:
-        """ENG-17: tiered text passes safety.check_output; on hit, replaced with the mask and a warning is logged."""
         if not isinstance(text, str) or not text:
             return text
         check = self._filter.check_output(text, grade)
@@ -93,17 +93,17 @@ class DifferentiationEngine:
             return check.filtered_text
         return text
 
+    # E3: write into result.layers[lvl] — dict storage, so adding tiers requires no dataclass change.
+    #
+    #         ENG-23 guard: tier name must exist in LEVEL_CONFIGS, otherwise skip to avoid writing a ghost tier.
     @staticmethod
     def _set_layer(result: DifferentiatedContent, lvl: str, content: LayerContent) -> None:
-        """E3: write into result.layers[lvl] — dict storage, so adding tiers requires no dataclass change.
-
-        ENG-23 guard: tier name must exist in LEVEL_CONFIGS, otherwise skip to avoid writing a ghost tier.
-        """
         if lvl not in LEVEL_CONFIGS:
             logger.warning("Tier %s not in LEVEL_CONFIGS, skipping assignment (config may have been renamed)", lvl)
             return
         result.layers[lvl] = content
 
+    # Generate a three-tier differentiated lesson.
     async def generate_differentiated_lesson(
         self,
         subject: str,
@@ -111,7 +111,6 @@ class DifferentiationEngine:
         topic: str,
         duration: int = 45,
     ) -> DifferentiatedContent:
-        """Generate a three-tier differentiated lesson."""
         subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
         alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
@@ -157,6 +156,7 @@ class DifferentiationEngine:
 
         return result
 
+    # Generate a three-tier differentiated quiz.
     async def generate_differentiated_quiz(
         self,
         subject: str,
@@ -164,7 +164,6 @@ class DifferentiationEngine:
         topic: str,
         num_questions: int = 10,
     ) -> DifferentiatedContent:
-        """Generate a three-tier differentiated quiz."""
         subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
         alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
@@ -195,6 +194,7 @@ class DifferentiationEngine:
 
         return result
 
+    # Generate a three-tier differentiated worksheet.
     async def generate_differentiated_worksheet(
         self,
         subject: str,
@@ -202,7 +202,6 @@ class DifferentiationEngine:
         topic: str,
         num_questions: int = 8,
     ) -> DifferentiatedContent:
-        """Generate a three-tier differentiated worksheet."""
         subject_s, grade_s, topic_s = _sgt(subject, grade, topic)
         alignment = self._aligner.align(subject_s, grade_s, topic_s)
         standards_context = self._aligner.build_prompt_context(alignment)
@@ -233,6 +232,7 @@ class DifferentiationEngine:
 
         return result
 
+    # Generate a single-tier worksheet.
     async def _generate_worksheet_layer(
         self,
         subject: str,
@@ -242,7 +242,6 @@ class DifferentiationEngine:
         num_questions: int,
         standards_context: str,
     ) -> LayerContent:
-        """Generate a single-tier worksheet."""
         config = LEVEL_CONFIGS.get(level, LEVEL_CONFIGS["standard"])
         # i18n: user-facing
         prompt = f"""为{grade}年级{subject}课程中"{topic}"设计练习工作纸。
@@ -278,6 +277,7 @@ class DifferentiationEngine:
             )
         return LayerContent()
 
+    # Generate single-tier content.
     async def _generate_layer(
         self,
         subject: str,
@@ -287,7 +287,6 @@ class DifferentiationEngine:
         duration: int,
         standards_context: str,
     ) -> LayerContent:
-        """Generate single-tier content."""
         config = LEVEL_CONFIGS.get(level, LEVEL_CONFIGS["standard"])
         # i18n: user-facing
         prompt = f"""你是一位经验丰富的K-12教师，正在为{grade}年级{subject}课程中"{topic}"主题设计教学材料。
@@ -326,6 +325,7 @@ class DifferentiationEngine:
             )
         return LayerContent()
 
+    # Generate a single-tier quiz.
     async def _generate_quiz_layer(
         self,
         subject: str,
@@ -335,7 +335,6 @@ class DifferentiationEngine:
         num_questions: int,
         standards_context: str,
     ) -> LayerContent:
-        """Generate a single-tier quiz."""
         config = LEVEL_CONFIGS.get(level, LEVEL_CONFIGS["standard"])
         # i18n: user-facing
         prompt = f"""为{grade}年级{subject}课程中"{topic}"生成测验题。
@@ -363,6 +362,7 @@ class DifferentiationEngine:
             )
         return LayerContent()
 
+    # Generate group classroom task sheets.
     async def _generate_group_tasks(
         self,
         subject: str,
@@ -371,7 +371,6 @@ class DifferentiationEngine:
         duration: int,
         standards_context: str = "",
     ) -> list[GroupTask]:
-        """Generate group classroom task sheets."""
         # A7: receive and inject standards_context — group tasks align with the curriculum, not decoupled from it.
         # i18n: user-facing
         prompt = f"""为{grade}年级{subject}课程"{topic}"设计三组分层课堂任务：

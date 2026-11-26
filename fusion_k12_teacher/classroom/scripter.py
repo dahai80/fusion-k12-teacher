@@ -1,10 +1,9 @@
-"""E1 lesson script generator — lesson plan/topic → page-by-page script (narration +
-question points + emotion_tag).
-
-K1 text version: reuses CurriculumEngine.lesson_plan / ContentGenerator.lesson_slides as input,
-LLM generates per-page narration. Failure degrades: split pages directly from
-lesson_plan.sections, never blocking the classroom.
-"""
+# E1 lesson script generator — lesson plan/topic → page-by-page script (narration +
+# question points + emotion_tag).
+#
+# K1 text version: reuses CurriculumEngine.lesson_plan / ContentGenerator.lesson_slides as input,
+# LLM generates per-page narration. Failure degrades: split pages directly from
+# lesson_plan.sections, never blocking the classroom.
 
 from __future__ import annotations
 

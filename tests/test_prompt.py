@@ -1,4 +1,4 @@
-"""build_prompt (E12) unit tests — sanitize gate + template injection."""
+# build_prompt (E12) unit tests — sanitize gate + template injection.
 
 from __future__ import annotations
 

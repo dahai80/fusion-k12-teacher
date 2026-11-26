@@ -1,14 +1,13 @@
-"""Math subject implementation — SubjectModule registration entry.
-
-Implements the course.base protocols:
-- MathKnowledgeGraph (KnowledgeGraphBase)
-- MathSympyVerifier (VerifierBase)
-- MathSceneCompiler (SceneCompilerBase)
-- MathSocraticTutor (SocraticTutorBase)
-
-Math-specific: SymPy symbolic engine + networkx graph + motion-problem scene
-formula registry.
-"""
+# Math subject implementation — SubjectModule registration entry.
+#
+# Implements the course.base protocols:
+# - MathKnowledgeGraph (KnowledgeGraphBase)
+# - MathSympyVerifier (VerifierBase)
+# - MathSceneCompiler (SceneCompilerBase)
+# - MathSocraticTutor (SocraticTutorBase)
+#
+# Math-specific: SymPy symbolic engine + networkx graph + motion-problem scene
+# formula registry.
 
 from __future__ import annotations
 
@@ -26,8 +25,8 @@ from .socratic_tutor import MathSocraticTutor
 from .sympy_verifier import MathSympyVerifier
 
 
+# Math subject module.
 class MathSubject(SubjectModule):
-    """Math subject module."""
 
     @property
     def subject_id(self) -> str:

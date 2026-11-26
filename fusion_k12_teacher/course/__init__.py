@@ -1,19 +1,18 @@
-"""Subject course platform — abstraction layer decoupling platform from content.
-
-This package defines subject-agnostic course capability protocols (SubjectModule);
-each subject (math/physics/chemistry/english/chinese) implements and registers
-into SubjectRegistry on its own. The platform (engines/serve/gui) depends only on
-the protocols and the registry — adding a subject requires zero platform changes.
-
-Capability dimensions (each subject implements optionally; unimplemented
-returns None/501):
-- KnowledgeGraphBase: subject knowledge graph (nodes/edges/DAG/reverse attribution)
-- SceneCompilerBase: problem -> parameterized scene DSL (animated visualization)
-- SocraticTutorBase: 5E Socratic lesson-script DSL generation + checkpoint scoring
-- VerifierBase: rigor verification (authoritative numeric override, guards against
-  subject hallucination)
-- MasteryTracker: subject-agnostic, shared by the platform
-"""
+# Subject course platform — abstraction layer decoupling platform from content.
+#
+# This package defines subject-agnostic course capability protocols (SubjectModule);
+# each subject (math/physics/chemistry/english/chinese) implements and registers
+# into SubjectRegistry on its own. The platform (engines/serve/gui) depends only on
+# the protocols and the registry — adding a subject requires zero platform changes.
+#
+# Capability dimensions (each subject implements optionally; unimplemented
+# returns None/501):
+# - KnowledgeGraphBase: subject knowledge graph (nodes/edges/DAG/reverse attribution)
+# - SceneCompilerBase: problem -> parameterized scene DSL (animated visualization)
+# - SocraticTutorBase: 5E Socratic lesson-script DSL generation + checkpoint scoring
+# - VerifierBase: rigor verification (authoritative numeric override, guards against
+#   subject hallucination)
+# - MasteryTracker: subject-agnostic, shared by the platform
 
 from __future__ import annotations
 

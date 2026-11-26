@@ -1,15 +1,14 @@
-"""Math Socratic lesson-script generation — FusionSocratic DSL v3.0
-(PRD §5, issue #19).
-
-Generates TeachingStep[] per 5E: speech_narration + animation segment +
-checkpoint + visual_state.
-Socratic style: step-by-step reveal, demote a layer after 2 consecutive
-errors (B→A) + replay prerequisite nodes (PRD §5.3).
-Numeric fields are verified by MathSympyVerifier. The script is played back
-page by page on the student client.
-v3.0: meta.visual_type (8-primitive routing) + meta.fallback_type +
-step.visual_state.action.
-"""
+# Math Socratic lesson-script generation — FusionSocratic DSL v3.0
+# (PRD §5, issue #19).
+#
+# Generates TeachingStep[] per 5E: speech_narration + animation segment +
+# checkpoint + visual_state.
+# Socratic style: step-by-step reveal, demote a layer after 2 consecutive
+# errors (B→A) + replay prerequisite nodes (PRD §5.3).
+# Numeric fields are verified by MathSympyVerifier. The script is played back
+# page by page on the student client.
+# v3.0: meta.visual_type (8-primitive routing) + meta.fallback_type +
+# step.visual_state.action.
 
 from __future__ import annotations
 
@@ -86,8 +85,8 @@ _SCRIPT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" +
 只输出 JSON。"""
 
 
+# Math Socratic lesson-script generator — 5E + checkpoint + layering.
 class MathSocraticTutor(SocraticTutorBase):
-    """Math Socratic lesson-script generator — 5E + checkpoint + layering."""
 
     def __init__(self, mlx: MLXClient, verifier: MathSympyVerifier, content_filter=None) -> None:
         self.mlx = mlx

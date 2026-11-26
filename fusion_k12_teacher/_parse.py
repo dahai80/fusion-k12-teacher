@@ -1,13 +1,12 @@
-"""LLM JSON parsing — single implementation (E1).
-
-The 7 engines used to each carry a copy of _parse_json, already diverged into two
-implementations (split-based / regex-based); the CLAUDE.md note "intentional per-module
-isolation" masked the DRY violation and copy drift. Consolidated here into a single
-implementation imported by all engines, eliminating fix-here-forget-there.
-
-Implementation uses analytics' balanced-brace scan (most robust, not fooled by multiple
-objects across text boundaries), plus ```json``` fence extraction and bounded length protection.
-"""
+# LLM JSON parsing — single implementation (E1).
+#
+# The 7 engines used to each carry a copy of _parse_json, already diverged into two
+# implementations (split-based / regex-based); the CLAUDE.md note "intentional per-module
+# isolation" masked the DRY violation and copy drift. Consolidated here into a single
+# implementation imported by all engines, eliminating fix-here-forget-there.
+#
+# Implementation uses analytics' balanced-brace scan (most robust, not fooled by multiple
+# objects across text boundaries), plus ```json``` fence extraction and bounded length protection.
 
 from __future__ import annotations
 
@@ -22,10 +21,10 @@ _MAX_PARSE_LEN = 200000
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
+# Balanced-brace scan, returns the first complete JSON object/array.
+#     The greedy regex \{.*\} crosses object boundaries in multi-object text and grabs invalid
+#     spans; this method slices precisely by brace depth.
 def _extract_first_json(text: str) -> str:
-    """Balanced-brace scan, returns the first complete JSON object/array.
-    The greedy regex \{.*\} crosses object boundaries in multi-object text and grabs invalid
-    spans; this method slices precisely by brace depth."""
     start = -1
     close_ch = ""
     depth = 0
@@ -56,11 +55,10 @@ def _extract_first_json(text: str) -> str:
     return ""
 
 
+# Parse JSON returned by the LLM — tolerates None/empty/code fences/overlong input (ENG-5/6/7/20).
+#
+#     E1: single implementation, imported by all engines. Returns dict/list or None (parse failure).
 def parse_json(text: Any) -> Any:
-    """Parse JSON returned by the LLM — tolerates None/empty/code fences/overlong input (ENG-5/6/7/20).
-
-    E1: single implementation, imported by all engines. Returns dict/list or None (parse failure).
-    """
     if not isinstance(text, str) or not text.strip():
         return None
     if len(text) > _MAX_PARSE_LEN:

@@ -23,12 +23,11 @@ def _norm_subject(s: str) -> str:
     return _SUBJECT_ALIAS.get(s, s)
 
 
+# Textbook catalog loader — loads textbook catalogs from JSON files into memory.
+#
+#     Follows the StandardsLoader pattern: thread-locked lazy load, prebuilt index avoids full scans.
+#     Index: (edition, subject, grade) -> list[Unit]
 class TextbookLoader:
-    """Textbook catalog loader — loads textbook catalogs from JSON files into memory.
-
-    Follows the StandardsLoader pattern: thread-locked lazy load, prebuilt index avoids full scans.
-    Index: (edition, subject, grade) -> list[Unit]
-    """
 
     def __init__(self, data_dir: Path | None = None):
         self._data_dir = data_dir or DATA_DIR

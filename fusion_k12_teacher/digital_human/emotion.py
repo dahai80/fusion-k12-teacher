@@ -1,8 +1,7 @@
-"""emotion_tag parsing/broadcast/log filtering — TLive-Omni pattern 4.
-
-Regex strips [tag] -> TTS speed + avatar expression. Unknown tag -> neutral.
-Log filter: strips the tag before emitting, keeping logs unpolluted.
-"""
+# emotion_tag parsing/broadcast/log filtering — TLive-Omni pattern 4.
+#
+# Regex strips [tag] -> TTS speed + avatar expression. Unknown tag -> neutral.
+# Log filter: strips the tag before emitting, keeping logs unpolluted.
 
 from __future__ import annotations
 

@@ -1,1 +1,1 @@
-"""Fusion-K12-Teacher tests."""
+# Fusion-K12-Teacher tests.

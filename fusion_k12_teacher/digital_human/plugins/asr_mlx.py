@@ -1,7 +1,6 @@
-"""MlxWhisperASR — fusion-mlx /v1/audio/transcriptions plugin.
-
-word_timestamps=False for speed. Serialized by asyncio.Lock (single GPU).
-"""
+# MlxWhisperASR — fusion-mlx /v1/audio/transcriptions plugin.
+#
+# word_timestamps=False for speed. Serialized by asyncio.Lock (single GPU).
 
 from __future__ import annotations
 

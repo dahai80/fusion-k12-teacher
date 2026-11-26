@@ -1,4 +1,4 @@
-"""M2-T12 cache backend tests — LocalCache behavior + get_cache factory."""
+# M2-T12 cache backend tests — LocalCache behavior + get_cache factory.
 
 from __future__ import annotations
 

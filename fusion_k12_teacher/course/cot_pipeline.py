@@ -1,19 +1,18 @@
-"""issue #20: two-stage CoT pipeline — <thinking> free reasoning → <dsl>
-constrained JSON.
-
-Two-stage strategy (gateway#184 already supports GBNF grammar passthrough):
-  Stage 1: enable_thinking=True streaming reasoning, produces a free thinking chain
-  Stage 2: based on the thinking chain context, produces structured DSL JSON
-  (can be constrained by a GBNF grammar)
-
-This module provides:
-  - cot_enabled(): reads the FUSION_K12_COT_ENABLED env var
-  - stream_thinking(): streams thinking tokens with per-chunk callbacks
-  - extract_thinking(): isolates thinking vs body from mixed output
-  - extract_dsl(): extracts JSON inside <dsl> tags from mixed output (issue #20 gap 1)
-  - DSL_GBNF_GRAMMAR: GBNF grammar, passed through via chat_stream(grammar=) (issue #20 gap 2)
-  - COT_THINKING_PROMPT / COT_DSL_PROMPT: two-stage prompt templates
-"""
+# issue #20: two-stage CoT pipeline — <thinking> free reasoning → <dsl>
+# constrained JSON.
+#
+# Two-stage strategy (gateway#184 already supports GBNF grammar passthrough):
+#   Stage 1: enable_thinking=True streaming reasoning, produces a free thinking chain
+#   Stage 2: based on the thinking chain context, produces structured DSL JSON
+#   (can be constrained by a GBNF grammar)
+#
+# This module provides:
+#   - cot_enabled(): reads the FUSION_K12_COT_ENABLED env var
+#   - stream_thinking(): streams thinking tokens with per-chunk callbacks
+#   - extract_thinking(): isolates thinking vs body from mixed output
+#   - extract_dsl(): extracts JSON inside <dsl> tags from mixed output (issue #20 gap 1)
+#   - DSL_GBNF_GRAMMAR: GBNF grammar, passed through via chat_stream(grammar=) (issue #20 gap 2)
+#   - COT_THINKING_PROMPT / COT_DSL_PROMPT: two-stage prompt templates
 
 from __future__ import annotations
 
@@ -28,8 +27,8 @@ from .prompts.bnup_socratic import BNUP_COT_FORMAT_PROMPT, BNUP_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 
+# issue #20: whether two-stage CoT is enabled — env FUSION_K12_COT_ENABLED=true.
 def cot_enabled() -> bool:
-    """issue #20: whether two-stage CoT is enabled — env FUSION_K12_COT_ENABLED=true."""
     return os.environ.get("FUSION_K12_COT_ENABLED", "").lower() in ("1", "true", "yes", "on")
 
 
@@ -42,12 +41,11 @@ _DSL_OPEN = re.compile(r"<dsl>", re.IGNORECASE)
 _DSL_CLOSE = re.compile(r"</dsl>", re.IGNORECASE)
 
 
+# Isolate thinking vs body text from model output.
+#
+#     Returns (thinking_text, content_text).
+#     Qwen3 thinking mode outputs a <thinking>...</thinking> block + body text.
 def extract_thinking(raw: str) -> tuple[str, str]:
-    """Isolate thinking vs body text from model output.
-
-    Returns (thinking_text, content_text).
-    Qwen3 thinking mode outputs a <thinking>...</thinking> block + body text.
-    """
     if not raw:
         return "", ""
     matches = _THINK_PATTERN.findall(raw)
@@ -68,14 +66,13 @@ def extract_thinking(raw: str) -> tuple[str, str]:
     return thinking, content
 
 
+# issue #20 gap 1: extract JSON inside <dsl> tags from mixed output.
+#
+#     Model two-stage output: <thinking>reasoning</thinking> + <dsl>{"steps":[...]}</dsl>.
+#     Extracts the dsl tag content, trimming surrounding whitespace. When no tag
+#     is present, tries to find a JSON block in the body.
+#     Returns the dsl_json string or None.
 def extract_dsl(raw: str) -> str | None:
-    """issue #20 gap 1: extract JSON inside <dsl> tags from mixed output.
-
-    Model two-stage output: <thinking>reasoning</thinking> + <dsl>{"steps":[...]}</dsl>.
-    Extracts the dsl tag content, trimming surrounding whitespace. When no tag
-    is present, tries to find a JSON block in the body.
-    Returns the dsl_json string or None.
-    """
     if not raw:
         return None
     matches = _DSL_PATTERN.findall(raw)
@@ -160,6 +157,11 @@ COT_DSL_PROMPT = """基于以上教学分析, 生成结构化课稿 DSL JSON。
 只输出 <dsl> 标签及其内容, 不输出其他文字。"""
 
 
+# issue #20: stream thinking tokens with per-chunk on_chunk callbacks
+#     (supports sync/async callbacks).
+#
+#     Returns the full thinking text. Returns an empty string on error
+#     (degrade, do not block DSL generation).
 async def stream_thinking(
     mlx: Any,
     messages: list[dict[str, str]],
@@ -168,12 +170,6 @@ async def stream_thinking(
     temperature: float = 0.5,
     max_tokens: int = 2048,
 ) -> str:
-    """issue #20: stream thinking tokens with per-chunk on_chunk callbacks
-    (supports sync/async callbacks).
-
-    Returns the full thinking text. Returns an empty string on error
-    (degrade, do not block DSL generation).
-    """
     import inspect
     try:
         resp = await mlx.chat_stream(
@@ -209,9 +205,9 @@ async def stream_thinking(
         return ""
 
 
+# Yield tokens one by one from a chat_stream httpx Response
+#     (content + reasoning_content).
 async def iter_sse_tokens(resp: Any) -> AsyncIterator[str]:
-    """Yield tokens one by one from a chat_stream httpx Response
-    (content + reasoning_content)."""
     async with resp as stream:
         async for line in stream.aiter_lines():
             if not line.startswith("data: "):

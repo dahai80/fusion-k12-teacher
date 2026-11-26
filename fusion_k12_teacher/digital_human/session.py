@@ -1,9 +1,8 @@
-"""DigitalHumanSession — digital human session.
-
-Aggregates FSM + BargeInBus + Memory + ContentInjector + 4 plugins + Simulation + LiveKitAdapter.
-Lifecycle: start() loads the script and publishes idle; narrate_page(idx) teaches via TTS+Avatar;
-on_student_speech(pcm) handles barge-in into QA answering; idle_timeout releases MLX; finish() finalizes and persists.
-"""
+# DigitalHumanSession — digital human session.
+#
+# Aggregates FSM + BargeInBus + Memory + ContentInjector + 4 plugins + Simulation + LiveKitAdapter.
+# Lifecycle: start() loads the script and publishes idle; narrate_page(idx) teaches via TTS+Avatar;
+# on_student_speech(pcm) handles barge-in into QA answering; idle_timeout releases MLX; finish() finalizes and persists.
 
 from __future__ import annotations
 

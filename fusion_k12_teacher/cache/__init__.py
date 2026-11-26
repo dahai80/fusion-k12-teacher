@@ -1,11 +1,10 @@
-"""Cache backends — v2.0 M2-T12.
-
-standalone: in-process LRU (LocalCache), zero dependencies.
-cluster: Redis (RedisCache) — shares rate-limit counters/sessions/salt across
-instances.
-The get_cache() factory selects the backend by FUSION_K12_MODE; falls back to
-LocalCache when redis is missing.
-"""
+# Cache backends — v2.0 M2-T12.
+#
+# standalone: in-process LRU (LocalCache), zero dependencies.
+# cluster: Redis (RedisCache) — shares rate-limit counters/sessions/salt across
+# instances.
+# The get_cache() factory selects the backend by FUSION_K12_MODE; falls back to
+# LocalCache when redis is missing.
 
 from __future__ import annotations
 
@@ -20,8 +19,8 @@ logger = logging.getLogger(__name__)
 _cache: CacheBackend | None = None
 
 
+# Singleton cache backend — builds the instance by mode on first call, reuses afterwards.
 def get_cache() -> CacheBackend:
-    """Singleton cache backend — builds the instance by mode on first call, reuses afterwards."""
     global _cache
     if _cache is not None:
         return _cache

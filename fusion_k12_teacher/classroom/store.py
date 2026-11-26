@@ -1,11 +1,10 @@
-"""Classroom persistence — SQLite storing course packages/sessions, reusing the
-repository db path pattern.
-
-Standalone tables classroom_packages / classroom_sessions, no intrusion into the
-existing repository schema.
-Concurrency safety: sqlite3 is serialized by default, plus a threading.Lock
-against write conflicts.
-"""
+# Classroom persistence — SQLite storing course packages/sessions, reusing the
+# repository db path pattern.
+#
+# Standalone tables classroom_packages / classroom_sessions, no intrusion into the
+# existing repository schema.
+# Concurrency safety: sqlite3 is serialized by default, plus a threading.Lock
+# against write conflicts.
 
 from __future__ import annotations
 

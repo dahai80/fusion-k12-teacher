@@ -1,8 +1,7 @@
-"""Plugin base classes — ASR/LLM/TTS/Avatar four-layer abstraction.
-
-Each plugin: name attribute, init()/close() lifecycle, available property,
-cancel()/clear() for BargeInBus registration.
-"""
+# Plugin base classes — ASR/LLM/TTS/Avatar four-layer abstraction.
+#
+# Each plugin: name attribute, init()/close() lifecycle, available property,
+# cancel()/clear() for BargeInBus registration.
 
 from __future__ import annotations
 

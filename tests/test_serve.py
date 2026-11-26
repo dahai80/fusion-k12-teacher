@@ -1,4 +1,4 @@
-"""Fusion-K12-Teacher FastAPI serve tests."""
+# Fusion-K12-Teacher FastAPI serve tests.
 
 from __future__ import annotations
 
@@ -515,8 +515,8 @@ class TestAuthEnforcement:
             assert resp.status_code == 401
 
 
+# M3-T19: graceful drain shutdown — reject new requests during drain, wait for in-flight to reach zero.
 class TestGracefulDrain:
-    """M3-T19: graceful drain shutdown — reject new requests during drain, wait for in-flight to reach zero."""
 
     @pytest.mark.asyncio
     async def test_draining_rejects_new(self, client):
@@ -576,8 +576,8 @@ class TestGracefulDrain:
         srv._draining = False
 
 
+# M3-T13/T15: audit middleware + export endpoints.
 class TestAuditServe:
-    """M3-T13/T15: audit middleware + export endpoints."""
 
     @pytest.mark.asyncio
     async def test_audit_trace_id_header(self, client):
@@ -622,8 +622,8 @@ class TestAuditServe:
             os.environ.pop("FUSION_K12_ADMIN_API_KEY", None)
 
 
+# M3-T16: metrics endpoint.
 class TestMetricsServe:
-    """M3-T16: metrics endpoint."""
 
     @pytest.mark.asyncio
     async def test_metrics_endpoint_admin(self, client):

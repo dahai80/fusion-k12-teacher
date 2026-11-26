@@ -1,4 +1,4 @@
-"""Safety module data models."""
+# Safety module data models.
 
 from __future__ import annotations
 
@@ -32,9 +32,9 @@ BYPASS_RE = re.compile(f"[{BYPASS_SEPARATORS}]")
 BYPASS_CLASS = f"[{BYPASS_SEPARATORS}]*"
 
 
+# Content check result.
 @dataclass
 class ContentCheckResult:
-    """Content check result."""
 
     is_safe: bool = True
     risk_level: str = "safe"
@@ -69,9 +69,9 @@ class ContentCheckResult:
         )
 
 
+# Age rating configuration.
 @dataclass
 class AgeRating:
-    """Age rating configuration."""
 
     grade: str = ""
     max_abstraction: str = "concrete"
@@ -90,9 +90,9 @@ class AgeRating:
         }
 
 
+# Filter level configuration.
 @dataclass
 class FilterLevel:
-    """Filter level configuration."""
 
     level: str = "standard"
     sensitive_words: bool = True

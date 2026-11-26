@@ -1,10 +1,9 @@
-"""Math problem bank loader — launch set covers all train-crossing-bridge
-problem types (consolidated from k_12.md).
-
-Tagged by the triple "knowledge node ID + cognitive level + misconception
-tag", with A/B/C difficulty layers.
-Data source: data/train_bridge_bank.json. Read-only load; provides query/filter.
-"""
+# Math problem bank loader — launch set covers all train-crossing-bridge
+# problem types (consolidated from k_12.md).
+#
+# Tagged by the triple "knowledge node ID + cognitive level + misconception
+# tag", with A/B/C difficulty layers.
+# Data source: data/train_bridge_bank.json. Read-only load; provides query/filter.
 
 from __future__ import annotations
 
@@ -60,8 +59,8 @@ class Problem:
         }
 
 
+# Math problem bank — loaded from JSON, queried in memory.
 class MathProblemBank:
-    """Math problem bank — loaded from JSON, queried in memory."""
 
     def __init__(self) -> None:
         self._problems: list[Problem] = []

@@ -1,4 +1,4 @@
-"""Repository layer tests — M1-T1."""
+# Repository layer tests — M1-T1.
 
 from __future__ import annotations
 
@@ -148,8 +148,8 @@ class TestSchedulerRepoIntegration:
         repo.close()
 
 
+# M2-T11: DB task lock — cross-instance cron dedup.
 class TestTaskLock:
-    """M2-T11: DB task lock — cross-instance cron dedup."""
 
     def test_lock_acquire_first(self, repo):
         assert repo.try_lock("task_a", "host1:100", 60) is True
@@ -210,8 +210,8 @@ class TestTaskLock:
         assert s.reap_expired_locks() == 0
 
 
+# M2-T11: in cluster mode run_task races for the DB lock, skips when held.
 class TestSchedulerClusterLock:
-    """M2-T11: in cluster mode run_task races for the DB lock, skips when held."""
 
     @pytest.mark.asyncio
     async def test_cluster_skip_when_locked(self, tmp_path, monkeypatch):

@@ -1,4 +1,4 @@
-"""materials resource library tests — save/list/detail/delete."""
+# materials resource library tests — save/list/detail/delete.
 
 from __future__ import annotations
 
@@ -84,8 +84,8 @@ class TestDeleteMaterial:
         assert repo.delete_material("ghost", "t_a") is False
 
 
+# issue #17: resource retention policy — purge by age + per-teacher cap.
 class TestPurgeMaterials:
-    """issue #17: resource retention policy — purge by age + per-teacher cap."""
 
     def test_purge_by_age(self, repo):
         # i18n: user-facing

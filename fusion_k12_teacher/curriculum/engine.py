@@ -1,4 +1,4 @@
-"""Curriculum planning engine — lesson plan generation, course design, learning objectives."""
+# Curriculum planning engine — lesson plan generation, course design, learning objectives.
 
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ GRADE_LEVELS = ["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "1
 SUBJECTS = ["数学", "语文", "英语", "物理", "化学", "生物", "历史", "地理", "科学", "编程", "艺术", "音乐"]
 
 
+# Lesson plan definition.
 @dataclass
 class LessonPlan:
-    """Lesson plan definition."""
     id: str = ""
     title: str = ""
     subject: str = ""
@@ -45,9 +45,9 @@ class LessonPlan:
         return {k: v for k, v in self.__dict__.items() if v or k == "error"}
 
 
+# Quiz/exam definition.
 @dataclass
 class Quiz:
-    """Quiz/exam definition."""
     title: str = ""
     subject: str = ""
     grade: str = ""
@@ -61,15 +61,14 @@ class Quiz:
         return {k: v for k, v in self.__dict__.items() if v or k == "error"}
 
 
+# Curriculum planning engine — benchmarked against Claude K-12 Teacher's course design capabilities.
+#
+#     Supports:
+#     - standards-aligned lesson plan generation
+#     - differentiated tiered instruction design
+#     - cross-disciplinary project-based learning
+#     - unit/semester curriculum planning
 class CurriculumEngine:
-    """Curriculum planning engine — benchmarked against Claude K-12 Teacher's course design capabilities.
-
-    Supports:
-    - standards-aligned lesson plan generation
-    - differentiated tiered instruction design
-    - cross-disciplinary project-based learning
-    - unit/semester curriculum planning
-    """
 
     def __init__(self, mlx: MLXClient | None = None, content_filter: ContentFilter | None = None):
         self.mlx = mlx or MLXClient()
@@ -98,6 +97,7 @@ class CurriculumEngine:
             return self._filter_output(obj, grade)
         return obj
 
+    # Generate a standards-aligned lesson plan.
     async def generate_lesson_plan(
         self,
         subject: str,
@@ -106,7 +106,6 @@ class CurriculumEngine:
         duration: int = 45,
         standards: list[str] | None = None,
     ) -> LessonPlan:
-        """Generate a standards-aligned lesson plan."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         topic_s = sanitize_input(topic)
@@ -184,6 +183,7 @@ class CurriculumEngine:
             rethrow_if_fatal(e)
             return LessonPlan(title=topic_s, subject=subject_s, grade=grade_s, error=str(e))
 
+    # Generate a quiz.
     async def generate_quiz(
         self,
         subject: str,
@@ -192,7 +192,6 @@ class CurriculumEngine:
         num_questions: int = 10,
         question_types: list[str] | None = None,
     ) -> Quiz:
-        """Generate a quiz."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         topic_s = sanitize_input(topic)
@@ -250,8 +249,8 @@ class CurriculumEngine:
             rethrow_if_fatal(e)
             return Quiz(title=f"{topic_s}测验", subject=subject_s, grade=grade_s, error=str(e))
 
+    # Generate a unit teaching plan.
     async def generate_unit_plan(self, subject: str, grade: str, unit_title: str, weeks: int = 4) -> dict[str, Any]:
-        """Generate a unit teaching plan."""
         subject_s = sanitize_input(subject, 20)
         grade_s = sanitize_input(grade, 4)
         unit_s = sanitize_input(unit_title)

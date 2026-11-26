@@ -11,8 +11,8 @@ from .query import StandardsQuery
 logger = logging.getLogger(__name__)
 
 
+# Curriculum standards aligner — auto-injects standards context during content generation.
 class StandardsAligner:
-    """Curriculum standards aligner — auto-injects standards context during content generation."""
 
     def __init__(self, query: StandardsQuery | None = None):
         self._query = query or StandardsQuery()
@@ -24,10 +24,10 @@ class StandardsAligner:
         self._cache: dict[tuple[str, str, str], AlignmentContext] = {}
         self._max_cache = int(os.environ.get("FUSION_K12_ALIGN_CACHE_MAX", "500"))
 
+    # Returns the standards alignment context, injected into engine prompts.
     def align(
         self, subject: str, grade: str, topic: str
     ) -> AlignmentContext:
-        """Returns the standards alignment context, injected into engine prompts."""
         cache_key = (subject, grade, topic)
         # A7: return directly on cache hit, skipping find_by_topic + fallback + prerequisite computation
         cached = self._cache.get(cache_key)
@@ -80,8 +80,8 @@ class StandardsAligner:
         self._cache[cache_key] = ctx
         return ctx
 
+    # Converts an AlignmentContext into text injectable into prompts.
     def build_prompt_context(self, alignment: AlignmentContext) -> str:
-        """Converts an AlignmentContext into text injectable into prompts."""
         if not alignment.knowledge_points:
             return ""
 
@@ -114,10 +114,10 @@ class StandardsAligner:
 
         return "\n".join(lines)
 
+    # Validates whether generated content covers the standards' basic knowledge points — CJK whole-word matching (STD-7/E5).
     def validate_alignment(
         self, subject: str, grade: str, generated_objectives: list
     ) -> dict:
-        """Validates whether generated content covers the standards' basic knowledge points — CJK whole-word matching (STD-7/E5)."""
         all_points = self._query.get_knowledge_points(subject, grade)
         must_cover = [kp for kp in all_points if kp.difficulty_level == "basic"]
 

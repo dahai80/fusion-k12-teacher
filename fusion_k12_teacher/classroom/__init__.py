@@ -1,10 +1,9 @@
-"""Classroom module — K1 text version (classroom PRD E1-E6).
-
-Platform-content decoupling: classroom does not depend on specific subjects;
-scoring is delegated to AssessmentEngine/course verifier.
-LiveKit/digital-human/TTS upstream deferred (issue); K1 only teaches page by
-page in text + text answers.
-"""
+# Classroom module — K1 text version (classroom PRD E1-E6).
+#
+# Platform-content decoupling: classroom does not depend on specific subjects;
+# scoring is delegated to AssessmentEngine/course verifier.
+# LiveKit/digital-human/TTS upstream deferred (issue); K1 only teaches page by
+# page in text + text answers.
 
 from __future__ import annotations
 

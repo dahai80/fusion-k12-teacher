@@ -1,4 +1,4 @@
-"""ModelComparator before/after comparison tests — issue #23 A4."""
+# ModelComparator before/after comparison tests — issue #23 A4.
 
 from __future__ import annotations
 

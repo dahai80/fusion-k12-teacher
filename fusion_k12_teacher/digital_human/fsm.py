@@ -1,9 +1,8 @@
-"""FSM five-state state machine — TLive-Omni pattern 1.
-
-IDLE/USER_SPEAKING/AI_THINKING/AI_SPEAKING/ERROR + unified hooks.
-The ERROR state automatically triggers BargeInBus clear-down. All transitions
-are logged in structured form (no emotion tag).
-"""
+# FSM five-state state machine — TLive-Omni pattern 1.
+#
+# IDLE/USER_SPEAKING/AI_THINKING/AI_SPEAKING/ERROR + unified hooks.
+# The ERROR state automatically triggers BargeInBus clear-down. All transitions
+# are logged in structured form (no emotion tag).
 
 from __future__ import annotations
 
