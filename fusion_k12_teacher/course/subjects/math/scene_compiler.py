@@ -1,11 +1,11 @@
-"""数学场景动画编译器 — LLM 结构化提取 → SymPy 覆写 → SceneDSL (PRD §4)。
+"""Math scene animation compiler — LLM structured extraction, SymPy overwrite, SceneDSL (PRD §4).
 
-三段式流水线 (严禁 LLM 直接生成绘图代码/视频):
-1. LLM 提取 scenario/entities/units/key_milestones/question_focus (Structured Output)。
-2. MathSympyVerifier 按场景公式覆写数值 (Single Source of Truth)。
-3. 输出 SceneDSL (course.models, 学科中立) 供前端模板渲染。
+Three-stage pipeline (the LLM must never generate drawing code / video directly):
+1. The LLM extracts scenario/entities/units/key_milestones/question_focus (Structured Output).
+2. MathSympyVerifier overwrites the numbers with scenario formulas (Single Source of Truth).
+3. Outputs SceneDSL (course.models, subject-neutral) for frontend template rendering.
 
-降级: 未命中模板 → 静态示意图 + KaTeX 分步推导 (PRD M5-B01)。
+Fallback: template miss -> static diagram + KaTeX step-by-step derivation (PRD M5-B01).
 """
 
 from __future__ import annotations
@@ -43,6 +43,7 @@ _KNOWN_SCENARIOS = (
     "cylinder_cone_cut",
 )
 
+# i18n: user-facing (LLM extraction prompt — Chinese teaching-domain prompt content)
 _EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" + """你是数学应用题结构化提取器。从题目文本提取参数, 严格输出 JSON。
 
 已知场景类型: {scenarios}
@@ -131,7 +132,7 @@ _EXTRACT_PROMPT = BNUP_SYSTEM_PROMPT + "\n" + BNUP_VISUAL_ROUTING_PROMPT + "\n" 
 
 
 class MathSceneCompiler(SceneCompilerBase):
-    """题目 → 结构化 JSON → SymPy 覆写 → SceneDSL。"""
+    """Problem -> structured JSON -> SymPy overwrite -> SceneDSL."""
 
     def __init__(self, mlx: MLXClient, verifier: MathSympyVerifier, content_filter=None) -> None:
         self.mlx = mlx
@@ -144,32 +145,34 @@ class MathSceneCompiler(SceneCompilerBase):
         try:
             raw = await self.mlx.chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=1024)
         except Exception as exc:
-            logger.warning("scene_compiler: LLM 提取失败 %s", exc)
+            logger.warning("scene_compiler: LLM extraction failed %s", exc)
             rethrow_if_fatal(exc)
-            # 提取异常同样先尝试通用路径 (issue: 新题型全部降级), 失败才降级静态
+            # Extraction exceptions also try the generic path first (issue: all new problem types degraded); only fall back to static when it fails
             generic = await self._compile_generic(problem, knowledge_node_id)
             if generic is not None:
                 return generic
-            return SceneDSL(subject="math", meta={"original_text": problem}, error=f"LLM 提取失败: {exc}", fallback=True)
+            return SceneDSL(subject="math", meta={"original_text": problem}, error=f"LLM extraction failed: {exc}", fallback=True)
 
         extracted = parse_json(raw)
         if not extracted or not isinstance(extracted, dict):
-            # #28: 4B 模型常把 JSON 夹在文字里或首答截断 — 带"只输出 JSON"提示重试
-            # 一次再降级, 避免单次抖动直接丢动画
-            logger.info("scene_compiler: 首次提取非 JSON, 带约束重试一次")
+            # #28: 4B models often wrap JSON in prose or truncate the first answer — retry once with a "JSON only" nudge, then degrade,
+            # so a single hiccup does not drop the animation
+            logger.info("scene_compiler: first extraction was not JSON, retrying once with a constraint nudge")
             try:
+                # i18n: user-facing (LLM prompt nudge suffix)
                 raw_nudge = await self.mlx.chat(
+                    # i18n: user-facing
                     [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
                     temperature=0.0, max_tokens=1024,
                 )
                 extracted = parse_json(raw_nudge)
             except Exception as exc_nudge:
-                logger.warning("scene_compiler: JSON 重试失败 %s", exc_nudge)
+                logger.warning("scene_compiler: JSON retry failed %s", exc_nudge)
         if not extracted or not isinstance(extracted, dict):
             generic = await self._compile_generic(problem, knowledge_node_id)
             if generic is not None:
                 return generic
-            return SceneDSL(subject="math", meta={"original_text": problem}, error="LLM 输出非 JSON", fallback=True)
+            return SceneDSL(subject="math", meta={"original_text": problem}, error="LLM output was not JSON", fallback=True)
 
         scenario = str(extracted.get("scenario", "unknown"))
         entities_raw = extracted.get("entities", {})
@@ -177,52 +180,66 @@ class MathSceneCompiler(SceneCompilerBase):
             entities_raw = {}
 
         var_map = self._flatten_entities(scenario, entities_raw)
-        # 植树题强兜底: 题面正则重构全部参数 (不信 LLM 字段组合 — 实测其输出
-        # 每次不同: 漏 sides/幻觉 length/漏 spacing 轮番出现)。
-        # 提取 4 个候选: 路长/周长、间距、棵数、封闭/两侧标志; 再按题目所问
-        # 目标 (棵数/间距/路长) 反推 handler 需要的字段组合, 整体重构 var_map。
+        # Tree-planting hard fallback: rebuild all parameters from the problem text via regex (do not trust the LLM's field combination —
+        # observed output differs every run: missing sides / hallucinated length / missing spacing in rotation).
+        # Extract 4 candidates: road length/perimeter, spacing, tree count, closed/both-sides flags; then, based on what the problem
+        # asks (trees/spacing/length), back-derive the field combination the handler needs and rebuild var_map wholesale.
         if scenario == "tree_planting":
+            # i18n: user-facing
             m_len = re.search(r"(?:周长|全长|路长|边长)\s*(?:是|为)?\s*(\d+(?:\.\d+)?)\s*米", problem)
+            # i18n: user-facing
             m_sp = re.search(r"每\s*(?:隔)?\s*(\d+(?:\.\d+)?)\s*米", problem)
+            # i18n: user-facing
             m_tr = re.search(r"(?:共|一共)?(?:栽|种|埋|插)(?:了|上)?\s*(\d+)\s*[棵株根面]", problem)
+            # i18n: user-facing
             closed = bool(re.search(r"封闭|一圈|周围|环绕|环形|四周|圆(形|圈)|池塘|月潭|四角都|四个?角都", problem))
+            # i18n: user-facing
             ask_trees = bool(re.search(r"多少[棵株面]", problem))
+            # i18n: user-facing
             ask_spacing = bool(re.search(r"相距|间距|间隔多少|距离是多少|每相邻", problem))
+            # i18n: user-facing
             ask_length = bool(re.search(r"多长|路长|周长是多少", problem))
             if m_len or m_sp or m_tr:
-                # mode_code 推断: 封闭=0; 两端都栽=1; 一端=2; 两端不栽=3; 默认两端栽
+                # mode_code inference: closed=0; both ends planted=1; one end=2; neither end=3; default both ends
                 if closed:
                     mode = 0.0
+                # i18n: user-facing
                 elif re.search(r"两端都(?:要)?(?:栽|种|埋|插)", problem):
                     mode = 1.0
+                # i18n: user-facing
                 elif re.search(r"一端(?:栽|种|埋)|只栽一端", problem):
                     mode = 2.0
+                # i18n: user-facing
                 elif re.search(r"两端都不|两端都不栽|都不栽|不栽两端", problem):
                     mode = 3.0
                 else:
                     mode = 1.0
                 if ask_trees and m_len and m_sp:
-                    # 问棵数: 标准正向 (handler: length+spacing+mode → trees)
+                    # Ask tree count: standard forward direction (handler: length+spacing+mode -> trees)
                     length_val = float(m_len.group(1))
+                    # i18n: user-facing
                     if closed and re.search(r"边长", problem):
-                        length_val = length_val * 4.0  # 正方形边长 → 周长
+                        length_val = length_val * 4.0  # square side -> perimeter
                     var_map = {"length": length_val, "spacing": float(m_sp.group(1)),
                                "mode_code": mode}
+                    # i18n: user-facing
                     if re.search(r"两旁|两侧|两边", problem):
                         var_map["sides"] = 2.0
                 elif ask_spacing and m_len and m_tr:
-                    # 已知周长/路长 + 棵数 → 求间距 (handler 分支: spacing=length/trees 或 /(trees-1))
+                    # Known perimeter/length + tree count -> ask spacing (handler branch: spacing=length/trees or /(trees-1))
                     var_map = {"length": float(m_len.group(1)), "trees": float(m_tr.group(1)),
                                "mode_code": mode}
                 elif ask_length and m_tr and m_sp:
-                    # 已知棵数 + 间距 → 求路长 (handler 逆向: length=(trees/sides-1)*spacing)
+                    # Known tree count + spacing -> ask road length (handler reverse: length=(trees/sides-1)*spacing)
                     var_map = {"trees": float(m_tr.group(1)), "spacing": float(m_sp.group(1))}
+                    # i18n: user-facing
                     if re.search(r"两旁|两侧|两边", problem):
                         var_map["sides"] = 2.0
         verify = self.verifier.verify_scene(scenario, var_map) if scenario in _KNOWN_SCENARIOS else None
 
+        # i18n: user-facing (substring guard against legacy verifier "unknown scenario" error text; kept verbatim — no logic change)
         if verify and verify.error and "未知场景" not in verify.error:
-            logger.info("scene_compiler: 首次校验失败 %s, 重提一次", verify.error)
+            logger.info("scene_compiler: first verification failed %s, re-extracting once", verify.error)
             try:
                 raw2 = await self.mlx.chat([{"role": "user", "content": prompt}], temperature=0.2, max_tokens=1024)
                 extracted2 = parse_json(raw2)
@@ -230,7 +247,7 @@ class MathSceneCompiler(SceneCompilerBase):
                     var_map = self._flatten_entities(scenario, extracted2.get("entities", {}))
                     verify = self.verifier.verify_scene(scenario, var_map)
             except Exception as exc2:
-                logger.warning("scene_compiler: 重提失败 %s", exc2)
+                logger.warning("scene_compiler: re-extraction failed %s", exc2)
 
         entities_list = self._build_entities_list(entities_raw, verify)
         milestones = self._build_milestones(extracted.get("key_milestones", []), verify, scenario)
@@ -272,15 +289,17 @@ class MathSceneCompiler(SceneCompilerBase):
             total_distance = self._var_value(verify, "area")
             total_time = self._var_value(verify, "length") or 0.0
         elif scenario == "tree_planting":
-            # 答案映射按 handler 实际产出的变量推断 —
-            # 标准型/两侧栽: trees 是主解; 逆向求路长: trees 是输入、length 是解;
-            # 求间距: spacing 是解。用"题目问了什么 + 哪个变量是新算出来的"双重判断。
+            # Answer mapping inferred from the variables the handler actually produces —
+            # standard/both-sides: trees is the main solution; reverse length: trees is the input, length is the solution;
+            # ask spacing: spacing is the solution. Dual judgment: "what the problem asks" + "which variable was newly computed".
+            # i18n: user-facing
             m_tr_ask = re.search(r"多少[棵株面]", problem)
+            # i18n: user-facing
             m_sp_ask = re.search(r"相距|间距|间隔多少|距离", problem)
             if m_sp_ask and self._var_value(verify, "spacing") is not None:
                 total_distance = self._var_value(verify, "spacing")
             elif not m_tr_ask and self._var_value(verify, "length") is not None:
-                # 逆向求路长: 题目问路长 ( trees 是输入)
+                # Reverse length: the problem asks for the road length (trees is the input)
                 total_distance = self._var_value(verify, "length")
             else:
                 total_distance = self._var_value(verify, "trees")
@@ -319,7 +338,7 @@ class MathSceneCompiler(SceneCompilerBase):
             total_distance = self._var_value(verify, "segments")
             total_time = self._var_value(verify, "folds") or 0.0
         elif scenario == "cylinder_cone_cut":
-            # 里程映射: 主解=题目所问体积 (handler 已按 question 意图回填主字段)
+            # Mileage mapping: main solution = the volume the problem asks for (the handler fills the main field per the question intent)
             total_distance = self._var_value(verify, "main_volume")
             total_time = self._var_value(verify, "removed_volume") or 0.0
         elif scenario == "stars_bars":
@@ -338,9 +357,9 @@ class MathSceneCompiler(SceneCompilerBase):
             timeline={
                 "total_distance": total_distance or 0.0,
                 "total_time": total_time or 0.0,
-                # 答案字段与 generic 路径对齐 — answer 必须是题目所问:
-                # 问时间(通过时间/多久)取 total_time, 问路程/长度取 total_distance
-                # (train 类两者都有值, 固定 `distance or time` 会把"求时间"题答成路程)
+                # Answer field aligned with the generic path — the answer must be what the problem asks:
+                # time intent (through time / how long) takes total_time, distance/length intent takes total_distance
+                # (train-type scenarios have both values; a fixed `distance or time` would answer a "find the time" problem with a distance)
                 "answer": self._pick_answer(problem, extracted.get("question_focus", ""),
                                             total_distance, total_time),
                 "answer_unit": "",
@@ -352,13 +371,13 @@ class MathSceneCompiler(SceneCompilerBase):
                 "prerequisite_node_ids": [],
             },
             verified=bool(verify and verify.verified),
-            error=verify.error if verify else ("未知场景, 降级静态推导" if scenario == "unknown" else ""),
+            error=verify.error if verify else ("unknown scenario, degraded to static derivation" if scenario == "unknown" else ""),
             fallback=bool(verify and verify.fallback) or scenario not in _KNOWN_SCENARIOS,
         )
-        # 通用路径 (issue: 新题型全部降级) — 模板未命中/校验失败/无答案时, S1 开放提取
-        # → S2 SymPy 解方程 → S3 可视化原语, 仅当提取失败或不可解才真正降级。
-        # 模板 verify "通过"但 total_distance/total_time 均空 (如 queue_counting 映射缺失)
-        # 同样视为模板未产出答案, 回退通用管线兜底。
+        # Generic path (issue: all new problem types were degraded) — when the template misses / verification fails / no answer,
+        # S1 open extraction -> S2 SymPy solves the equations -> S3 visualization primitives; only extraction failure or unsolvable truly degrades.
+        # A template verify that "passes" but leaves both total_distance/total_time empty (e.g. missing queue_counting mapping)
+        # also counts as the template producing no answer, and falls back to the generic pipeline.
         template_no_answer = not (total_distance or total_time)
         if dsl.fallback or template_no_answer:
             generic = await self._compile_generic(problem, knowledge_node_id)
@@ -369,7 +388,7 @@ class MathSceneCompiler(SceneCompilerBase):
 
     def _build_judgment_dsl(self, problem: str, knowledge_node_id: str,
                             parsed: dict[str, Any], jres: dict[str, Any]) -> SceneDSL:
-        """判断型题 DSL — criterion 判据值 + 结论揭示 (verdict) 供前端渲染。"""
+        """Judgment-type problem DSL — criterion value + verdict reveal for frontend rendering."""
         is_true = jres["verdict"]
         val = jres["criterion_value"]
         knowns = parsed["knowns"]
@@ -378,12 +397,16 @@ class MathSceneCompiler(SceneCompilerBase):
                         unit="")
             for name, v in knowns.items()
         ]
+        # i18n: user-facing (milestone event names rendered to students)
         milestones = [
+            # i18n: user-facing
             Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
                       highlight_entities=[e.id for e in entities[:3]],
                       formula_state=parsed["criterion_expr"]),
+            # i18n: user-facing
             Milestone(progress_percentage=50.0, time_mark=0.5, event_name="计算判据",
                       highlight_entities=[], formula_state=f"{parsed['criterion_expr']} = {val:g}"),
+            # i18n: user-facing
             Milestone(progress_percentage=100.0, time_mark=1.0, event_name="结论",
                       highlight_entities=[],
                       formula_state=("✓ " if is_true else "✗ ") + jres["verdict_text"]),
@@ -430,26 +453,33 @@ class MathSceneCompiler(SceneCompilerBase):
             fallback=False,
         )
 
-    # 中文数字 → 整数 (题面计数常为汉字: "六个数")
+    # Chinese numerals -> integers (problem text often writes counts in Chinese characters, e.g. "six")
+    # i18n: user-facing (problem-text token mapping)
     _CN_NUM: typing.ClassVar[dict[str, int]] = {"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
+                                                # i18n: user-facing
                                                 "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
     def _build_direct_dsl(self, problem: str, knowledge_node_id: str, *,
                           answer: float, answer_unit: str, steps: list[str],
                           visual_kind: str, focus: str, misconception: str,
                           knowns: dict[str, float]) -> SceneDSL:
-        """确定性兜底 DSL — 数值关系由题面正则直接计算, 未经 LLM, verified 恒真。"""
+        """Deterministic fallback DSL — numeric relations computed directly from the problem text via regex, never via the LLM; verified always true."""
         entities = [SceneEntity(id=k, type="reference_line", label=k, value=v, unit="")
                     for k, v in knowns.items()]
+        # i18n: user-facing (milestone event names and answer formula rendered to students)
         milestones = [
+            # i18n: user-facing
             Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
                       highlight_entities=[e.id for e in entities[:3]],
                       formula_state=steps[0] if steps else ""),
+            # i18n: user-facing
             Milestone(progress_percentage=50.0, time_mark=0.5, event_name="按公式计算",
                       highlight_entities=[],
                       formula_state=steps[1] if len(steps) > 1 else ""),
+            # i18n: user-facing
             Milestone(progress_percentage=100.0, time_mark=1.0, event_name="求解完成",
                       highlight_entities=[],
+                      # i18n: user-facing
                       formula_state=f"答案 = {answer:g}{answer_unit}"),
         ]
         return SceneDSL(
@@ -486,11 +516,15 @@ class MathSceneCompiler(SceneCompilerBase):
         )
 
     def _try_average_change(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
-        """改数均值题确定性兜底 — 原数 = 新值 − (新均−旧均)×个数, 题面正则直取。"""
+        """Deterministic fallback for change-a-number average problems — original = new value - (new avg - old avg) x count, taken via problem-text regex."""
+        # i18n: user-facing (matches Chinese problem-text keywords)
         if "平均" not in problem or "原来" not in problem:
             return None
+        # i18n: user-facing
         avgs = re.findall(r"平均(?:数)?(?:变为|变成|是|为)?\s*(\d+(?:\.\d+)?)", problem)
+        # i18n: user-facing
         m_new = re.search(r"(?:改为|改成|换成|变成)\s*(\d+(?:\.\d+)?)", problem)
+        # i18n: user-facing
         m_cnt = re.search(r"([\d一二两三四五六七八九十]+)\s*个数", problem)
         if len(avgs) < 2 or m_new is None or m_cnt is None:
             return None
@@ -504,26 +538,36 @@ class MathSceneCompiler(SceneCompilerBase):
         original = new_val - diff
         if original <= 0:
             return None
+        # i18n: user-facing (solution steps shown to students)
         steps = [
+            # i18n: user-facing
             f"旧总分 = {old_avg:g}×{count:g} = {old_avg * count:g}",
+            # i18n: user-facing
             f"新总分 = {new_avg:g}×{count:g} = {new_avg * count:g}",
+            # i18n: user-facing
             f"总分差 = {diff:g} → 原数 = {new_val:g} − {diff:g} = {original:g}",
         ]
         return self._build_direct_dsl(
             problem, knowledge_node_id,
             answer=original, answer_unit="",
             steps=steps, visual_kind="flow_card",
+            # i18n: user-facing (focus label and misconception text shown to students)
             focus="原来的数", knowns={"old_avg": old_avg, "new_avg": new_avg,
                                       "new_value": new_val, "count": count},
+            # i18n: user-facing
             misconception="平均数不能直接相减×次数 — 必须经总分桥接; "
+                          # i18n: user-facing
                           "改成更大的数平均才升, 原数 = 新值 − 总分差 (减法)",
         )
 
     def _try_transfer_equal(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
-        """移多补少题确定性兜底 — 移动 m 后相等 ⇒ 原差=2m, 大数=(和+差)/2。"""
+        """Deterministic fallback for transfer-to-equal problems — after moving m the two sides are equal, so the original difference is 2m and the larger = (sum + diff)/2."""
+        # i18n: user-facing (matches Chinese problem-text keywords)
         if "原来" not in problem or not re.search(r"同样重|一样重|相等|一样多", problem):
             return None
+        # i18n: user-facing
         m_total = re.search(r"共\s*(?:重|有)?\s*(\d+(?:\.\d+)?)", problem)
+        # i18n: user-facing
         m_moved = re.search(r"(?:倒出|拿出|给出|移了|移走|移出|转移)\s*(\d+(?:\.\d+)?)", problem)
         if m_total is None or m_moved is None:
             return None
@@ -533,73 +577,81 @@ class MathSceneCompiler(SceneCompilerBase):
             return None
         diff = moved * 2
         larger = (total + diff) / 2
+        # i18n: user-facing (solution steps shown to students)
         steps = [
+            # i18n: user-facing
             f"移动 {moved:g} 后相等 → 原差 = 2×{moved:g} = {diff:g}",
+            # i18n: user-facing
             f"大数 (给出方) = ({total:g}+{diff:g})/2 = {larger:g}",
+            # i18n: user-facing
             f"小数 = {total:g} − {larger:g} = {total - larger:g}",
         ]
         return self._build_direct_dsl(
             problem, knowledge_node_id,
             answer=larger, answer_unit="",
             steps=steps, visual_kind="tape_diagram",
+            # i18n: user-facing (focus label and misconception text shown to students)
             focus="原来多少 (给出方)",
             knowns={"total": total, "moved": moved},
+            # i18n: user-facing
             misconception="移动 m 后相等 → 原差是 2m 不是 m; 和差公式: 大数=(和+差)/2",
         )
 
     async def _compile_generic(self, problem: str, knowledge_node_id: str) -> SceneDSL | None:
-        """通用路径 — 任意新题型: 开放提取 → SymPy 求解 → 可视化原语 DSL。
+        """Generic path — any new problem type: open extraction -> SymPy solving -> visualization-primitive DSL.
 
-        返回 None 表示通用路径也失败 (提取不可用/方程不可解), 调用方维持降级。
+        Returning None means the generic path also failed (extraction unavailable / equations unsolvable); the caller keeps the degraded state.
         """
-        # 确定性兜底优先 — 改数均值/移多补少: 数值关系固定, 题面正则直接公式
-        # 计算, 不经 LLM (实测 LLM 对方向/语义反复出错: 51/-15/unknown)
+        # Deterministic fallbacks first — change-a-number average / transfer-to-equal: fixed numeric relations, computed
+        # directly by problem-text regex, never via the LLM (observed LLM repeatedly errs on direction/semantics: 51/-15/unknown)
         direct = self._try_average_change(problem, knowledge_node_id) or self._try_transfer_equal(problem, knowledge_node_id)
         if direct is not None:
-            logger.info("scene_compiler: 确定性兜底命中 (direct)")
+            logger.info("scene_compiler: deterministic fallback matched (direct)")
             return direct
         prompt = generic_pipeline.build_generic_prompt(problem)
         try:
             raw = await self.mlx.chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=1024)
         except Exception as exc:
-            logger.warning("scene_compiler: 通用路径提取失败 %s", exc)
+            logger.warning("scene_compiler: generic path extraction failed %s", exc)
             return None
-        # 判断型题 (能不能/对不对) 支路 — criterion 判据数值化, 无方程求解
+        # Judgment-type problems (can it / is it correct) branch — numerify the criterion, no equation solving
         judgment = generic_pipeline.parse_judgment(raw)
         if judgment is not None:
             jres = generic_pipeline.solve_judgment(judgment)
             if jres is not None:
                 return self._build_judgment_dsl(problem, knowledge_node_id, judgment, jres)
-            logger.info("scene_compiler: 判断题判据求值失败, 继续按求解型解析")
+            logger.info("scene_compiler: judgment criterion evaluation failed, continuing as a solve-type problem")
         parsed = generic_pipeline.parse_generic_extraction(raw)
         if parsed is None:
-            # #28: 首答结构不合规 (夹带文字/截断) — 带约束重试一次再降级
-            logger.info("scene_compiler: 通用路径提取结构不合规, 带约束重试一次")
+            # #28: first answer structurally invalid (prose mixed in / truncated) — retry once with a constraint nudge, then degrade
+            logger.info("scene_compiler: generic path extraction structurally invalid, retrying once with a constraint nudge")
             try:
+                # i18n: user-facing (LLM prompt nudge suffix)
                 raw2 = await self.mlx.chat(
+                    # i18n: user-facing
                     [{"role": "user", "content": prompt + "\n\n注意: 只输出 JSON, 不要任何其他文字。"}],
                     temperature=0.0, max_tokens=1024,
                 )
                 parsed = generic_pipeline.parse_generic_extraction(raw2)
             except Exception as exc_retry:
-                logger.warning("scene_compiler: 通用路径 JSON 重试失败 %s", exc_retry)
+                logger.warning("scene_compiler: generic path JSON retry failed %s", exc_retry)
         if parsed is None:
-            logger.info("scene_compiler: 通用路径提取结构不合规, 维持降级")
+            logger.info("scene_compiler: generic path extraction structurally invalid, staying degraded")
             return None
         solution = generic_pipeline.solve_generic(parsed)
         if solution is None:
-            logger.info("scene_compiler: 通用路径方程不可解, 维持降级")
+            logger.info("scene_compiler: generic path equations unsolvable, staying degraded")
             return None
         answer = solution.get("__answer__", 0.0)
-        # 分步推导 pipeline (Gemini 方案融合): 受限 AST 求值, 终值与 SymPy 答案交叉验证 —
-        # 一致才采用分步渲染 (双引擎互证), 不一致/执行失败退回 SymPy 直答。
+        # Step-by-step pipeline (Gemini-approach fusion): sandboxed AST evaluation, final value cross-checked against the SymPy answer —
+        # adopted only when they agree (dual-engine cross-validation); on mismatch/execution failure fall back to the direct SymPy answer.
         pipeline_eval = generic_pipeline.eval_pipeline(parsed)
         pipeline_ok = (
             pipeline_eval is not None
             and abs(pipeline_eval["final"] - answer) <= max(1e-6, abs(answer) * 1e-6)
         )
         if pipeline_eval is not None and not pipeline_ok:
-            logger.info("scene_compiler: pipeline 终值 %s 与 SymPy %s 不一致, 弃用分步", pipeline_eval["final"], answer)
+            logger.info("scene_compiler: pipeline final value %s disagrees with SymPy %s, discarding step-by-step", pipeline_eval["final"], answer)
         visual = parsed["visual"]
         entities: list[SceneEntity] = []
         for name, val in parsed["knowns"].items():
@@ -609,7 +661,7 @@ class MathSceneCompiler(SceneCompilerBase):
             if name == "__answer__":
                 continue
             entities.append(SceneEntity(id=name, type="moving_object", label=name, value=float(val)))
-        # 里程碑: 有分步 pipeline 时按步骤均分进度段; 否则退回三阶段占位
+        # Milestones: with a step-by-step pipeline, split the progress range evenly by steps; otherwise fall back to the three-stage placeholder
         if pipeline_ok:
             milestones = []
             n = len(pipeline_eval["steps"])
@@ -619,17 +671,23 @@ class MathSceneCompiler(SceneCompilerBase):
                     event_name=s["title"], highlight_entities=[],
                     formula_state=f"{s['formula']} → {s['value']:g}{s['result_unit']}",
                 ))
+            # i18n: user-facing (milestone event names rendered to students)
             milestones.append(Milestone(
+                # i18n: user-facing
                 progress_percentage=100.0, time_mark=1.0, event_name="验算通过",
                 highlight_entities=[], formula_state=f"{parsed['answer_expr']} = {answer:g}{answer_unit}" if (answer_unit := parsed["answer_unit"]) else f"{parsed['answer_expr']} = {answer:g}",
             ))
         else:
+            # i18n: user-facing (milestone event names rendered to students)
             milestones = [
+                # i18n: user-facing
                 Milestone(progress_percentage=0.0, time_mark=0.0, event_name="提取已知量",
                           highlight_entities=[e.id for e in entities[:3]],
                           formula_state=", ".join(parsed["equations"])[:120]),
+                # i18n: user-facing
                 Milestone(progress_percentage=50.0, time_mark=0.5, event_name="解方程",
                           highlight_entities=[], formula_state=parsed["answer_expr"]),
+                # i18n: user-facing
                 Milestone(progress_percentage=100.0, time_mark=1.0, event_name="求解完成",
                           highlight_entities=[], formula_state=f"{parsed['answer_expr']} = {answer:g}"),
             ]
@@ -640,13 +698,13 @@ class MathSceneCompiler(SceneCompilerBase):
             meta={
                 "title": problem[:60], "original_text": problem,
                 "knowledge_node_id": knowledge_node_id,
-                "pipeline": "generic",  # 前端据此走通用渲染器
+                "pipeline": "generic",  # the frontend routes on this to the generic renderer
             },
             entities=[e.to_dict() for e in entities],
             canvas_config={
                 "dimension": "2D",
                 "visual": visual,
-                # 分步推导 (Gemini 方案融合): pipeline_ok 时前端按步骤分段高亮
+                # Step-by-step derivation (Gemini-approach fusion): when pipeline_ok the frontend highlights segments per step
                 "pipeline": pipeline_eval["steps"] if pipeline_ok else [],
                 "parameters": [{"key": k, "label": k, "value": v, "unit": parsed["units"].get(k, "")}
                                for k, v in parsed["knowns"].items()],
@@ -676,10 +734,12 @@ class MathSceneCompiler(SceneCompilerBase):
     @staticmethod
     def _pick_answer(problem: str, question_focus: str,
                      total_distance: float | None, total_time: float | None) -> float:
-        # answer 按题目所问选择: 时间意图(通过/多久/几秒/几分钟/时间)取 total_time,
-        # 路程意图(多长/多少米/路程/长度)取 total_distance; 意图不明回退原序 (distance or time)
+        # Choose the answer by what the problem asks: time intent (through / how long / seconds / minutes) takes total_time,
+        # distance intent (how long / meters / distance / length) takes total_distance; unclear intent falls back to the original order (distance or time)
         text = f"{problem} {question_focus}"
+        # i18n: user-facing
         asks_time = bool(re.search(r"时间|多久|几秒|几分钟|多少秒|多少分|多长时间|过桥需要", text))
+        # i18n: user-facing
         asks_dist = bool(re.search(r"多长|多少米|路程|长度|全长|车长|桥长", text))
         if asks_time and not asks_dist and total_time:
             return total_time
@@ -833,11 +893,13 @@ class MathSceneCompiler(SceneCompilerBase):
             elif "worker2" in label:
                 if "days" in val:
                     out["worker2_days"] = float(val["days"])
+            # i18n: user-facing
             elif "fence" in label or "篱笆" in str(val.get("label", "")):
                 if "length" in val:
                     out["length"] = float(val["length"])
                 if "perimeter" in val:
                     out["perimeter"] = float(val["perimeter"])
+            # i18n: user-facing
             elif "traveler" in label or "行人" in str(val.get("label", "")):
                 if "distance" in val:
                     out["distance"] = float(val["distance"])
@@ -845,20 +907,25 @@ class MathSceneCompiler(SceneCompilerBase):
                     out["speed"] = float(val["speed"])
                 if "time" in val:
                     out["time"] = float(val["time"])
+            # i18n: user-facing
             elif "bridge" in label or "桥" in str(val.get("label", "")):
                 if "length" in val:
                     out["L_bridge"] = float(val["length"])
+            # i18n: user-facing
             elif "train" in label or "车" in str(val.get("label", "")):
                 if "length" in val:
                     out["L_train"] = float(val["length"])
                 if "speed" in val:
                     out["v_train"] = float(val["speed"])
+            # i18n: user-facing
             elif "pedestrian" in label or "person" in label or "人" in str(val.get("label", "")):
                 if "speed" in val:
                     out["v_pedestrian"] = float(val["speed"])
+            # i18n: user-facing
             elif label in ("train1", "t1", "甲"):
                 out["L1"] = float(val.get("length", 0))
                 out["v1"] = float(val.get("speed", 0))
+            # i18n: user-facing
             elif label in ("train2", "t2", "乙"):
                 out["L2"] = float(val.get("length", 0))
                 out["v2"] = float(val.get("speed", 0))
@@ -874,160 +941,225 @@ class MathSceneCompiler(SceneCompilerBase):
                 continue
             label = str(val.get("label", key))
             if "total" in val and "removed" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="total", type="static_structure", label="原有", value=float(val["total"]), unit="只"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="removed", type="moving_object", label="飞走", value=float(val["removed"]), unit="只"))
                 if "distraction" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="distraction", type="reference_line", label="干扰(不参与)", value=float(val["distraction"]), unit=""))
                 continue
             if "folds" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="folds", type="static_structure", label="对折次数", value=float(val["folds"]), unit="次"))
                 continue
             if "n_bins" in val and "n_items" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="n_items", type="static_structure", label="物品数", value=float(val["n_items"]), unit="个"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="n_bins", type="static_structure", label="容器数", value=float(val["n_bins"]), unit="个"))
                 if "min_per" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="min_per", type="static_structure", label="每容器最少", value=float(val["min_per"]), unit="个"))
                 continue
             if "n_segments" in val or "time_per_cut" in val:
                 if "n_segments" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_segments", type="static_structure", label="段数", value=float(val["n_segments"]), unit="段"))
                 if "time_per_cut" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="time_per_cut", type="static_structure", label="每次耗时", value=float(val["time_per_cut"]), unit="分"))
                 continue
             if "rank_front" in val or "rank_behind" in val:
                 if "rank_front" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="rank_front", type="moving_object", label="从前位次", value=float(val["rank_front"]), unit="位"))
                 if "rank_behind" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="rank_behind", type="moving_object", label="从后位次", value=float(val["rank_behind"]), unit="位"))
                 continue
             if "heads" in val and "legs" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="heads", type="static_structure", label="头数", value=float(val["heads"]), unit="头"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="legs", type="static_structure", label="腿数", value=float(val["legs"]), unit="腿"))
                 continue
             if "n_items" in val or "total_value" in val or "n_target" in val:
                 if "n_items" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_items", type="static_structure", label="件数", value=float(val["n_items"]), unit="件"))
                 if "total_value" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="total_value", type="static_structure", label="总价", value=float(val["total_value"]), unit="元"))
                 if "n_target" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_target", type="static_structure", label="目标件数", value=float(val["n_target"]), unit="件"))
                 continue
             if "total_sum" in val or "count" in val:
                 if "total_sum" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="total_sum", type="static_structure", label="总和", value=float(val["total_sum"]), unit=""))
                 if "count" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="count", type="static_structure", label="个数", value=float(val["count"]), unit="个"))
                 continue
             if "board1" in val or "board2" in val or "overlap" in val:
                 if "board1" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="board1", type="static_structure", label="板1长", value=float(val["board1"]), unit="cm"))
                 if "board2" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="board2", type="static_structure", label="板2长", value=float(val["board2"]), unit="cm"))
                 if "overlap" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="overlap", type="reference_line", label="重叠", value=float(val["overlap"]), unit="cm"))
                 continue
             if "trips" in val and "distance" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="distance", type="moving_object", label="单程", value=float(val["distance"]), unit="m"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="trips", type="static_structure", label="往返次数", value=float(val["trips"]), unit="次"))
                 continue
             if "sum" in val and "multiple" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="sum", type="static_structure", label="和", value=float(val["sum"]), unit=""))
+                # i18n: user-facing
                 out.append(SceneEntity(id="multiple", type="static_structure", label="倍数", value=float(val["multiple"]), unit="倍"))
                 continue
             if "spacing" in val and "length" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="length", type="static_structure", label="路长", value=float(val["length"]), unit="m"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="spacing", type="static_structure", label="间距", value=float(val["spacing"]), unit="m"))
                 if "mode_code" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="mode_code", type="reference_line", label="模式", value=float(val["mode_code"]), unit=""))
                 continue
             if "rise" in val and ("length" in val or "width" in val):
                 if "length" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="length", type="static_structure", label="水箱长", value=float(val["length"]), unit="cm"))
                 if "width" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="width", type="static_structure", label="水箱宽", value=float(val["width"]), unit="cm"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="rise", type="reference_line", label="上升高", value=float(val["rise"]), unit="cm"))
                 continue
             if "surplus" in val or "deficit" in val or "diff" in val:
                 if "surplus" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="surplus", type="static_structure", label="盈", value=float(val["surplus"]), unit="支"))
                 if "deficit" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="deficit", type="static_structure", label="亏", value=float(val["deficit"]), unit="支"))
                 if "diff" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="diff", type="reference_line", label="分配差", value=float(val["diff"]), unit="支"))
                 continue
             if "principal" in val and "rate" in val:
                 rate_val = float(val["rate"])
                 if rate_val > 1.0:
                     rate_val = rate_val / 100.0
+                # i18n: user-facing
                 out.append(SceneEntity(id="principal", type="static_structure", label="本金", value=float(val["principal"]), unit="元"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="rate", type="reference_line", label="年利率", value=rate_val, unit=""))
                 if "years" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="years", type="moving_object", label="年数", value=float(val["years"]), unit="年"))
                 continue
             if "base_distance" in val or "base_price" in val:
                 if "base_distance" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="base_distance", type="static_structure", label="起步距离", value=float(val["base_distance"]), unit="km"))
                 if "base_price" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="base_price", type="static_structure", label="起步价", value=float(val["base_price"]), unit="元"))
                 if "unit_price" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="unit_price", type="reference_line", label="超出单价", value=float(val["unit_price"]), unit="元/km"))
                 if "total_distance" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="total_distance", type="moving_object", label="总距离", value=float(val["total_distance"]), unit="km"))
                 continue
             if "start_day" in val and "add_days" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="start_day", type="static_structure", label="今天星期", value=float(val["start_day"]), unit=""))
+                # i18n: user-facing
                 out.append(SceneEntity(id="add_days", type="moving_object", label="过几天", value=float(val["add_days"]), unit="天"))
                 continue
             if "radius" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="radius", type="static_structure", label="半径", value=float(val["radius"]), unit="cm"))
                 continue
             if "length" in val and "width" in val and "height" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="length", type="static_structure", label="长", value=float(val["length"]), unit="cm"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="width", type="static_structure", label="宽", value=float(val["width"]), unit="cm"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="height", type="static_structure", label="高", value=float(val["height"]), unit="cm"))
                 continue
             if "n_items1" in val or "n_items2" in val:
                 if "n_items1" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_items1", type="static_structure", label="上衣", value=float(val["n_items1"]), unit="件"))
                 if "n_items2" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_items2", type="static_structure", label="裤子", value=float(val["n_items2"]), unit="条"))
                 continue
             if "n_people" in val and "total_work" in val:
                 if "n_people" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_people", type="static_structure", label="人数", value=float(val["n_people"]), unit="人"))
                 if "n_days" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="n_days", type="static_structure", label="天数", value=float(val["n_days"]), unit="天"))
                 if "total_work" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="total_work", type="static_structure", label="总量", value=float(val["total_work"]), unit="个"))
                 if "target_people" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="target_people", type="moving_object", label="目标人数", value=float(val["target_people"]), unit="人"))
                 if "target_days" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="target_days", type="moving_object", label="目标天数", value=float(val["target_days"]), unit="天"))
                 continue
             if "speed" in val and "width" in val and "time" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id="speed", type="moving_object", label="速度", value=float(val["speed"]), unit="m/分"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="width", type="static_structure", label="宽", value=float(val["width"]), unit="m"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="time", type="moving_object", label="时间", value=float(val["time"]), unit="分"))
                 continue
             if "days" in val:
+                # i18n: user-facing
                 out.append(SceneEntity(id=str(key) + "_days", type="moving_object", label=label, value=float(val["days"]), unit="天"))
                 continue
             if "perimeter" in val:
                 if "length" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="length", type="static_structure", label="靠墙长", value=float(val["length"]), unit="m"))
+                # i18n: user-facing
                 out.append(SceneEntity(id="perimeter", type="static_structure", label="三边周长", value=float(val["perimeter"]), unit="m"))
                 continue
             if "distance" in val or ("speed" in val and "time" in val):
                 if "distance" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="distance", type="moving_object", label="路程", value=float(val["distance"]), unit="m"))
                 if "speed" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="speed", type="moving_object", label="速度", value=float(val["speed"]), unit="m/s"))
                 if "time" in val:
+                    # i18n: user-facing
                     out.append(SceneEntity(id="time", type="moving_object", label="时间", value=float(val["time"]), unit="s"))
                 continue
+            # i18n: user-facing
             if "bridge" in key.lower() or "桥" in label or "train" in key.lower() or "车" in label or "pedestrian" in key.lower() or "人" in label or key.lower() in ("train1", "t1", "甲", "train2", "t2", "乙"):
                 out.append(SceneEntity(
                     id=str(key),
+                    # i18n: user-facing
                     type="static_structure" if ("bridge" in key.lower() or "桥" in label) else "moving_object",
                     label=label,
                     value=float(val.get("length", val.get("speed", 0)) or 0),
@@ -1036,22 +1168,30 @@ class MathSceneCompiler(SceneCompilerBase):
                 continue
             out.append(SceneEntity(
                 id=str(key),
+                # i18n: user-facing
                 type="static_structure" if ("bridge" in key or "桥" in str(val.get("label", ""))) else "moving_object",
                 label=label,
                 value=float(val.get("length", val.get("speed", 0)) or 0),
                 unit="m" if "length" in val else "m/s",
             ))
         if verify:
+            # i18n: user-facing
             unit_map = {"total_people": "人", "area": "m²", "width": "m", "unit_value": "元", "target_value": "元",
+                        # i18n: user-facing
                         "rabbit": "只", "chicken": "只", "total_days": "天", "average": "", "rate1": "", "rate2": "",
                         "total_length": "cm", "total_distance": "m", "small": "", "big": "", "length": "m",
+                        # i18n: user-facing
                         "segments": "段", "trees": "棵", "volume": "cm³", "people": "人",
+                        # i18n: user-facing
                         "interest": "元", "total": "元",
+                        # i18n: user-facing
                         "total_price": "元", "extra_distance": "km", "target_day": "",
                         "arc": "cm", "diameter": "cm", "perimeter": "cm",
                         "min_face": "cm²", "max_face": "cm²", "single_sa": "cm²",
                         "max_sa": "cm²", "min_sa": "cm²",
+                        # i18n: user-facing
                         "combinations": "种", "unit_rate": "", "result": "个",
+                        # i18n: user-facing
                         "remaining": "只", "ways": "种"}
             for vname, vdata in verify.variables.items():
                 if vname in UNKNOWN_VARS:
@@ -1061,7 +1201,7 @@ class MathSceneCompiler(SceneCompilerBase):
     def _build_milestones(self, raw_milestones: list, verify: VerifyResult | None, scenario: str = "") -> list[Milestone]:
         if not isinstance(raw_milestones, list):
             raw_milestones = []
-        # cutting 场景: LLM 不懂切割点分布, 强制用 SymPy 离散生成
+        # cutting scenario: the LLM does not understand cutting-point distribution; force discrete generation via SymPy
         if scenario == "cutting_segments" and verify:
             n_cuts = int(self._var_value(verify, "n_cuts") or 0)
             total = self._var_value(verify, "total_time") or 0.0
@@ -1072,10 +1212,12 @@ class MathSceneCompiler(SceneCompilerBase):
                     out.append(Milestone(
                         ratio * 100.0,
                         total * ratio,
+                        # i18n: user-facing
                         "起点" if i == 0 else f"第{i}次锯切完成",
                         [],
                     ))
                 return out
+            # i18n: user-facing
             return [Milestone(0.0, 0.0, "无需锯切", [])]
         if scenario in ("queue_counting", "chicken_rabbit", "work_problem",
                          "average_problem", "fence_against_wall", "unitary_method",
@@ -1109,8 +1251,11 @@ class MathSceneCompiler(SceneCompilerBase):
                      or self._var_value(verify, "ways")
                      or 0.0)
             out = [
+                # i18n: user-facing
                 Milestone(0.0, 0.0, "起点", []),
+                # i18n: user-facing
                 Milestone(50.0, total * 0.5, "半程", []),
+                # i18n: user-facing
                 Milestone(100.0, total, "完成", []),
             ]
             return out

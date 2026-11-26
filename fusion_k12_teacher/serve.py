@@ -1,4 +1,4 @@
-"""FastAPI HTTP API 入口 — 暴露 5 大引擎为 REST API。"""
+"""FastAPI HTTP API entrypoint — exposes the five engines as REST APIs."""
 
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_logging() -> None:
-    # P2: serve 经 uvicorn 启动, cli.py basicConfig 仅 CLI 路径生效, serve 路径无配置。
-    # 统一 dictConfig: env LOG_LEVEL 调级别, 带时间/级别/模块, 免裸 getLogger 无格式。
+    # P2: serve runs under uvicorn, cli.py basicConfig only applies to the CLI path, serve path had no config.
+    # Unified dictConfig: LOG_LEVEL env controls level, with time/level/module, avoiding bare unformatted getLogger.
     level = os.environ.get("LOG_LEVEL", os.environ.get("FUSION_K12_LOG_LEVEL", "INFO")).upper()
     fmt = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
     logging.config.dictConfig({
@@ -81,27 +81,27 @@ _configure_logging()
 
 
 def _mask_sid(sid: Any) -> str:
-    # P2: 学生 ID 属 PII, 日志中不落原文, 统一短哈希前缀 (与 analytics._mask_sid 同策略)。
+    # P2: student ID is PII, never log raw value, unified short-hash prefix (same policy as analytics._mask_sid).
     import hashlib
     s = str(sid or "")
     return "S" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:6] if s else ""
 
 
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-# R1: API key 改每请求读 env — 运行期轮换密钥即时生效, 不再导入时固化。模块常量留空,
-# require_api_key 内 os.environ.get 现取。lifespan 启动日志仍可 log key 是否已配置。
+# R1: API key now read from env per request — runtime key rotation takes effect immediately, no import-time freeze. Module constant left empty,
+# require_api_key reads os.environ.get on demand. Lifespan startup log still records whether the key is configured.
 _RATE_WINDOW = int(os.environ.get("FUSION_K12_RATE_WINDOW", "60"))
 _RATE_MAX = int(os.environ.get("FUSION_K12_RATE_MAX", "60"))
-# A1: 跨进程共享速率限制状态文件 — uvicorn --workers N / 多节点各进程共一份令牌桶。
-# env 覆盖可指向共享挂载点; 留空回退进程内限流(仅单 worker 正确)。
+# A1: cross-process shared rate-limit state file — uvicorn --workers N / multi-node processes share one token bucket.
+# Env override may point to a shared mount; empty falls back to in-process limiting (correct for single worker only).
 _RATE_STATE_FILE = os.environ.get("FUSION_K12_RATE_STATE_FILE", "")
 
 
 class _RateLimiter:
-    """滑动窗口限流 (SRV-2) — 按 client IP 限速。
+    """Sliding-window rate limiter (SRV-2) — throttles by client IP.
 
-    A1: 优先用 fcntl 文件锁 + 共享状态文件, 多 worker/多节点共用一份配额。
-    无共享文件(单 worker)时回退进程内 deque。
+    A1: prefers fcntl file lock + shared state file so multiple workers/nodes share one quota.
+    Falls back to in-process deque when no shared file is configured (single worker).
     """
 
     def __init__(self, window: int, max_req: int, state_file: str = ""):
@@ -112,7 +112,7 @@ class _RateLimiter:
         self._lock = asyncio.Lock()
 
     def _check_shared(self, key: str, now: float) -> bool:
-        # A1: 文件锁保护跨进程读写 — 读整文件 → 更新该 key 的 deque → 原子写回。
+        # A1: file lock guards cross-process read-modify-write — read whole file, update the key's deque, atomic write-back.
         import fcntl
         os.makedirs(os.path.dirname(self._state_file), exist_ok=True)
         fd = os.open(self._state_file, os.O_RDWR | os.O_CREAT, 0o600)
@@ -143,18 +143,18 @@ class _RateLimiter:
             os.close(fd)
 
     async def check(self, key: str) -> bool:
-        # M2-T12: cluster 模式有共享 Redis 后端 → 跨实例统一限流计数。
-        # 固定窗口: INCR key (ttl=window), 超过 _max 拒绝。各实例共享同一计数。
+        # M2-T12: cluster mode has a shared Redis backend, cross-instance unified rate-limit counting.
+        # Fixed window: INCR key (ttl=window), reject past _max. All instances share the same counter.
         cache = _shared_cache()
         if cache is not None:
             try:
                 count = await cache.incr(f"rl:{key}", ttl=self._window)
                 return count <= self._max
             except Exception as e:
-                logger.warning("Redis 限流失败, 降级进程内: %s", e)
+                logger.warning("Redis rate limiting failed, falling back in-process: %s", e)
         now = time.monotonic()
         if self._state_file:
-            # 文件 I/O 放线程池, 不阻塞 event loop
+            # File I/O offloaded to thread pool so the event loop is not blocked
             return await asyncio.to_thread(self._check_shared, key, now)
         async with self._lock:
             dq = self._hits[key]
@@ -168,7 +168,7 @@ class _RateLimiter:
 
 
 def _shared_cache():
-    """cluster 模式返共享 CacheBackend 单例, standalone 返 None (用进程内限流)。"""
+    """Return the shared CacheBackend singleton in cluster mode, None in standalone (in-process rate limiting)."""
     if os.environ.get("FUSION_K12_MODE", "").lower() != "cluster":
         return None
     if not os.environ.get("FUSION_K12_REDIS_URL", ""):
@@ -177,7 +177,7 @@ def _shared_cache():
         from .cache import get_cache
         return get_cache()
     except Exception as e:
-        logger.warning("加载共享缓存失败, 限流回退进程内: %s", e)
+        logger.warning("Failed to load shared cache, rate limiting falls back in-process: %s", e)
         return None
 
 
@@ -185,59 +185,59 @@ _rate_limiter = _RateLimiter(_RATE_WINDOW, _RATE_MAX, _RATE_STATE_FILE)
 
 
 def _on_config_change(key: str, value: str) -> None:
-    """M3-T17: 可热更新配置变更回调 — 刷新引擎持有的可变配置, 不重建引擎。"""
+    """M3-T17: hot-reload config change callback — refreshes mutable config held by engines, no engine rebuild."""
     try:
         if key == "FUSION_MLX_MODEL" and mlx_client is not None:
             mlx_client.model = value
-            logger.info("热更新 MLX 模型 → %s", value)
+            logger.info("Hot-reloaded MLX model -> %s", value)
         elif key == "FUSION_K12_RATE_LIMIT":
             _rate_limiter._max = int(value)
-            logger.info("热更新限流上限 → %s/min", value)
+            logger.info("Hot-reloaded rate limit cap -> %s/min", value)
         elif key == "FUSION_K12_SALT":
             try:
-                # anonymizer 为模块级单例, 在文件后部定义 (line ~1278), 运行期已存在
+                # anonymizer is a module-level singleton defined later in the file (line ~1278), exists at runtime
                 anonymizer.config.salt = value  # noqa: F821
                 anonymizer.salt = anonymizer._salt_provider.get_salt()  # noqa: F821
-                logger.info("热更新脱敏 salt (长度 %d)", len(value))
+                logger.info("Hot-reloaded desensitize salt (length %d)", len(value))
             except Exception as e:
-                logger.warning("salt 热更新失败: %s", e)
+                logger.warning("Salt hot-reload failed: %s", e)
         elif key == "FUSION_K12_LOG_LEVEL":
             logging.getLogger("fusion_k12_teacher").setLevel(value.upper())
-            logger.info("热更新日志级别 → %s", value.upper())
+            logger.info("Hot-reloaded log level -> %s", value.upper())
     except Exception as e:
-        logger.warning("配置变更应用失败 %s=%s: %s", key, value, e)
+        logger.warning("Failed to apply config change %s=%s: %s", key, value, e)
 
 
 def _start_config_hot_reload() -> None:
-    """M3-T17: 启动配置提供者轮询 + 注册回调。FileProvider 可热更, EnvProvider 静态 no-op。"""
+    """M3-T17: start config provider polling + register callback. FileProvider is hot-reloadable, EnvProvider is a static no-op."""
     try:
         from .config import get_config
         cfg = get_config()
         cfg.on_change(_on_config_change)
         cfg.start()
     except Exception as e:
-        logger.warning("配置热更新启动失败 (配置仍可用, 仅无热更): %s", e)
+        logger.warning("Config hot-reload failed to start (config still usable, just no hot reload): %s", e)
 
 
 def _stop_config_hot_reload() -> None:
-    """停止配置轮询线程。"""
+    """Stop the config polling thread."""
     try:
         from .config import get_config
         get_config().stop()
     except Exception as e:
-        logger.warning("配置热更新停止失败: %s", e)
+        logger.warning("Failed to stop config hot-reload: %s", e)
 
 
-# ── #28: mlx 健康探测看门狗 — 后台周期探针, 后端挂起时告警 (仅观测, 不自启重启) ──
+# ── #28: mlx health-probe watchdog — background periodic probe, alerts when backend hangs (observe only, no auto-restart) ──
 _mlx_watch_task: asyncio.Task | None = None
 _shell_registry_task: asyncio.Task | None = None
 
 
 async def _mlx_health_watchdog() -> None:
-    """周期探测 LLM 后端 (与 /api/health 同源: list_models)。down→WARNING, 恢复→INFO。
+    """Periodically probe the LLM backend (same source as /api/health: list_models). down -> WARNING, recovery -> INFO.
 
-    mlx 引擎在持续负载下反复挂起 (上游问题) — 此前唯一信号是生成请求开始超时,
-    运维无感知。看门狗保证挂起在 1 个探测周期内可见。
+    The mlx engine repeatedly hangs under sustained load (upstream issue) — the only signal used to be
+    generation requests starting to time out, invisible to ops. The watchdog makes a hang visible within one probe cycle.
     """
     interval = float(os.environ.get("FUSION_K12_HEALTH_PROBE_INTERVAL", "60"))
     cloud = False
@@ -246,27 +246,27 @@ async def _mlx_health_watchdog() -> None:
         cloud = _cloud_mode()
     except Exception:
         pass
-    logger.info("mlx 健康探测已启动 (间隔 %ds, 形态=%s)", int(interval), "cloud" if cloud else "local")
+    logger.info("mlx health probe started (interval %ds, mode=%s)", int(interval), "cloud" if cloud else "local")
     was_down = False
     while True:
         await asyncio.sleep(interval)
         try:
             models = await mlx_client.list_models() if mlx_client is not None else None
             if cloud:
-                # 云厂商 /v1/models 行为不一 (按 key 权限过滤/返回空列表) —
-                # 空列表不算 down, 仅网络/鉴权异常 (抛异常) 判 down
+                # Cloud vendors behave inconsistently on /v1/models (filter by key permissions / return empty list) —
+                # empty list does not count as down; only network/auth errors (raised exception) count as down
                 down = models is None
             else:
-                # mlx 挂起时 gateway 常返回 200+空列表 (非 None) — 空列表同样视为 down
+                # When mlx hangs the gateway often returns 200 + empty list (not None) — empty list also counts as down
                 down = not models
         except Exception:
             down = True
         if down and not was_down:
-            hint = ("请检查云厂商 API key/配额/网络" if cloud
-                    else "请检查 fusion-mlx/gateway")
-            logger.warning("健康告警: LLM 后端不可达 — 答疑/讲稿/场景生成将失败, %s", hint)
+            hint = ("check cloud vendor API key/quota/network" if cloud
+                    else "check fusion-mlx/gateway")
+            logger.warning("Health alert: LLM backend unreachable — QA/lesson-script/scene generation will fail, %s", hint)
         elif not down and was_down:
-            logger.info("健康告警解除: LLM 后端恢复")
+            logger.info("Health alert cleared: LLM backend recovered")
         was_down = down
 
 
@@ -287,42 +287,42 @@ def _drain_timeout() -> float:
 
 
 async def _drain_inflight() -> None:
-    """M3-T19: 等待在途请求归零, 或超时强制进入关闭。"""
+    """M3-T19: wait for in-flight requests to drain to zero, or force shutdown on timeout."""
     global _draining
     _draining = True
     if _inflight <= 0:
-        logger.info("排水完成: 无在途请求")
+        logger.info("Drain complete: no in-flight requests")
         return
     timeout = _drain_timeout()
-    logger.info("排水开始: %d 在途请求, 等待最多 %ss", _inflight, timeout)
+    logger.info("Drain started: %d in-flight requests, waiting up to %ss", _inflight, timeout)
     if _inflight_zero is None:
         return
     try:
         await asyncio.wait_for(_inflight_zero.wait(), timeout=timeout)
-        logger.info("排水完成: 在途请求已归零")
+        logger.info("Drain complete: in-flight requests reached zero")
     except TimeoutError:
-        logger.warning("排水超时 %ss, 仍有 %d 在途请求, 强制关闭", timeout, _inflight)
+        logger.warning("Drain timed out after %ss, %d requests still in flight, forcing shutdown", timeout, _inflight)
 
 
 def _install_sigterm_handler() -> None:
-    """M3-T19: SIGTERM → 触发排水下线 (uvicorn 收 SIGTERM 会调 lifespan shutdown,
-    此处额外提前置 _draining 拒绝新请求, 并记日志便于运维观察)。"""
+    """M3-T19: SIGTERM -> trigger graceful drain (uvicorn calls lifespan shutdown on SIGTERM,
+    here we additionally set _draining early to reject new requests, and log for ops visibility)."""
     import signal
     try:
         loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGTERM, _on_sigterm)
-        logger.info("SIGTERM 排水处理器已注册")
+        logger.info("SIGTERM drain handler registered")
     except (NotImplementedError, RuntimeError) as e:
-        # 非 main loop 或平台不支持 add_signal_handler (Windows) — 降级靠 lifespan shutdown
-        logger.warning("SIGTERM 处理器注册失败, 靠 lifespan shutdown 排水: %s", e)
+        # Not the main loop or platform lacks add_signal_handler (Windows) — fall back to lifespan shutdown
+        logger.warning("SIGTERM handler registration failed, drain relies on lifespan shutdown: %s", e)
 
 
 def _on_sigterm() -> None:
-    """SIGTERM 回调 — 标记排水, 拒绝新请求。实际关闭由 lifespan shutdown 完成。"""
+    """SIGTERM callback — mark draining, reject new requests. Actual shutdown is done by lifespan shutdown."""
     global _draining, _ready
     _draining = True
     _ready = False
-    logger.info("收到 SIGTERM, 开始排水下线 (拒绝新请求, 等在途完成)")
+    logger.info("SIGTERM received, starting graceful drain (rejecting new requests, waiting for in-flight to finish)")
 
 
 async def _client_key(request: Request) -> str:
@@ -330,12 +330,12 @@ async def _client_key(request: Request) -> str:
 
 
 async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
-    # R1: 每请求现读 env — 密钥轮换后无需重启即生效。SRV-1 fail-closed: 未配置拒所有端点。
+    # R1: read env per request — key rotation takes effect without restart. SRV-1 fail-closed: reject all endpoints when unset.
     configured = os.environ.get("FUSION_K12_API_KEY", "")
     if not configured:
-        # R3: 误配置(无 key)用 500 与未就绪(503)/限流(429)语义分离 —
-        # 原返 503 致运维监控无法区分"误配置"与"未就绪", 告警失真。
-        logger.error("FUSION_K12_API_KEY 未配置, 拒绝受保护端点 (fail-closed)")
+        # R3: misconfiguration (no key) uses 500, semantically separate from not-ready (503)/rate-limited (429) —
+        # the old 503 made ops monitoring unable to distinguish "misconfigured" from "not ready", distorting alerts.
+        logger.error("FUSION_K12_API_KEY not configured, rejecting protected endpoints (fail-closed)")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="API key not configured; set FUSION_K12_API_KEY",
@@ -349,11 +349,11 @@ async def require_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
 
 
 async def require_admin_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str:
-    # P1-5: 敏感词库写操作(add/remove)需管理员密钥, 普通 key 不可改全局规则。
-    # admin key 独立 env FUSION_K12_ADMIN_API_KEY; 未配置则禁用写接口(fail-closed)。
+    # P1-5: sensitive-wordlist write operations (add/remove) require the admin key; regular keys cannot change global rules.
+    # Admin key lives in its own env FUSION_K12_ADMIN_API_KEY; unset disables write endpoints (fail-closed).
     configured = os.environ.get("FUSION_K12_ADMIN_API_KEY", "")
     if not configured:
-        logger.error("FUSION_K12_ADMIN_API_KEY 未配置, 拒绝敏感词写操作 (fail-closed)")
+        logger.error("FUSION_K12_ADMIN_API_KEY not configured, rejecting sensitive-word writes (fail-closed)")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="admin key not configured; set FUSION_K12_ADMIN_API_KEY",
@@ -367,7 +367,7 @@ async def require_admin_api_key(api_key: str = Security(_API_KEY_HEADER)) -> str
 
 
 async def _require_ready() -> None:
-    # SRV-4: lifespan 未完成时引擎为 None, 拦截启动期请求返 503
+    # SRV-4: engines are None until lifespan completes, intercept startup-phase requests with 503
     if not _ready:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -383,32 +383,32 @@ content_generator: ContentGenerator | None = None
 differentiation_engine: DifferentiationEngine | None = None
 standards_query: StandardsQuery | None = None
 standards_loader: StandardsLoader | None = None
-# P3: 暴露课标对齐/覆盖报告路由, 之前仅 DifferentiationEngine 内部用。
+# P3: expose standards alignment/coverage report routes; previously only DifferentiationEngine used them internally.
 standards_aligner: StandardsAligner | None = None
 analytics_engine: AnalyticsEngine | None = None
 content_filter: ContentFilter | None = None
 sensitive_wordlist: SensitiveWordList | None = None
-# 学科课程平台 (PRD math-doubao 解耦): SubjectRegistry 持各学科模块, 路由学科无关。
+# Subject course platform (PRD math-doubao decoupling): SubjectRegistry holds subject modules, routes are subject-agnostic.
 subject_registry: SubjectRegistry | None = None
-# 课堂模块 (classroom PRD E1-E6, K1 文字版): 课程包/会话/判分/报告。
+# Classroom module (classroom PRD E1-E6, K1 text version): packs/sessions/judging/reports.
 lesson_scripter = None
 packager = None
 session_manager = None
-# 数字人平台层 (K2/K3): DigitalHumanManager 持 4 插件管线, serve 生命周期单例。
+# Digital-human platform layer (K2/K3): DigitalHumanManager holds the 4-plugin pipeline, serve-lifetime singleton.
 digital_human_manager = None
-# 教师身份 + 教材目录 + 资源库: 用户身份 (X-Auth-Token) 与教材级联选择数据。
+# Teacher identity + textbook catalog + resource library: user identity (X-Auth-Token) and textbook cascading-select data.
 auth_service: AuthService | None = None
 textbook_loader: TextbookLoader | None = None
-_materials_repo = None  # 资源库持久化 repo (复用 get_repository)
-# SRV-4: lifespan 完成前引擎为 None, 以 _ready 标志拦截启动期请求
+_materials_repo = None  # materials persistence repo (reuses get_repository)
+# SRV-4: engines are None until lifespan completes; _ready flag intercepts startup-phase requests
 _ready: bool = False
-# M3-T19: 在途请求计数 — 优雅下线时等其归零。asyncio 由事件循环驱动, 但计数用普通 int
-# (单线程事件循环内自增自减无竞态)。drain 完成事件用于唤醒等待协程。
+# M3-T19: in-flight request counter — graceful shutdown waits for it to reach zero. asyncio is event-loop driven, but the counter is a plain int
+# (no race on increment/decrement inside the single-threaded event loop). The drain-complete event wakes waiting coroutines.
 _inflight: int = 0
-_inflight_zero: asyncio.Event | None = None  # lifespan 内惰性建 (需绑 loop)
+_inflight_zero: asyncio.Event | None = None  # created lazily inside lifespan (needs the loop)
 _draining: bool = False
-# P1-8: 单实例锁 — serve 进程级互斥, 防多 worker/多实例并发跑同一套引擎+调度器。
-# fcntl flock LOCK_EX|LOCK_NB: 持锁方继续启动, 未持锁方启动即拒 (cli/serve/uvicorn --workers N 统一受限)。
+# P1-8: single-instance lock — serve process-level mutex, prevents multiple workers/instances running the same engine+scheduler set concurrently.
+# fcntl flock LOCK_EX|LOCK_NB: lock holder starts, non-holder is rejected at startup (applies uniformly to cli/serve/uvicorn --workers N).
 _INSTANCE_LOCKFILE = os.environ.get(
     "FUSION_K12_INSTANCE_LOCK",
     os.path.expanduser("~/.fusion-k12/serve.lock"),
@@ -417,7 +417,7 @@ _instance_lockfd: int | None = None
 
 
 def _is_cluster_mode() -> bool:
-    # M2-T10: cluster 模式允许多实例水平扩容, 单实例锁仅 standalone 需要。
+    # M2-T10: cluster mode allows horizontal multi-instance scale-out; the single-instance lock is standalone-only.
     return os.environ.get("FUSION_K12_MODE", "standalone").lower() == "cluster"
 
 
@@ -425,14 +425,14 @@ def _acquire_instance_lock() -> bool:
     global _instance_lockfd
     if _instance_lockfd is not None:
         return True
-    # M2-T10: cluster 模式多实例共存, 跳过进程级互斥 (跨实例去重靠 DB 行锁, 见 scheduler T11)。
+    # M2-T10: cluster mode coexists across instances, skip process-level mutex (cross-instance dedup relies on DB row locks, see scheduler T11).
     if _is_cluster_mode():
-        logger.info("cluster 模式, 跳过单实例锁 (多实例水平扩容)")
+        logger.info("cluster mode, skipping single-instance lock (horizontal scale-out)")
         return True
     try:
         import fcntl
     except ImportError:
-        logger.warning("fcntl 不可用, 跳过单实例锁")
+        logger.warning("fcntl unavailable, skipping single-instance lock")
         return True
     try:
         os.makedirs(os.path.dirname(_INSTANCE_LOCKFILE), exist_ok=True)
@@ -441,10 +441,10 @@ def _acquire_instance_lock() -> bool:
         os.ftruncate(fd, 0)
         os.write(fd, f"{os.getpid()}\n".encode())
         _instance_lockfd = fd
-        logger.info("获取单实例锁 (pid=%d): %s", os.getpid(), _INSTANCE_LOCKFILE)
+        logger.info("Acquired single-instance lock (pid=%d): %s", os.getpid(), _INSTANCE_LOCKFILE)
         return True
     except OSError:
-        logger.error("单实例锁已被占用, 另一实例正在运行: %s — 拒绝启动", _INSTANCE_LOCKFILE)
+        logger.error("Single-instance lock already held, another instance is running: %s — refusing to start", _INSTANCE_LOCKFILE)
         return False
 
 
@@ -464,14 +464,14 @@ def _release_instance_lock() -> None:
     _instance_lockfd = None
 
 
-# issue #17: 运行时数据保留策略 — serve 启动时惰性清理, 防无限膨胀。
+# issue #17: runtime data retention policy — lazily purged at serve startup, prevents unbounded growth.
 _MAT_RETENTION_DAYS = int(os.environ.get("FUSION_K12_MATERIAL_RETENTION_DAYS", "90"))
 _MAT_MAX_PER_TEACHER = int(os.environ.get("FUSION_K12_MATERIAL_MAX_PER_TEACHER", "500"))
 _UPLOAD_MAX_AGE_DAYS = int(os.environ.get("FUSION_K12_UPLOAD_RETENTION_DAYS", "90"))
 
 
 def _purge_old_uploads() -> int:
-    """清理 upload_*.json 旧文件 — data/ 和 fusion_k12_teacher/data/ 两处。"""
+    """Purge old upload_*.json files — both data/ and fusion_k12_teacher/data/."""
     import glob
     now = time.time()
     cutoff = now - _UPLOAD_MAX_AGE_DAYS * 86400
@@ -483,14 +483,14 @@ def _purge_old_uploads() -> int:
                     os.remove(fp)
                     purged += 1
             except OSError as e:
-                logger.warning("清理上传文件失败 %s: %s", fp, e)
+                logger.warning("Failed to purge upload file %s: %s", fp, e)
     if purged:
-        logger.info("issue #17: 清理 %d 个过期上传文件 (>=%d天)", purged, _UPLOAD_MAX_AGE_DAYS)
+        logger.info("issue #17: purged %d expired upload files (>=%d days)", purged, _UPLOAD_MAX_AGE_DAYS)
     return purged
 
 
 def _purge_old_materials() -> int:
-    """清理旧资源记录 — 按天数+每教师上限。"""
+    """Purge old material records — by age in days plus per-teacher cap."""
     if _materials_repo is None:
         return 0
     before_ts = ""
@@ -501,14 +501,14 @@ def _purge_old_materials() -> int:
     try:
         return _materials_repo.purge_old_materials(before_ts, _MAT_MAX_PER_TEACHER)
     except Exception as e:
-        logger.warning("issue #17: 资源清理失败 (不影响启动): %s", e)
+        logger.warning("issue #17: material purge failed (does not affect startup): %s", e)
         return 0
 
 
 def _init_teacher_services() -> None:
-    # 教师身份 + 教材目录 + 资源库: AuthService 复用 scheduler 同款 repo, 教材加载建索引。
-    # issue #36: repo 构造的 NonDegradableError (cluster 误配) 必须上抛拒启 —
-    # 静默降级会让 cluster 实例各自跑 SQLite (split-brain) 且服务仍报 Healthy。
+    # Teacher identity + textbook catalog + resource library: AuthService reuses the same repo as scheduler, textbook load builds the index.
+    # issue #36: NonDegradableError raised by repo construction (cluster misconfig) must propagate and refuse startup —
+    # silent degradation would let cluster instances each run SQLite (split-brain) while still reporting Healthy.
     global auth_service, textbook_loader, _materials_repo
     try:
         _materials_repo = get_repository()
@@ -516,12 +516,12 @@ def _init_teacher_services() -> None:
         textbook_loader = TextbookLoader()
         textbook_loader.load_all()
         logger.info(
-            "教师身份+教材+资源库就绪: editions=%d",
+            "Teacher identity + textbook + materials ready: editions=%d",
             len(textbook_loader.list_editions()),
         )
     except Exception as e:
         rethrow_if_fatal(e)
-        logger.warning("教师身份/教材初始化失败 (生成功能仍可用, 仅无身份+资源库): %s", e)
+        logger.warning("Teacher identity/textbook init failed (generation still works, just no identity+materials): %s", e)
         auth_service = None
         textbook_loader = None
         _materials_repo = None
@@ -536,15 +536,15 @@ async def lifespan(app: FastAPI):
     global lesson_scripter, packager, session_manager
     global digital_human_manager
     global _ready, _shell_registry_task
-    # SRV-5: 构建失败时 yield 不执行, 须 try/except 清理已分配资源
+    # SRV-5: if build fails, yield never runs; use try/except to clean up already-allocated resources
     try:
-        # P1-8: 单实例锁 — 未持锁则拒绝启动, 防 uvicorn --workers N 多实例跑同套引擎/调度器。
+        # P1-8: single-instance lock — refuse startup without the lock, prevents uvicorn --workers N instances running the same engine/scheduler set.
         if not _acquire_instance_lock():
-            raise RuntimeError(f"单实例锁已被占用: {_INSTANCE_LOCKFILE}")
-        # A9: build_engines 内含 loader.load_all() 同步磁盘 I/O, 放线程池
-        # 避免阻塞事件循环 — 大课标库首次加载数百毫秒, 否则并发请求全挂起。
+            raise RuntimeError(f"single-instance lock already held: {_INSTANCE_LOCKFILE}")
+        # A9: build_engines includes loader.load_all() synchronous disk I/O, run in a thread pool
+        # to avoid blocking the event loop — first load of a large standards library takes hundreds of ms, otherwise all concurrent requests hang.
         bundle = await asyncio.to_thread(build_engines)
-        # A14: 注册与构造分离 — 工厂纯构造, 此处显式注册全局 registry(agent 执行器按名查引擎)
+        # A14: registration separated from construction — the factory is pure construction, explicitly register the global registry here (agent executor looks up engines by name)
         register_all_engines(bundle=bundle)
         mlx_client = bundle.mlx
         curriculum_engine = bundle.curriculum
@@ -555,20 +555,20 @@ async def lifespan(app: FastAPI):
         differentiation_engine = bundle.differentiation
         standards_query = bundle.standards_query
         standards_loader = bundle.standards_loader
-        # P3: 复用 bundle 同一 StandardsQuery 构对齐器, 与 DifferentiationEngine 内部同实例。
+        # P3: build the aligner from the same bundle StandardsQuery, same instance as inside DifferentiationEngine.
         standards_aligner = StandardsAligner(query=bundle.standards_query)
         analytics_engine = bundle.analytics
-        # P1-9: 复用 bundle 共享 ContentFilter — 敏感词/年龄规则一份, 不在 serve 内
-        # 再各自构造致规则双份不同步 (engines.build_engines 已注入 7 引擎同实例)。
+        # P1-9: reuse the bundle-shared ContentFilter — one sensitive-word/age rule set, instead of serve-side
+        # re-construction producing two divergent rule copies (engines.build_engines already injects the same instance into 7 engines).
         content_filter = bundle.content_filter
         sensitive_wordlist = SensitiveWordList()
         subject_registry = bundle.subject_registry
-        # 课堂模块 (E1-E6 K1 文字版): 共用 mlx_client, 独立 SQLite store。
+        # Classroom module (E1-E6 K1 text version): shares mlx_client, separate SQLite store.
         _classroom_store = ClassroomStore()
         lesson_scripter = LessonScripter(mlx_client)
         packager = Packager(_classroom_store)
         session_manager = SessionManager(_classroom_store)
-        # 数字人平台层 (K2/K3): 注入 mlx/registry/session_manager/scripter, prewarm 插件。
+        # Digital-human platform layer (K2/K3): inject mlx/registry/session_manager/scripter, prewarm plugins.
         digital_human_manager = DigitalHumanManager(
             mlx_client, subject_registry, session_manager, lesson_scripter,
         )
@@ -577,52 +577,52 @@ async def lifespan(app: FastAPI):
         scheduler.load_history()
         scheduler.start()
         _init_allowed_dirs()
-        # 教师身份 + 教材目录 + 资源库 (issue #36: cluster 误配 fail-closed 上抛拒启)
+        # Teacher identity + textbook catalog + resource library (issue #36: cluster misconfig fail-closed propagates and refuses startup)
         _init_teacher_services()
         _ready = True
-        # M3-T13/T14: 审计日志器注入 scheduler 的 repo, 启用持久化。
+        # M3-T13/T14: inject scheduler repo into the audit logger, enabling persistence.
         try:
             from .audit import get_audit_logger
             get_audit_logger().set_repo(getattr(scheduler, "_repo", None))
         except Exception as e:
-            logger.warning("审计日志器注入 repo 失败 (仅内存): %s", e)
-        # M3-T17: 配置热更新 — 启动轮询, 注册回调刷新引擎持有的可变配置。
+            logger.warning("Failed to inject repo into audit logger (memory only): %s", e)
+        # M3-T17: config hot-reload — start polling, register callback refreshing mutable engine config.
         _start_config_hot_reload()
-        # #28: mlx 健康探测看门狗 — 后端挂起 1 个探测周期内日志告警
+        # #28: mlx health-probe watchdog — log alert within one probe cycle when the backend hangs
         _start_mlx_health_watchdog()
-        # M3-T19: 在途计数归零事件 (绑当前 loop) + SIGTERM 排水处理
+        # M3-T19: in-flight zero event (bound to current loop) + SIGTERM drain handling
         global _inflight_zero
         _inflight_zero = asyncio.Event()
         _install_sigterm_handler()
-        # issue #17: 启动时惰性清理旧上传文件 + 旧资源记录
+        # issue #17: lazily purge old upload files + old material records at startup
         _purge_old_uploads()
         _purge_old_materials()
-        # issue #30: Union Web shell 注册 — env 门控, 向 gateway 注册 web/manifest.json 并心跳保活
+        # issue #30: Union Web shell registration — env-gated, register web/manifest.json with the gateway and keep alive via heartbeat
         try:
             from .shell_registry import shell_registration_enabled, shell_registry_loop
             if shell_registration_enabled():
                 _shell_registry_task = asyncio.create_task(shell_registry_loop())
-                logger.info("shell 网关注册已启动 (manifest=web/manifest.json)")
+                logger.info("shell gateway registration started (manifest=web/manifest.json)")
             else:
-                logger.info("shell 网关注册未启用 (FUSION_SHELL_GATEWAY_URL / FUSION_ADMIN_KEY 未配置)")
+                logger.info("shell gateway registration not enabled (FUSION_SHELL_GATEWAY_URL / FUSION_ADMIN_KEY unset)")
         except Exception as e:
-            logger.warning("shell 注册启动失败 (不影响服务): %s", e)
+            logger.warning("shell registration failed to start (does not affect the service): %s", e)
         logger.info("Fusion-K12-Teacher API started, MLXClient initialized")
     except Exception as exc:
-        logger.error("lifespan 启动失败, 清理已分配资源: %s", exc, exc_info=True)
+        logger.error("lifespan startup failed, cleaning up allocated resources: %s", exc, exc_info=True)
         _ready = False
-        # R2: 释放已构造的 mlx/scheduler, 并清空所有引擎全局 —
-        # 原 re-raise 后半数全局已赋值、半数仍 None, worker 残留半套引擎。
+        # R2: release the constructed mlx/scheduler and clear all engine globals —
+        # after the original re-raise half the globals were assigned and half still None, leaving workers with half an engine set.
         try:
             await scheduler.aclose()
         except Exception as e:
-            logger.warning("scheduler.aclose 失败(启动异常清理): %s", e)
+            logger.warning("scheduler.aclose failed (startup-exception cleanup): %s", e)
         if mlx_client is not None:
             try:
                 await mlx_client.close()
             except Exception as e:
-                logger.warning("mlx_client.close 失败(启动异常清理): %s", e)
-        # 清空引擎全局, 防重启时残留半初始化态
+                logger.warning("mlx_client.close failed (startup-exception cleanup): %s", e)
+        # Clear engine globals to avoid half-initialized state lingering across restarts
         for name in (
             "mlx_client", "curriculum_engine", "assessment_engine", "subject_expert",
             "personalization_engine", "content_generator", "differentiation_engine",
@@ -635,15 +635,15 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Fusion-K12-Teacher API shutting down")
     _ready = False
-    # M3-T19: 优雅排水 — 拒绝新请求, 等在途归零或超时
+    # M3-T19: graceful drain — reject new requests, wait for in-flight to reach zero or time out
     global _draining
     _draining = True
     await _drain_inflight()
-    # M3-T17: 停止配置轮询线程
+    # M3-T17: stop the config polling thread
     _stop_config_hot_reload()
-    # #28: 停 mlx 健康探测
+    # #28: stop the mlx health probe
     _stop_mlx_health_watchdog()
-    # issue #30: 停 shell 注册心跳
+    # issue #30: stop the shell registration heartbeat
     if _shell_registry_task is not None:
         _shell_registry_task.cancel()
         try:
@@ -651,28 +651,28 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.warning("shell 注册任务收尾异常: %s", e)
+            logger.warning("shell registration task raised during teardown: %s", e)
         _shell_registry_task = None
-    # M3-T14: 关闭前 flush 剩余审计事件
+    # M3-T14: flush remaining audit events before shutdown
     try:
         from .audit import get_audit_logger
         await get_audit_logger().aclose()
     except Exception as e:
-        logger.warning("审计关闭 flush 失败: %s", e)
+        logger.warning("Audit close flush failed: %s", e)
     try:
         await scheduler.aclose()
     except Exception as e:
-        logger.warning("scheduler.aclose 失败: %s", e)
+        logger.warning("scheduler.aclose failed: %s", e)
     if digital_human_manager is not None:
         try:
             await digital_human_manager.aclose()
         except Exception as e:
-            logger.warning("digital_human_manager.aclose 失败: %s", e)
+            logger.warning("digital_human_manager.aclose failed: %s", e)
     if mlx_client is not None:
         try:
             await mlx_client.close()
         except Exception as e:
-            logger.warning("mlx_client.close 失败: %s", e)
+            logger.warning("mlx_client.close failed: %s", e)
     _release_instance_lock()
 
 
@@ -685,11 +685,11 @@ app = FastAPI(
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """SRV-2: 滑动窗口限流，防止单个客户端拖垮本地推理资源。"""
+    """SRV-2: sliding-window rate limiting, prevents a single client from overwhelming local inference resources."""
     if request.url.path.startswith("/api/"):
         key = await _client_key(request)
         if not await _rate_limiter.check(key):
-            # SRV-6: 用标准 JSONResponse 而非 HTTPException, 确保统一错误体经正常响应链
+            # SRV-6: use a standard JSONResponse instead of HTTPException, ensuring a unified error body through the normal response chain
             from fastapi.responses import JSONResponse
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -700,16 +700,16 @@ async def rate_limit_middleware(request: Request, call_next):
 
 @app.middleware("http")
 async def audit_middleware(request: Request, call_next):
-    """M3-T13: 审计埋点 — 每请求生成 trace_id, 记录 route/method/status/duration。
+    """M3-T13: audit instrumentation — generate a trace_id per request, record route/method/status/duration.
 
-    trace_id 透传至响应头 X-Trace-Id; 学生标识哈希从请求体 student_id 字段提取。
-    排除探针/指标端点 (无需审计)。审计事件异步记入 AuditLogger (T14 持久化)。
+    trace_id is propagated to the X-Trace-Id response header; student identifier hash is extracted from the request body student_id field.
+    Probe/metrics endpoints are excluded (no audit needed). Audit events are recorded asynchronously into AuditLogger (T14 persistence).
     """
     path = request.url.path
     if not path.startswith("/api/") or path in ("/api/health", "/api/ready", "/api/metrics"):
         return await call_next(request)
     from .audit import AuditEvent, get_audit_logger, new_trace_id
-    # M3-T19: 排水下线期间拒绝新业务请求 (探针除外, 上面已放行)
+    # M3-T19: reject new business requests during graceful drain (probes excluded, allowed above)
     if _draining:
         from fastapi.responses import JSONResponse
         return JSONResponse(
@@ -721,7 +721,7 @@ async def audit_middleware(request: Request, call_next):
     start = time.monotonic()
     status_code = 0
     err = ""
-    # M3-T19: 在途计数 +1, 完成后 -1 并通知 drain 等待者
+    # M3-T19: in-flight +1, then -1 on completion and notify drain waiters
     global _inflight
     _inflight += 1
     try:
@@ -738,7 +738,7 @@ async def audit_middleware(request: Request, call_next):
         if _inflight == 0 and _inflight_zero is not None:
             _inflight_zero.set()
         duration_ms = (time.monotonic() - start) * 1000
-        # M3-T16: 指标采集 — 请求计数 + 延迟直方图
+        # M3-T16: metrics collection — request counter + latency histogram
         try:
             from .metrics import get_metrics
             get_metrics().record_request(path, status_code, duration_ms / 1000.0)
@@ -769,24 +769,24 @@ async def audit_middleware(request: Request, call_next):
         try:
             await get_audit_logger().record(event)
         except Exception as e:
-            logger.warning("审计记录失败 (不影响请求): %s", e)
+            logger.warning("Failed to record audit event (does not affect the request): %s", e)
 
 
-# 生成路由 → 资源类型映射 (content/generate 动态, 由响应 type 字段决定)。
-# issue #14: fire-and-forget 任务须持强引用, 否则事件循环仅持弱引用可被 GC,
-# 且异常只在 GC 时打印 "Task exception was never retrieved" — 统一经 _spawn_bg_task 派生。
+# Generation route -> material type mapping (content/generate is dynamic, decided by the response type field).
+# issue #14: fire-and-forget tasks must hold a strong reference, otherwise the event loop holds only a weak reference and the task can be GC'd,
+# with exceptions only printed at GC time as "Task exception was never retrieved" — spawn uniformly via _spawn_bg_task.
 _bg_tasks: set[asyncio.Task] = set()
 
 
 def _spawn_bg_task(coro) -> asyncio.Task:
-    """派生后台任务并持强引用 — done 后自动移除, 异常落结构化日志。"""
+    """Spawn a background task holding a strong reference — auto-removed when done, exceptions go to structured logs."""
     task = asyncio.ensure_future(coro)
     _bg_tasks.add(task)
 
     def _done(t: asyncio.Task) -> None:
         _bg_tasks.discard(t)
         if not t.cancelled() and t.exception() is not None:
-            logger.warning("后台任务异常: %s", t.exception())
+            logger.warning("Background task exception: %s", t.exception())
 
     task.add_done_callback(_done)
     return task
@@ -850,22 +850,22 @@ def _save_material_if_teacher(
             "payload": json.dumps(result, ensure_ascii=False),
             "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         })
-        logger.info("资源已保存: teacher=%s type=%s title=%s", teacher_id, mtype, title)
+        logger.info("Material saved: teacher=%s type=%s title=%s", teacher_id, mtype, title)
     except Exception as e:
-        logger.warning("资源保存失败 (不影响响应): %s", e)
+        logger.warning("Material save failed (does not affect the response): %s", e)
 
 
 @app.middleware("http")
 async def auto_save_material_middleware(request: Request, call_next):
-    """生成路由成功后, 若带 X-Auth-Token, 自动落盘资源到资源库。
+    """After a generation route succeeds, if X-Auth-Token is present, auto-save the material to the resource library.
 
-    读请求体 (缓存后下游仍可读) + 响应体, 非 200 或非生成路由则跳过。
+    Reads the request body (cached so downstream can still read it) + response body; skips non-200 or non-generation routes.
     """
     path = request.url.path
     if request.method != "POST" or path not in _GEN_ROUTE_TYPES:
         return await call_next(request)
     token = request.headers.get("X-Auth-Token", "")
-    # 预读并缓存请求体, 供下游 handler + 本中间件复用 (Starlette 缓存 _body)。
+    # Pre-read and cache the request body for reuse by the downstream handler + this middleware (Starlette caches _body).
     req_data: dict = {}
     try:
         body_bytes = await request.body()
@@ -880,7 +880,7 @@ async def auto_save_material_middleware(request: Request, call_next):
     response = await call_next(request)
     if response.status_code != 200 or not token or not auth_service or not _materials_repo:
         return response
-    # BaseHTTPMiddleware 的响应是流式, 须消费 body_iterator 后重建响应才能读体。
+    # BaseHTTPMiddleware responses are streaming; the body_iterator must be consumed and the response rebuilt to read the body.
     body_chunks: list[bytes] = []
     try:
         async for chunk in response.body_iterator:
@@ -888,7 +888,7 @@ async def auto_save_material_middleware(request: Request, call_next):
     except Exception:
         return response
     resp_bytes = b"".join(body_chunks)
-    # 重建响应 (保持状态码/头), 否则消费后下游拿不到体。
+    # Rebuild the response (keeping status/headers), otherwise downstream cannot read the body after consumption.
     from starlette.responses import Response as _Resp
     new_response = _Resp(
         content=resp_bytes,
@@ -924,12 +924,12 @@ async def auto_save_material_middleware(request: Request, call_next):
 
 
 def _check_engine_error(result: Any, label: str) -> None:
-    # SRV-9: 引擎优雅降级返含 error 的结果时, 显式 502 而非 200+error 误导客户端
+    # SRV-9: when an engine gracefully degrades and returns a result containing error, respond with explicit 502 instead of misleading 200+error
     err = getattr(result, "error", None)
     if not err and isinstance(result, dict):
         err = result.get("error")
     if err:
-        logger.warning("%s 引擎失败: %s", label, err)
+        logger.warning("%s engine failed: %s", label, err)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"{label} failed",
@@ -945,44 +945,49 @@ def _coerce_str(v: Any) -> str:
 
 GradeField = Annotated[str, BeforeValidator(_coerce_str), Field(max_length=4)]
 
+# i18n: user-facing (OpenAPI field descriptions)
 class CurriculumPlanRequest(BaseModel):
     grade: GradeField = Field(..., description="年级")
     subject: str = Field(..., max_length=20, description="学科")
     topic: str = Field(..., max_length=100, description="主题")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AssessmentGradeRequest(BaseModel):
     question: str = Field(..., max_length=2000, description="题目")
     answer: str = Field(..., max_length=2000, description="学生答案")
     standard: str = Field("", max_length=2000, description="参考答案/评分标准")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SubjectExplainRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field("", description="年级")
     concept: str = Field(..., max_length=500, description="概念/问题")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class PersonalizePathRequest(BaseModel):
     student_id: str = Field(..., max_length=50, description="学生ID")
     progress: dict[str, Any] = Field(default_factory=dict, description="学习进度")
 
-    # SRV-7: 限定 progress 键数与值长, 防超大 payload
+    # SRV-7: bound progress key count and value length, guards against oversized payloads
     @model_validator(mode="after")
     def _bound_progress(self):
         if len(self.progress) > 20:
-            raise ValueError("progress 键数超过上限 20")
+            raise ValueError("progress has more than the maximum of 20 keys")
         for k, v in self.progress.items():
             if len(str(k)) > 50:
-                raise ValueError("progress 键过长")
+                raise ValueError("progress key too long")
             if isinstance(v, str) and len(v) > 500:
-                raise ValueError("progress 值过长")
+                raise ValueError("progress value too long")
         return self
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ContentGenerateRequest(BaseModel):
     topic: str = Field(..., max_length=100, description="主题")
     grade: GradeField = Field("", description="年级")
     style: str = Field("interactive", max_length=20, description="生成风格")
 
 
-# ── 教师身份 ──
+# ── Teacher identity ──
 
 class AuthRegisterRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=32)
@@ -1002,7 +1007,7 @@ _AUTH_TOKEN_HEADER = APIKeyHeader(name="X-Auth-Token", auto_error=False)
 async def get_optional_teacher(
     x_auth_token: str = Security(_AUTH_TOKEN_HEADER),
 ) -> str | None:
-    """软身份 — 有 token 验证返 teacher_id, 无则 None (仅 api_key 模式不保存)。"""
+    """Soft identity — verify and return teacher_id when a token is present, otherwise None (not persisted in api_key-only mode)."""
     if not x_auth_token or not auth_service:
         return None
     try:
@@ -1014,7 +1019,7 @@ async def get_optional_teacher(
 async def require_teacher(
     x_auth_token: str = Security(_AUTH_TOKEN_HEADER),
 ) -> str:
-    """硬身份 — 必须有效 token, 否则 401。供 /me, /logout, 资源库读写用。"""
+    """Hard identity — a valid token is required, otherwise 401. Used by /me, /logout, and materials read/write."""
     if not auth_service:
         raise HTTPException(status_code=503, detail="auth service unavailable")
     tid = await asyncio.to_thread(auth_service.verify_token, x_auth_token) if x_auth_token else None
@@ -1067,7 +1072,7 @@ async def auth_logout(request: Request, teacher_id: str = Depends(require_teache
     return {"ok": True}
 
 
-# ── 教材目录 ──
+# ── Textbook catalog ──
 
 @app.get("/api/textbook/editions")
 async def textbook_editions(_: None = Depends(_require_ready)):
@@ -1110,7 +1115,7 @@ async def textbook_lesson(edition: str, subject: str, grade: str, lesson_id: str
     }
 
 
-# ── 资源库 ──
+# ── Materials library ──
 
 @app.get("/api/materials")
 async def materials_list(
@@ -1173,20 +1178,20 @@ def _material_summary(m: dict) -> dict:
 
 @app.get("/api/health")
 async def health():
-    # P1-10: health 探测后端 fusion-mlx 可达性, 非静态返回。
-    # /api/health = liveness (进程在) + 后端探测; /api/ready = readiness (引擎就绪)。
+    # P1-10: health probes backend fusion-mlx reachability, not a static response.
+    # /api/health = liveness (process alive) + backend probe; /api/ready = readiness (engines ready).
     backend = "unknown"
     model_id = ""
     if mlx_client is not None:
         try:
-            # list_models 是 async, 直接 await (自带缓存+锁); to_thread 会漏 await 返未决协程
+            # list_models is async, await directly (has built-in cache+lock); to_thread would drop the await and return a pending coroutine
             models = await mlx_client.list_models()
             backend = "ok" if models is not None else "down"
-            # issue 验收: 空 models 列表 (gateway 响应解析异常等) 也显示已配置模型 —
-            # 此前 model_id 落在 if models: 内, 空列表时 health 恒显 "" 误导运维
+            # issue acceptance: show the configured model even for an empty models list (gateway response parse errors etc.) —
+            # previously model_id was inside if models:, so health always showed "" on empty lists, misleading ops
             model_id = mlx_client.model or "(pending)"
         except Exception as e:
-            logger.warning("health: fusion-mlx 探测失败: %s", e)
+            logger.warning("health: fusion-mlx probe failed: %s", e)
             backend = "down"
     status_code = status.HTTP_200_OK if backend != "down" else status.HTTP_503_SERVICE_UNAVAILABLE
     from fastapi.responses import JSONResponse
@@ -1202,7 +1207,7 @@ async def health():
 
 @app.get("/api/ready")
 async def ready():
-    # P1-10: readiness — 引擎全就绪返 200, 否则 503。供 K8s readinessProbe / Docker HEALTHCHECK。
+    # P1-10: readiness — 200 when all engines are ready, else 503. For K8s readinessProbe / Docker HEALTHCHECK.
     if not _ready or mlx_client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1218,7 +1223,7 @@ async def audit_export(
     limit: int = 1000,
     _: str = Depends(require_admin_api_key),
 ):
-    # M3-T15: 审计导出 — 管理员 key, JSON/CSV。limit 上限 10000 防过大响应。
+    # M3-T15: audit export — admin key, JSON/CSV. Limit capped at 10000 to guard oversized responses.
     await _require_ready()
     limit = max(1, min(limit, 10000))
     repo = getattr(scheduler, "_repo", None)
@@ -1230,7 +1235,7 @@ async def audit_export(
     try:
         rows = await asyncio.to_thread(repo.load_audit, since, limit)
     except Exception as e:
-        logger.warning("审计导出读取失败: %s", e)
+        logger.warning("Audit export read failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="audit export failed",
@@ -1256,8 +1261,8 @@ async def audit_export(
 
 @app.get("/api/metrics")
 async def metrics_endpoint(_: str = Depends(require_admin_api_key)):
-    # M3-T16: Prometheus 指标端点 — exposition format, 管理员 key。
-    # 探针/审计中间件已排除本端点 (path 白名单)。
+    # M3-T16: Prometheus metrics endpoint — exposition format, admin key.
+    # Probe/audit middleware already exclude this endpoint (path whitelist).
     from fastapi.responses import PlainTextResponse
 
     from .metrics import render_prometheus
@@ -1312,6 +1317,7 @@ async def subject_explain(req: SubjectExplainRequest, _: str = Depends(require_a
 async def personalize_path(req: PersonalizePathRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
     logger.info("personalize/path: student=%s", _mask_sid(req.student_id))
     grade = req.progress.get("grade", "3")
+    # i18n: user-facing (product defaults feeding content generation)
     subject = req.progress.get("subject", "数学")
     goal = req.progress.get("goal", "综合提升")
     path = await personalization_engine.create_learning_path(
@@ -1334,11 +1340,12 @@ async def personalize_path(req: PersonalizePathRequest, _: str = Depends(require
 @app.post("/api/content/generate")
 async def content_generate(req: ContentGenerateRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
     logger.info("content/generate: topic=%s grade=%s style=%s", req.topic, req.grade, req.style)
+    # i18n: user-facing ("综合" is the cross-subject subject name passed to content generation)
     if req.style == "flashcards":
         result = await content_generator.generate_flashcards(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
-        # P3: flashcards 降级返空列表 → 显式 502, 与 worksheet/game 一致, 不恒 200 空对象
+        # P3: flashcards degrade returns an empty list -> explicit 502, consistent with worksheet/game, never a silent 200 empty object
         if not result:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="flashcards generation failed")
         return {"type": "flashcards", "items": result}
@@ -1346,7 +1353,7 @@ async def content_generate(req: ContentGenerateRequest, _: str = Depends(require
         result = await content_generator.generate_lesson_slides(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
-        # P3: slides 降级返空列表 → 502, 语义统一
+        # P3: slides degrade returns an empty list -> 502, unified semantics
         if not result:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="slides generation failed")
         return {"type": "slides", "items": result}
@@ -1354,22 +1361,22 @@ async def content_generate(req: ContentGenerateRequest, _: str = Depends(require
         result = await content_generator.generate_educational_game(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
-        # SRV-8: 生成失败(含 error 字段)不再静默 200 空对象, 显式返 502 让客户端察觉
+        # SRV-8: generation failure (with error field) no longer silently returns a 200 empty object; explicit 502 so the client notices
         if result.get("error"):
-            logger.warning("content/generate game 失败: %s", result.get("error"))
+            logger.warning("content/generate game failed: %s", result.get("error"))
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="game generation failed",
             )
-        # CNT-1: 白名单字段透传, 内部 error 不外泄; LLM 的 type 不覆盖响应 type
+        # CNT-1: whitelist field passthrough, internal error not leaked; the LLM's type does not override the response type
         safe = {k: v for k, v in result.items() if k not in ("error", "type")}
         return {"type": "game", "game_type": result.get("type", ""), **safe}
     else:
         ws = await content_generator.generate_worksheet(
             subject="综合", grade=req.grade or "3", topic=req.topic,
         )
-        # A13: worksheet 失败统一转 502, error 不入 200 body —
-        # 原返 200 + ws.error 泄露内部错误细节, 与 _check_engine_error 转的设计自相矛盾。
+        # A13: worksheet failure uniformly converted to 502, error stays out of the 200 body —
+        # returning 200 + ws.error leaked internal error details, contradicting the _check_engine_error conversion design.
         _check_engine_error(ws, "content/worksheet")
         return {
             "type": "worksheet",
@@ -1380,17 +1387,20 @@ async def content_generate(req: ContentGenerateRequest, _: str = Depends(require
         }
 
 
-# ── Assessment 扩展 (P1-13: 补齐 essay/report/rubric 路由) ──
+# ── Assessment extensions (P1-13: add essay/report/rubric routes) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AssessmentEssayRequest(BaseModel):
     essay: str = Field(..., max_length=5000, description="学生作文")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AssessmentReportRequest(BaseModel):
     student: str = Field(..., max_length=50, description="学生姓名/ID")
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     history: list[dict[str, Any]] = Field(default_factory=list, max_length=50, description="学习记录")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AssessmentRubricRequest(BaseModel):
     assignment_type: str = Field(..., max_length=50, description="作业类型")
     grade: GradeField = Field(..., description="年级")
@@ -1425,19 +1435,22 @@ async def assessment_rubric(req: AssessmentRubricRequest, _: str = Depends(requi
     return result
 
 
-# ── Subject 扩展 (P1-14: 补齐 exercise/stem_project/language_activity 路由) ──
+# ── Subject extensions (P1-14: add exercise/stem_project/language_activity routes) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SubjectExerciseRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     difficulty: str = Field("medium", max_length=20, description="难度 easy/medium/hard")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SubjectStemRequest(BaseModel):
     grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     duration: str = Field("2课时", max_length=20, description="时长")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SubjectLanguageRequest(BaseModel):
     grade: GradeField = Field(..., description="年级")
     language: str = Field(..., max_length=20, description="语言")
@@ -1451,7 +1464,7 @@ async def subject_exercise_route(req: SubjectExerciseRequest, _: str = Depends(r
     result = await subject_expert.generate_exercise(
         subject=req.subject, grade=req.grade, topic=req.topic, difficulty=req.difficulty,
     )
-    # P3: 降级路径现设 .error, 触发 502 而非 200 + question="生成失败"
+    # P3: degrade path now sets .error, triggering 502 instead of 200 + a generation-failed question string
     _check_engine_error(result, "subject/exercise")
     return result.__dict__
 
@@ -1476,14 +1489,16 @@ async def subject_language_activity(req: SubjectLanguageRequest, _: str = Depend
     return result
 
 
-# ── Curriculum 扩展 (P1-15: 补齐 quiz/unit_plan 路由) ──
+# ── Curriculum extensions (P1-15: add quiz/unit_plan routes) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class CurriculumQuizRequest(BaseModel):
     grade: GradeField = Field(..., description="年级")
     subject: str = Field(..., max_length=20, description="学科")
     topic: str = Field(..., max_length=100, description="主题")
     num_questions: int = Field(10, ge=1, le=50, description="题目数量")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class CurriculumUnitPlanRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
@@ -1512,13 +1527,15 @@ async def curriculum_unit_plan(req: CurriculumUnitPlanRequest, _: str = Depends(
     return result
 
 
-# ── Personalize 扩展 (P1-16: 补齐 diagnose/recommend 路由) ──
+# ── Personalize extensions (P1-16: add diagnose/recommend routes) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class PersonalizeDiagnoseRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     responses: list[dict[str, Any]] = Field(default_factory=list, max_length=50, description="答题记录")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class PersonalizeRecommendRequest(BaseModel):
     student: str = Field(..., max_length=50, description="学生")
     grade: GradeField = Field(..., description="年级")
@@ -1548,8 +1565,9 @@ async def personalize_recommend(req: PersonalizeRecommendRequest, _: str = Depen
     return result
 
 
-# ── Content 扩展 (parent_communication 路由) ──
+# ── Content extensions (parent_communication route) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ContentParentCommRequest(BaseModel):
     student: str = Field(..., max_length=50, description="学生姓名/ID")
     grade: GradeField = Field(..., description="年级")
@@ -1563,7 +1581,7 @@ async def content_parent_communication(req: ContentParentCommRequest, _: str = D
     result = await content_generator.generate_parent_communication(
         student=req.student, grade=req.grade, subject=req.subject, topic=req.topic,
     )
-    # generate_parent_communication 失败返空串 (CNT-2: 不外泄错误), 空串表示失败 → 502
+    # generate_parent_communication failure returns an empty string (CNT-2: never leak errors); empty string means failure -> 502
     if not result:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="parent communication failed")
     return {"content": result}
@@ -1571,18 +1589,21 @@ async def content_parent_communication(req: ContentParentCommRequest, _: str = D
 
 # ── Request Models (v0.3) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class DifferentiatedPlanRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     duration: int = Field(45, ge=5, le=240, description="课时(分钟)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class DifferentiatedQuizRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
     num_questions: int = Field(5, ge=1, le=50, description="每层题目数量")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class StandardsQueryRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
@@ -1593,7 +1614,7 @@ class StandardsQueryRequest(BaseModel):
 
 @app.get("/api/standards/list")
 async def standards_list(subject: str = "", grade: str = "", _: str = Depends(require_api_key)):
-    """列出课标知识点。"""
+    """List curriculum-standard knowledge points."""
     logger.info("standards/list: subject=%s grade=%s", subject, grade)
     if subject and grade:
         points = standards_query.get_knowledge_points(subject, grade)
@@ -1611,7 +1632,7 @@ async def standards_list(subject: str = "", grade: str = "", _: str = Depends(re
 
 @app.post("/api/standards/query")
 async def standards_query_endpoint(req: StandardsQueryRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """查询课标知识点。"""
+    """Query curriculum-standard knowledge points."""
     logger.info("standards/query: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     if req.topic:
         points = standards_query.find_by_topic(req.subject, req.grade, req.topic)
@@ -1623,19 +1644,22 @@ async def standards_query_endpoint(req: StandardsQueryRequest, _: str = Depends(
     }
 
 
-# P3: 暴露课标对齐/覆盖报告 — 之前仅 DifferentiationEngine 内部用, 无 CLI/serve 直达路由。
+# P3: expose standards alignment/coverage reports — previously only DifferentiationEngine used them internally, with no direct CLI/serve route.
+# i18n: user-facing (OpenAPI field descriptions)
 class StandardsAlignRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     topic: str = Field(..., max_length=100, description="主题")
 
 
+# i18n: user-facing (OpenAPI field descriptions)
 class StandardsCoverageRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     objectives: list[str] = Field(..., min_length=1, max_length=50, description="教学目标")
 
 
+# i18n: user-facing (OpenAPI field descriptions)
 class StandardsRemediateRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
@@ -1645,7 +1669,7 @@ class StandardsRemediateRequest(BaseModel):
 
 @app.post("/api/standards/align")
 async def standards_align(req: StandardsAlignRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """课标对齐 — 返回主题对应知识点/必修/拓展/前置。"""
+    """Standards alignment — returns knowledge points / must-cover / optional-advanced / prerequisites for the topic."""
     if standards_aligner is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
     ctx = standards_aligner.align(subject=req.subject, grade=req.grade, topic=req.topic)
@@ -1664,7 +1688,7 @@ async def standards_align(req: StandardsAlignRequest, _: str = Depends(require_a
 
 @app.post("/api/standards/coverage")
 async def standards_coverage(req: StandardsCoverageRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """课标覆盖报告 — 校验教学目标对知识点的覆盖度。"""
+    """Standards coverage report — validates how well teaching objectives cover the knowledge points."""
     if standards_query is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
     report = standards_query.validate_coverage(
@@ -1683,7 +1707,7 @@ async def standards_coverage(req: StandardsCoverageRequest, _: str = Depends(req
 
 @app.post("/api/standards/remediate")
 async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """针对缺失知识点生成补齐教学方案 — 无需学情数据, 基于课标知识点+前置依赖。"""
+    """Generate a remediation teaching plan for missing knowledge points — no learner data needed, based on standard knowledge points + prerequisites."""
     logger.info("standards/remediate: subject=%s grade=%s missing=%d", req.subject, req.grade, len(req.missing_points))
     if standards_query is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="standards not ready")
@@ -1704,9 +1728,10 @@ async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(r
             "prerequisites": [p.topic for p in prereqs[:5]],
         })
     if not missing_details:
-        return {"subject": req.subject, "grade": req.grade, "topic": req.topic, "missing_points": [], "strategies": [], "error": "缺失知识点无法解析"}
+        return {"subject": req.subject, "grade": req.grade, "topic": req.topic, "missing_points": [], "strategies": [], "error": "missing knowledge points could not be resolved"}
     import json as _json
     details_json = _json.dumps(missing_details, ensure_ascii=False)
+    # i18n: user-facing (LLM prompt)
     prompt = f"""针对以下缺失知识点生成补齐教学方案:
 
 学科: {req.subject} | 年级: {req.grade} | 课题: {req.topic}
@@ -1723,6 +1748,7 @@ async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(r
     llm_err = ""
     try:
         response = await mlx_client.chat([
+            # i18n: user-facing (LLM system prompt)
             {"role": "system", "content": "你是一位经验丰富的教研员, 擅长针对课标缺失知识点设计补齐教学方案。"},
             {"role": "user", "content": prompt},
         ], temperature=0.3)
@@ -1752,9 +1778,9 @@ async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(r
                 "estimated_duration": str(data.get("estimated_duration", ""))[:200],
                 "error": "",
             }
-        llm_err = "LLM 返回空或无法解析"
+        llm_err = "LLM returned empty or unparseable output"
     except Exception as e:
-        logger.error("standards/remediate LLM 失败: %s", e)
+        logger.error("standards/remediate LLM failed: %s", e)
         llm_err = str(e)
     return {
         "subject": req.subject,
@@ -1770,7 +1796,7 @@ async def standards_remediate(req: StandardsRemediateRequest, _: str = Depends(r
 
 @app.post("/api/curriculum/plan-diff")
 async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成三层分层教案。"""
+    """Generate a three-tier differentiated lesson plan."""
     logger.info("curriculum/plan-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_lesson(
         subject=req.subject, grade=req.grade, topic=req.topic, duration=req.duration,
@@ -1781,7 +1807,7 @@ async def curriculum_plan_diff(req: DifferentiatedPlanRequest, _: str = Depends(
 
 @app.post("/api/curriculum/quiz-diff")
 async def curriculum_quiz_diff(req: DifferentiatedQuizRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成三层分层测验。"""
+    """Generate a three-tier differentiated quiz."""
     logger.info("curriculum/quiz-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_quiz(
         subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
@@ -1792,40 +1818,46 @@ async def curriculum_quiz_diff(req: DifferentiatedQuizRequest, _: str = Depends(
 
 # ── Request Models (v0.4) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ClassProfileRequest(BaseModel):
     class_id: str = Field(..., max_length=50, description="班级ID")
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class StudentProfileRequest(BaseModel):
     student_id: str = Field(..., max_length=50, description="学生ID")
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ErrorAnalysisRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class RemedialPlanRequest(BaseModel):
     student_id: str = Field(..., max_length=50, description="学生ID")
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ClassReportRequest(BaseModel):
     class_id: str = Field(..., max_length=50, description="班级ID")
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(JSON/CSV)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AnalyticsUploadRequest(BaseModel):
     data: list[dict[str, Any]] = Field(..., max_length=1000, description="评估数据(JSON数组)")
     format: str = Field("json", max_length=10, description="数据格式: json")
 
-    # P2: 单记录大小无界 → 巨记录内存耗尽。限定每记录 JSON 序列化字节上限。
+    # P2: per-record size was unbounded -> giant records exhaust memory. Cap JSON-serialized bytes per record.
     _MAX_RECORD_BYTES = 64 * 1024
 
     @model_validator(mode="after")
@@ -1835,11 +1867,12 @@ class AnalyticsUploadRequest(BaseModel):
             try:
                 size = len(_j.dumps(rec, ensure_ascii=False))
             except (TypeError, ValueError):
-                raise ValueError(f"记录 #{i} 不可序列化")
+                raise ValueError(f"record #{i} is not serializable")
             if size > self._MAX_RECORD_BYTES:
-                raise ValueError(f"记录 #{i} 超过单记录上限 {self._MAX_RECORD_BYTES} 字节 (实际 {size})")
+                raise ValueError(f"record #{i} exceeds the per-record limit of {self._MAX_RECORD_BYTES} bytes (actual {size})")
         return self
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ContentWorksheetDiffRequest(BaseModel):
     subject: str = Field(..., max_length=20, description="学科")
     grade: GradeField = Field(..., description="年级")
@@ -1849,12 +1882,12 @@ class ContentWorksheetDiffRequest(BaseModel):
 
 _ALLOWED_DATA_DIRS: list[Path] = []
 
-# issue #17: 上传落盘滚动保留上限 — 超出后按 mtime 清最旧文件, 防磁盘无限增长
+# issue #17: rolling retention cap for uploaded files — oldest files removed by mtime beyond the cap, prevents unbounded disk growth
 _UPLOAD_KEEP = int(os.environ.get("FUSION_K12_UPLOAD_KEEP", "500"))
 
 
 def _sweep_upload_files(dest_dir: Path, keep: int = _UPLOAD_KEEP) -> None:
-    """滚动清理 upload_*.json — 只保留最新 keep 份, 失败不影响上传主流程。"""
+    """Rolling cleanup of upload_*.json — keep only the newest `keep` files; failures do not affect the upload flow."""
     try:
         files = sorted(
             dest_dir.glob("upload_*.json"),
@@ -1866,12 +1899,12 @@ def _sweep_upload_files(dest_dir: Path, keep: int = _UPLOAD_KEEP) -> None:
         if len(files) > keep:
             logger.info("upload sweep: removed %d stale uploads (keep=%d)", len(files) - keep, keep)
     except Exception as e:
-        logger.warning("upload sweep 失败 (不影响上传): %s", e)
+        logger.warning("upload sweep failed (upload unaffected): %s", e)
 
 
 def _init_allowed_dirs():
-    # R7: 单一真源 — 复用 analytics.loader._allowed_data_dirs(), 不再 serve 侧重复定义。
-    # 原两套允许目录来源分叉, 改一处忘改另一处致路径校验失效或过严。
+    # R7: single source of truth — reuse analytics.loader._allowed_data_dirs(), no more serve-side duplicate definition.
+    # The old two allowed-directory sources diverged; updating one and forgetting the other broke or over-tightened path validation.
     from .analytics.loader import _allowed_data_dirs
     global _ALLOWED_DATA_DIRS
     _ALLOWED_DATA_DIRS = _allowed_data_dirs()
@@ -1879,9 +1912,9 @@ def _init_allowed_dirs():
 
 
 def _check_allowed_path(path: str) -> Path:
-    """校验 data_path 在允许目录内 (SRV-5: is_relative_to 精确匹配，非前缀)。
+    """Validate that data_path is inside an allowed directory (SRV-5: exact is_relative_to match, not prefix).
 
-    AGT-2/R7: 复用 loader.validate_data_path 白名单, CLI/tasks/serve 同源校验。
+    AGT-2/R7: reuse the loader.validate_data_path whitelist so CLI/tasks/serve validate from the same source.
     """
     try:
         from .analytics.loader import DataPathError, validate_data_path
@@ -1894,7 +1927,7 @@ def _check_allowed_path(path: str) -> Path:
 
 
 async def _load_assessments(path: str):
-    """SRV-4: 同步文件 I/O 放线程池，避免阻塞 event loop。"""
+    """SRV-4: run synchronous file I/O in a thread pool so the event loop is not blocked."""
     if not path:
         return []
     _check_allowed_path(path)
@@ -1907,7 +1940,7 @@ async def _load_assessments(path: str):
 
 @app.post("/api/analytics/class-profile")
 async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成班级学情画像。"""
+    """Generate a class learning profile."""
     logger.info("analytics/class-profile: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
     assessments = await _load_assessments(req.data_path)
     profile = await analytics_engine.build_class_profile(
@@ -1919,7 +1952,7 @@ async def analytics_class_profile(req: ClassProfileRequest, _: str = Depends(req
 
 @app.post("/api/analytics/student-profile")
 async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成学生个体画像。"""
+    """Generate an individual student profile."""
     logger.info("analytics/student-profile: student=%s subject=%s grade=%s", _mask_sid(req.student_id), req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
@@ -1932,7 +1965,7 @@ async def analytics_student_profile(req: StudentProfileRequest, _: str = Depends
 
 @app.post("/api/analytics/error-analysis")
 async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """错题归因分析。"""
+    """Error attribution analysis."""
     logger.info("analytics/error-analysis: subject=%s grade=%s", req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     responses = []
@@ -1941,9 +1974,10 @@ async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(r
     errors = await analytics_engine.analyze_errors(
         subject=req.subject, grade=req.grade, responses=responses,
     )
-    # P2: analyze_errors 降级返含 error_id=err-fallback 的兜底条目, 检查 error 透传失败状态。
+    # P2: analyze_errors degrade returns a fallback entry with error_id=err-fallback; check the error pass-through failure status.
+    # i18n: user-facing (compares against the analytics engine's fallback root_cause string)
     if errors and getattr(errors[0], "error_type", "") == "unknown" and errors[0].root_cause == "分析失败，需人工检查":
-        logger.warning("analytics/error-analysis 降级回退")
+        logger.warning("analytics/error-analysis degraded to fallback")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="error-analysis failed",
@@ -1953,7 +1987,7 @@ async def analytics_error_analysis(req: ErrorAnalysisRequest, _: str = Depends(r
 
 @app.post("/api/analytics/remedial")
 async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成补救教学方案。"""
+    """Generate a remedial teaching plan."""
     logger.info("analytics/remedial: student=%s subject=%s grade=%s", _mask_sid(req.student_id), req.subject, req.grade)
     all_assessments = await _load_assessments(req.data_path)
     history = [a for a in all_assessments if a.student_id == req.student_id]
@@ -1961,8 +1995,8 @@ async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_
         student_id=req.student_id, subject=req.subject, grade=req.grade, history=history,
     )
     _check_engine_error(student_profile, "analytics/student-profile")
-    # P2: 不再凭空 fabricate error_rate=0.5 — 从 knowledge_mastery 派生真实薄弱点。
-    # 掌握度 < 60 视薄弱, error_rate = 1 - mastery/100; 无薄弱点则返空方案 (而非喂假数据)。
+    # P2: no longer fabricate error_rate=0.5 out of thin air — derive real weak points from knowledge_mastery.
+    # Mastery < 60 counts as weak, error_rate = 1 - mastery/100; no weak points returns an empty plan (rather than feeding fake data).
     weak_points = []
     for kp, mastery in student_profile.knowledge_mastery.items():
         if mastery < 60:
@@ -1981,7 +2015,7 @@ async def analytics_remedial(req: RemedialPlanRequest, _: str = Depends(require_
 
 @app.post("/api/analytics/class-report")
 async def analytics_class_report(req: ClassReportRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成班级学情报告(Markdown)。"""
+    """Generate a class learning report (Markdown)."""
     logger.info("analytics/class-report: class=%s subject=%s grade=%s", req.class_id, req.subject, req.grade)
     assessments = await _load_assessments(req.data_path)
     profile = await analytics_engine.build_class_profile(
@@ -1994,8 +2028,9 @@ async def analytics_class_report(req: ClassReportRequest, _: str = Depends(requi
 
 @app.get("/api/analytics/template/json")
 async def analytics_template_json(_: str = Depends(require_api_key)):
-    """学情数据 JSON 模板 — 两名学生各含 scores/responses, 可直接上传验证。"""
-    logger.info("analytics/template/json: 返回 JSON 模板")
+    """Learning analytics data JSON template — two students each with scores/responses, upload-ready for validation."""
+    logger.info("analytics/template/json: returning JSON template")
+    # i18n: user-facing (sample assessment data)
     sample = [
         {
             "student_id": "S001",
@@ -2033,8 +2068,9 @@ async def analytics_template_json(_: str = Depends(require_api_key)):
 
 @app.get("/api/analytics/template/csv")
 async def analytics_template_csv(_: str = Depends(require_api_key)):
-    """学情数据 CSV 模板 — 每行一条答题记录, 按 student_id+assessment_id 聚合。"""
-    logger.info("analytics/template/csv: 返回 CSV 模板")
+    """Learning analytics data CSV template — one answer record per row, aggregated by student_id+assessment_id."""
+    logger.info("analytics/template/csv: returning CSV template")
+    # i18n: user-facing (sample assessment data)
     csv = (
         "student_id,student_name,assessment_id,date,subject,grade,total_score,max_score,question_id,question,student_answer,correct_answer,correct\n"
         "S001,张小明,A2026001,2026-09-20,数学,3,88,100,Q1,1/2的含义?,一半,把整体平均分2份取1份,true\n"
@@ -2048,10 +2084,10 @@ async def analytics_template_csv(_: str = Depends(require_api_key)):
 
 @app.post("/api/analytics/upload")
 async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """上传学情数据 — 持久化到允许目录并返回路径，供后续 analytics 调用使用 (SRV-6)。
+    """Upload learning analytics data — persisted to an allowed directory and the path returned for later analytics calls (SRV-6).
 
-    R6: 未成年人姓名强制脱敏后落盘 (PII 不明文持久化); 逐记录 schema 校验拒绝畸形注入;
-    日志只记计数与文件名, 不记绝对路径。
+    R6: minors' names are force-anonymized before persisting (PII never stored in plaintext); per-record schema validation rejects malformed injection;
+    logs record only counts and file names, never absolute paths.
     """
     logger.info("analytics/upload: %d records, format=%s", len(req.data), req.format)
     if req.format != "json":
@@ -2059,39 +2095,39 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="only json format supported",
         )
-    # R6: 上传入口强制脱敏 — student_name 落盘前转掩码 ID, 未成年人 PII 不明文存储。
-    # P2: fields_to_mask 用全默认集 (phone/email/id_number/address 同掩), 不再仅 student_name。
-    # 共享 anonymizer 单例: 多次上传同一学生姓名得同一掩码, 便于学情分析关联。
+    # R6: upload entry force-anonymizes — student_name becomes a masked ID before persisting, minors' PII never stored in plaintext.
+    # P2: fields_to_mask uses the full default set (phone/email/id_number/address masked too), no longer only student_name.
+    # Shared anonymizer singleton: repeated uploads of the same student name yield the same mask, easing analytics correlation.
     anonymizer = DataAnonymizer(DesensitizeConfig())
     assessments = []
     rejected = 0
     for idx, item in enumerate(req.data):
-        # R6: 逐记录 schema 校验 — 非 dict / 缺 student_id / total_score 越界 拒绝, 不静默吞畸形。
+        # R6: per-record schema validation — non-dict / missing student_id / out-of-range total_score rejected, malformed input never silently swallowed.
         if not isinstance(item, dict):
             rejected += 1
-            logger.warning("analytics/upload: 记录 #%d 非 dict, 拒绝", idx)
+            logger.warning("analytics/upload: record #%d not a dict, rejected", idx)
             continue
         sid = item.get("student_id", "")
         if not sid or not isinstance(sid, str):
             rejected += 1
-            logger.warning("analytics/upload: 记录 #%d 缺 student_id, 拒绝", idx)
+            logger.warning("analytics/upload: record #%d missing student_id, rejected", idx)
             continue
         total = item.get("total_score", 0.0)
         max_score = item.get("max_score", 100.0)
         try:
             if float(total) < 0 or float(max_score) <= 0:
                 rejected += 1
-                logger.warning("analytics/upload: 记录 #%d 分数越界 (total=%s max=%s), 拒绝", idx, total, max_score)
+                logger.warning("analytics/upload: record #%d score out of range (total=%s max=%s), rejected", idx, total, max_score)
                 continue
         except (TypeError, ValueError):
             rejected += 1
-            logger.warning("analytics/upload: 记录 #%d 分数非数值, 拒绝", idx)
+            logger.warning("analytics/upload: record #%d score not numeric, rejected", idx)
             continue
         try:
-            # R6: student_name 经 anonymizer 脱敏后构造, 落盘为掩码 ID
+            # R6: student_name built via anonymizer masking, persisted as masked ID
             raw_name = str(item.get("student_name", "") or "")
             anon_name = anonymizer.anonymize_name(raw_name, seq=str(idx)) if raw_name else ""
-            # P2: responses 含学生原始作答 (PII), 落盘前对 student_answer 字段脱敏, 不明文持久化。
+            # P2: responses contain raw student answers (PII); student_answer fields are anonymized before persisting, never stored in plaintext.
             raw_responses = item.get("responses", []) or []
             scrubbed_responses = []
             for r in raw_responses:
@@ -2115,7 +2151,7 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             assessments.append(a)
         except Exception as e:
             rejected += 1
-            logger.warning("analytics/upload: 记录 #%d 构造失败, 拒绝: %s", idx, e)
+            logger.warning("analytics/upload: record #%d construction failed, rejected: %s", idx, e)
     import json as _json
     dest_dir = _ALLOWED_DATA_DIRS[0] if _ALLOWED_DATA_DIRS else Path.cwd() / "data"
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -2127,15 +2163,15 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
             _json.dump([a.to_dict() for a in assessments], f, ensure_ascii=False, indent=2)
 
     await asyncio.to_thread(_write)
-    # issue #17: 上传文件滚动清理 — 只保留最新 N 份, 防长期运行磁盘无限增长
+    # issue #17: rolling cleanup of uploaded files — keep only the newest N, prevents unbounded disk growth on long runs
     await asyncio.to_thread(_sweep_upload_files, dest_dir)
-    # R6: 日志只记计数与文件名, 不记绝对路径 (防路径信息泄露)
+    # R6: logs record only counts and file names, never absolute paths (prevents path information leakage)
     logger.info("analytics/upload: persisted %d records (rejected %d) -> %s", len(assessments), rejected, dest.name)
     return {
         "accepted": len(assessments),
         "rejected": rejected,
         "total": len(req.data),
-        # SRV-10: 仅回传文件名, 不泄露服务端绝对路径
+        # SRV-10: return only the file name, never the server-side absolute path
         "filename": dest.name,
     }
 
@@ -2144,7 +2180,7 @@ async def analytics_upload(req: AnalyticsUploadRequest, _: str = Depends(require
 
 @app.post("/api/content/worksheet-diff")
 async def content_worksheet_diff(req: ContentWorksheetDiffRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """生成三层分层工作纸。"""
+    """Generate a three-tier differentiated worksheet."""
     logger.info("content/worksheet-diff: subject=%s grade=%s topic=%s", req.subject, req.grade, req.topic)
     result = await differentiation_engine.generate_differentiated_worksheet(
         subject=req.subject, grade=req.grade, topic=req.topic, num_questions=req.num_questions,
@@ -2155,12 +2191,14 @@ async def content_worksheet_diff(req: ContentWorksheetDiffRequest, _: str = Depe
 
 # ── Request Models (v0.5) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AgentRunRequest(BaseModel):
     task_id: str = Field(..., max_length=50, description="任务ID")
     subject: str = Field("数学", max_length=20, description="学科")
     grade: GradeField = Field("3", description="年级")
     data_path: str = Field("", max_length=500, description="评估数据文件路径(每次执行重新加载, 避免过期数据)")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class AgentScheduleRequest(BaseModel):
     task_id: str = Field(..., max_length=50, description="任务ID")
     enable: bool = Field(True, description="启用/禁用")
@@ -2170,7 +2208,7 @@ class AgentScheduleRequest(BaseModel):
 
 @app.get("/api/agent/tasks")
 async def agent_list_tasks(_: str = Depends(require_api_key)):
-    """列出可用任务。"""
+    """List available tasks."""
     tasks = list_available_tasks()
     registered = scheduler.list_tasks()
     return {
@@ -2181,9 +2219,9 @@ async def agent_list_tasks(_: str = Depends(require_api_key)):
 
 @app.post("/api/agent/run")
 async def agent_run_task(req: AgentRunRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """立即执行任务 — 每次按请求参数即时构建，避免共享 _tasks 跨请求污染 (SRV-7)。
+    """Run a task immediately — built fresh from request parameters each call, avoiding shared _tasks cross-request pollution (SRV-7).
 
-    data_path 每次传入并重新加载数据，避免任务构建时烘焙过期数据 (AGT-5)。
+    data_path is passed in and reloaded every call, so stale data is never baked in at task-build time (AGT-5).
     """
     logger.info("agent/run: task_id=%s subject=%s grade=%s", req.task_id, req.subject, req.grade)
     run_kwargs = {"subject": req.subject, "grade": req.grade}
@@ -2197,7 +2235,7 @@ async def agent_run_task(req: AgentRunRequest, _: str = Depends(require_api_key)
 
 @app.post("/api/agent/schedule")
 async def agent_schedule_task(req: AgentScheduleRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """启用/禁用任务调度。"""
+    """Enable/disable task scheduling."""
     logger.info("agent/schedule: task_id=%s enable=%s", req.task_id, req.enable)
     if req.enable:
         ok = scheduler.enable_task(req.task_id)
@@ -2208,20 +2246,23 @@ async def agent_schedule_task(req: AgentScheduleRequest, _: str = Depends(requir
 
 @app.get("/api/agent/history")
 async def agent_history(limit: int = 20, _: str = Depends(require_api_key)):
-    """查看执行历史。"""
+    """View execution history."""
     history = scheduler.get_history(limit=limit)
     return {"total": len(history), "history": [r.to_dict() for r in history]}
 
 
 # ── Request Models (v0.6) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SafetyCheckRequest(BaseModel):
     text: str = Field(..., max_length=10000, description="待检查文本")
     grade: Annotated[str, BeforeValidator(_coerce_str)] = Field("3", pattern=r"^[1-9]$|^1[0-2]$", description="目标年级 1-12")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SafetyFilterRequest(BaseModel):
     text: str = Field(..., max_length=10000, description="待过滤文本")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class SafetyWordlistRequest(BaseModel):
     word: str = Field(..., max_length=100, description="敏感词")
     action: str = Field("add", max_length=10, description="add 或 remove")
@@ -2231,7 +2272,7 @@ class SafetyWordlistRequest(BaseModel):
 
 @app.post("/api/safety/check")
 async def safety_check(req: SafetyCheckRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """检查内容安全性。"""
+    """Check content safety."""
     logger.info("safety/check: grade=%s text=%s...", req.grade, req.text[:30])
     result = content_filter.check_text(req.text, req.grade)
     return result.to_dict()
@@ -2239,7 +2280,7 @@ async def safety_check(req: SafetyCheckRequest, _: str = Depends(require_api_key
 
 @app.post("/api/safety/filter")
 async def safety_filter(req: SafetyFilterRequest, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """过滤敏感词。"""
+    """Filter sensitive words."""
     logger.info("safety/filter: text=%s...", req.text[:30])
     filtered = content_filter.filter_sensitive(req.text)
     return {"filtered_text": filtered}
@@ -2251,7 +2292,7 @@ async def safety_wordlist(
     _: str = Depends(require_admin_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """管理敏感词库。"""
+    """Manage the sensitive-word list."""
     logger.info("safety/wordlist: action=%s word=%s", req.action, req.word)
     if req.action == "add":
         sensitive_wordlist.add(req.word)
@@ -2266,17 +2307,19 @@ async def safety_wordlist(
 
 @app.get("/api/safety/wordlist")
 async def safety_wordlist_list(_: str = Depends(require_api_key)):
-    """列出敏感词库。"""
+    """List the sensitive-word list."""
     return {"count": sensitive_wordlist.count, "words": sensitive_wordlist.list_words()}
 
 
 # ── Request Models (v0.6 desensitize) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class DesensitizeAnonRequest(BaseModel):
     records: list[dict[str, Any]] = Field(..., max_length=1000, description="待脱敏记录列表")
     name_mode: str = Field("id", max_length=10, description="匿名模式: id/mask")
     id_prefix: str = Field("S", max_length=10, description="ID前缀")
 
+# i18n: user-facing (OpenAPI field descriptions)
 class DesensitizeExportRequest(BaseModel):
     records: list[dict[str, Any]] = Field(..., max_length=1000, description="待脱敏记录列表")
     name_mode: str = Field("id", max_length=10, description="匿名模式: id/mask")
@@ -2290,7 +2333,7 @@ async def desensitize_anonymize(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """对记录列表进行脱敏。"""
+    """Anonymize a list of records."""
     logger.info("desensitize/anonymize: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode, id_prefix=req.id_prefix)
     anon = DataAnonymizer(cfg)
@@ -2308,11 +2351,11 @@ async def desensitize_export(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """导出脱敏数据。"""
+    """Export anonymized data."""
     logger.info("desensitize/export: %d records, mode=%s", len(req.records), req.name_mode)
     cfg = DesensitizeConfig(name_mode=req.name_mode)
     anon = DataAnonymizer(cfg)
-    # SEC-19: 单向导出后反匿名表已清理, name_count 从脱敏结果中统计唯一匿名名
+    # SEC-19: after one-way export the reverse-anonymization map is cleared; name_count counts unique anonymized names from the results
     desensitized = anon.export_desensitized(req.records)
     name_fields = ("student_name", "name")
     unique_names = {
@@ -2325,15 +2368,15 @@ async def desensitize_export(
 
 
 # ============================================================================
-# 学科课程平台 (PRD math-doubao, 平台-内容解耦)
-# 路由学科无关: 取 subject 参数 → SubjectRegistry 分发到具体学科模块。
-# 加学科 (physics/chemistry/...) 零改本段 — 只在 course/subjects/ 注册即可。
+# Subject course platform (PRD math-doubao, platform-content decoupling)
+# Routes are subject-agnostic: the subject parameter selects a subject module via SubjectRegistry.
+# Adding a subject (physics/chemistry/...) requires zero changes here — just register it under course/subjects/.
 # ============================================================================
 
 
 @app.get("/api/course/subjects")
 async def course_subjects(_: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """列出已注册学科及其能力清单。"""
+    """List registered subjects and their capability manifests."""
     if subject_registry is None:
         raise HTTPException(503, "subject registry not ready")
     return {"subjects": subject_registry.manifests()}
@@ -2349,11 +2392,11 @@ async def course_graph_nodes(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """学科知识图谱节点列表 (按 stage/strand/grade/node_type 过滤)。"""
+    """Subject knowledge-graph node list (filter by stage/strand/grade/node_type)."""
     mod = _get_subject_module(subject)
     kg = mod.knowledge_graph()
     if kg is None:
-        raise HTTPException(501, f"学科 {subject} 未实现知识图谱")
+        raise HTTPException(501, f"subject {subject} does not implement a knowledge graph")
     nodes = kg.query(stage=stage, strand=strand, grade=grade, node_type=node_type)
     return {"subject": subject, "count": len(nodes), "nodes": [n.to_dict() for n in nodes[:200]]}
 
@@ -2365,14 +2408,14 @@ async def course_graph_node(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """学科知识图谱节点详情 (公式/易错点/关联题型/前置链)。"""
+    """Subject knowledge-graph node detail (formula / common mistakes / related problem types / prerequisite chain)."""
     mod = _get_subject_module(subject)
     kg = mod.knowledge_graph()
     if kg is None:
-        raise HTTPException(501, f"学科 {subject} 未实现知识图谱")
+        raise HTTPException(501, f"subject {subject} does not implement a knowledge graph")
     node = kg.get_node(node_id)
     if node is None:
-        raise HTTPException(404, f"节点不存在: {node_id}")
+        raise HTTPException(404, f"node not found: {node_id}")
     return {
         "node": node.to_dict(),
         "prerequisites_chain": kg.prerequisites_chain(node_id),
@@ -2397,15 +2440,15 @@ async def course_lesson_script(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """按 5E 生成学科苏格拉底课稿 DSL (UC-M1)。
+    """Generate a subject Socratic lesson-script DSL following 5E (UC-M1).
 
-    issue #19 P0: 返回 spec DSL v3.0 合规结构 (fusion-core SOCRATIC_DSL_V3_SCHEMA),
-    供下游 artifacts-engine/trainer/bench 消费。to_dict() 保留内部教学脚本格式。
+    issue #19 P0: returns a spec DSL v3.0 compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
+    for downstream artifacts-engine/trainer/bench consumption. to_dict() preserves the internal teaching-script format.
     """
     mod = _get_subject_module(subject)
     tutor = mod.socratic_tutor()
     if tutor is None:
-        raise HTTPException(501, f"学科 {subject} 未实现苏格拉底课稿")
+        raise HTTPException(501, f"subject {subject} does not implement a socratic lesson script")
     dsl = await tutor.generate_lesson_script(
         topic=req.topic, grade=req.grade, knowledge_node_id=req.knowledge_node_id,
         prerequisites=req.prerequisites or None, misconceptions=req.misconceptions or None,
@@ -2426,13 +2469,13 @@ async def course_checkpoint(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """checkpoint 判分 — 学科 verifier 数值权威 (UC-M2)。"""
+    """Checkpoint judging — the subject verifier is the numeric authority (UC-M2)."""
     from .course.models import Checkpoint
     mod = _get_subject_module(subject)
     tutor = mod.socratic_tutor()
     verifier = mod.verifier()
     if tutor is None and verifier is None:
-        raise HTTPException(501, f"学科 {subject} 未实现判分")
+        raise HTTPException(501, f"subject {subject} does not implement checkpoint judging")
     cp = Checkpoint.from_dict(req.checkpoint)
     if tutor is not None:
         result = await tutor.judge_checkpoint(cp, req.student_answer)
@@ -2456,11 +2499,11 @@ async def course_scene_compile(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """题目 → 参数化场景 DSL (SymPy 数值覆写, UC-M2 动画渲染)。"""
+    """Problem to parameterized scene DSL (SymPy numeric overwrite, UC-M2 animation rendering)."""
     mod = _get_subject_module(subject)
     compiler = mod.scene_compiler()
     if compiler is None:
-        raise HTTPException(501, f"学科 {subject} 未实现场景编译")
+        raise HTTPException(501, f"subject {subject} does not implement scene compilation")
     dsl = await compiler.compile(req.problem_text, req.knowledge_node_id)
     return dsl.to_dict()
 
@@ -2477,11 +2520,11 @@ async def course_error_attribution(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """错题 GraphRAG 逆向归因 — 沿前置依赖回溯病灶路径 (UC-M4)。"""
+    """Wrong-answer GraphRAG reverse attribution — trace the faulty path along prerequisite dependencies (UC-M4)."""
     mod = _get_subject_module(subject)
     kg = mod.knowledge_graph()
     if kg is None:
-        raise HTTPException(501, f"学科 {subject} 未实现知识图谱")
+        raise HTTPException(501, f"subject {subject} does not implement a knowledge graph")
     chain = kg.reverse_attribution(req.node_id, max_depth=req.max_depth)
     node = kg.get_node(req.node_id)
     return {
@@ -2499,7 +2542,7 @@ async def course_mastery(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """学生学科掌握度热力 (置信度启发式, DKT 替代, UC-M3)。"""
+    """Student subject-mastery heatmap (confidence heuristic, DKT alternative, UC-M3)."""
     if subject_registry is None:
         raise HTTPException(503, "subject registry not ready")
     return {
@@ -2511,13 +2554,13 @@ async def course_mastery(
 
 
 def _get_subject_module(subject: str):
-    """从 registry 取学科模块, 未注册返 404。"""
+    """Fetch the subject module from the registry; unregistered returns 404."""
     if subject_registry is None:
         raise HTTPException(503, "subject registry not ready")
     try:
         return subject_registry.get(subject)
     except Exception:
-        raise HTTPException(404, f"学科未注册: {subject}")
+        raise HTTPException(404, f"subject not registered: {subject}")
 
 
 @app.get("/api/course/{subject}/problem-bank")
@@ -2531,11 +2574,11 @@ async def course_problem_bank(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """学科题库列表 (三元组打标: 知识点 + 认知层级 + 错因)。"""
+    """Subject problem-bank list (triplet tagging: knowledge point + cognitive level + error cause)."""
     mod = _get_subject_module(subject)
     bank = mod.problem_bank()
     if bank is None:
-        raise HTTPException(404, f"学科 {subject} 未实现题库")
+        raise HTTPException(404, f"subject {subject} does not implement a problem bank")
     problems = bank.query(
         template_id=template_id, difficulty_layer=difficulty_layer,
         knowledge_node_id=knowledge_node_id, misconception_tag=misconception_tag, kind=kind,
@@ -2555,19 +2598,20 @@ async def course_problem_detail(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """单题详情 (含变量/期望答案/认知点)。"""
+    """Single problem detail (variables / expected answer / cognitive points)."""
     mod = _get_subject_module(subject)
     bank = mod.problem_bank()
     if bank is None:
-        raise HTTPException(404, f"学科 {subject} 未实现题库")
+        raise HTTPException(404, f"subject {subject} does not implement a problem bank")
     p = bank.get(problem_id)
     if p is None:
-        raise HTTPException(404, f"题目不存在: {problem_id}")
+        raise HTTPException(404, f"problem not found: {problem_id}")
     return {"subject": subject, "problem": p.to_dict()}
 
 
-# ── 课堂模块 (classroom PRD E1-E6, K1 文字版) ──
+# ── Classroom module (classroom PRD E1-E6, K1 text mode) ──
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ClassroomScriptRequest(BaseModel):
     subject: str = "数学"
     grade: str = "5"
@@ -2575,6 +2619,7 @@ class ClassroomScriptRequest(BaseModel):
     lesson_plan: dict = {}
 
 
+# i18n: user-facing (OpenAPI field descriptions)
 class ClassroomPackRequest(BaseModel):
     subject: str = "数学"
     grade: str = "5"
@@ -2596,8 +2641,8 @@ class ClassroomAnswerRequest(BaseModel):
     expected_answer: _StrAny = ""
     question_type: str = "open"  # open|numeric|multiple_choice|expression
     grade: str = "5"
-    # multiple_choice 判题用: LLM 生成的 answer 可能是字母("A")而 options 是
-    # 完整选项文本 — 前端把选项列表带上, 判题端做字母↔文本双向映射。
+    # multiple_choice judging: the LLM-generated answer may be a letter ("A") while options are
+    # full option texts — the frontend sends the option list, and the judge maps letters↔texts both ways.
     options: list[str] = Field(default_factory=list)
 
 
@@ -2612,9 +2657,9 @@ async def classroom_script(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E1 讲课脚本生成 — 逐页讲稿 + 提问点 + emotion_tag。"""
+    """E1 teaching script generation — page-by-page narration + question points + emotion_tag."""
     if lesson_scripter is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     script = await lesson_scripter.generate(
         subject=req.subject, grade=req.grade, topic=req.topic,
         lesson_plan=req.lesson_plan or None,
@@ -2628,9 +2673,9 @@ async def classroom_pack(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E2 课程包打包 — 教案+课件+测验+脚本 → class_id + 6 位课堂码。"""
+    """E2 course pack packaging — lesson plan + slides + quiz + script into a class_id + 6-digit classroom code."""
     if packager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     pkg = packager.pack(
         subject=req.subject, grade=req.grade, topic=req.topic,
         lesson_plan=req.lesson_plan, slides=req.slides,
@@ -2645,12 +2690,12 @@ async def classroom_get_pack(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E3 学生端拉取课程包 — 按课堂码或 class_id。"""
+    """E3 student-side pack fetch — by classroom code or class_id."""
     if packager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     pkg = packager.get_by_code(code_or_id) or packager.get_by_id(code_or_id)
     if pkg is None:
-        raise HTTPException(404, "课堂码无效或课程包已删除")
+        raise HTTPException(404, "invalid classroom code or pack deleted")
     return pkg.to_dict()
 
 
@@ -2659,9 +2704,9 @@ async def classroom_list_packs(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """教师端课程包列表。"""
+    """Teacher-side course pack list."""
     if packager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     pkgs = packager.list_all()
     return {"count": len(pkgs), "packs": [p.to_manifest() for p in pkgs]}
 
@@ -2672,12 +2717,12 @@ async def classroom_create_session(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E5 建课堂会话 — K1 文字版仅落库 (无 LiveKit token)。"""
+    """E5 create classroom session — K1 text mode only persists to the store (no LiveKit token)."""
     if packager is None or session_manager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     pkg = packager.get_by_code(req.code)
     if pkg is None:
-        raise HTTPException(404, "课堂码无效或课程包已删除")
+        raise HTTPException(404, "invalid classroom code or pack deleted")
     sess = session_manager.create_session(pkg.class_id, req.code, req.student_id)
     return {"session": sess.to_dict(), "package": pkg.to_dict()}
 
@@ -2689,12 +2734,12 @@ async def classroom_finish_session(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E5 下课 — 提交课堂记录。"""
+    """E5 class dismissal — submit the classroom record."""
     if session_manager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     sess = session_manager.finish_session(session_id, abandoned=abandoned)
     if sess is None:
-        raise HTTPException(404, "会话不存在")
+        raise HTTPException(404, "session not found")
     return {"session": sess.to_dict()}
 
 
@@ -2704,9 +2749,9 @@ async def classroom_answer(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E4 随堂作答判分 — 复用 AssessmentEngine / course checkpoint。"""
+    """E4 in-class answer judging — reuses AssessmentEngine / course checkpoint."""
     if session_manager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     correct, feedback, detail = await _judge_classroom_answer(req)
     rec = session_manager.record_answer(
         req.session_id, req.question_id, req.student_answer,
@@ -2716,13 +2761,13 @@ async def classroom_answer(
 
 
 async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, str, str]:
-    """判分分发: numeric/multiple_choice 用本地逻辑, open/expression 委托 AssessmentEngine。"""
+    """Judging dispatch: numeric/multiple_choice use local logic, open/expression delegate to AssessmentEngine."""
     qtype = req.question_type
     if qtype == "multiple_choice":
         expected = str(req.expected_answer).strip().upper()
         student = req.student_answer.strip()
-        # 选项映射: answer 是字母("A")而 student 提交选项文本(或反之)时双向归一。
-        # LLM 出题两种形态都出现: options=["A","B"] 或 options=["3个5相加",...]+answer="A"
+        # Option mapping: when the answer is a letter ("A") but the student submitted option text (or vice versa), normalize both ways.
+        # The LLM emits both forms: letter options (options=["A","B"]) or full-text options with a letter answer
         if req.options and len(student) != 1:
             letters = "ABCDEFGH"
             for i, opt in enumerate(req.options[: len(letters)]):
@@ -2730,17 +2775,20 @@ async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, st
                     student = letters[i]
                     break
         elif req.options and len(expected) == 1:
-            # expected 是字母而 student 是字母 — 已全等; student 是选项文本的情形上面已归一
+            # expected is a letter and student is a letter — already equal; the option-text case was normalized above
             pass
         correct = student.upper() == expected
+        # i18n: user-facing (student feedback)
         return correct, "对!" if correct else f"应为 {req.expected_answer}", "multiple_choice"
     if qtype == "numeric":
         try:
             ok = abs(float(req.student_answer) - float(req.expected_answer)) <= 0.01 * max(1, abs(float(req.expected_answer)))
+            # i18n: user-facing (student feedback)
             return ok, "数值正确" if ok else f"应为 {req.expected_answer}", "numeric"
         except (ValueError, TypeError):
+            # i18n: user-facing (student feedback)
             return False, f"非数值, 应为 {req.expected_answer}", "numeric"
-    # open / expression 委托 LLM 判分
+    # open / expression delegate to LLM judging
     if assessment_engine is not None:
         try:
             result = await assessment_engine.grade_math(
@@ -2749,9 +2797,10 @@ async def _judge_classroom_answer(req: ClassroomAnswerRequest) -> tuple[bool, st
             )
             return bool(getattr(result, "correct", False)), getattr(result, "feedback", ""), "llm"
         except Exception as exc:
-            logger.warning("classroom LLM 判分失败: %s, 降级字符串", exc)
-    # 兜底: 字符串包含
+            logger.warning("classroom LLM judging failed: %s, falling back to string match", exc)
+    # Fallback: string containment
     ok = req.expected_answer.strip() in req.student_answer if req.expected_answer else False
+    # i18n: user-facing (student feedback)
     return ok, "参考答案匹配" if ok else "未匹配参考答案", "string_fallback"
 
 
@@ -2762,9 +2811,9 @@ async def classroom_page_view(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """记录翻页进度 (E5 pages_viewed)。"""
+    """Record page-view progress (E5 pages_viewed)."""
     if session_manager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     session_manager.record_page_view(session_id, page_index)
     return {"session_id": session_id, "page_index": page_index, "recorded": True}
 
@@ -2775,9 +2824,9 @@ async def classroom_report(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """E6 课堂报告 — attendance/pages/quiz_stat/question_stat/weak_points。"""
+    """E6 classroom report — attendance/pages/quiz_stat/question_stat/weak_points."""
     if session_manager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     report = session_manager.build_report(session_id)
     return report.to_dict()
 
@@ -2788,21 +2837,21 @@ async def classroom_list_sessions(
     _: str = Depends(require_api_key),
     _r: None = Depends(_require_ready),
 ):
-    """教师端某课程包的会话列表。"""
+    """Teacher-side session list for one course pack."""
     if session_manager is None:
-        raise HTTPException(503, "课堂模块未就绪")
+        raise HTTPException(503, "classroom module not ready")
     sessions = session_manager.store.list_sessions(class_id)
     return {"class_id": class_id, "count": len(sessions), "sessions": sessions}
 
 
-# WebSocket: 苏格拉底课稿流式生成 (PRD §12.2, 5 事件协议)
-# issue #20: 两阶段 CoT pipeline — enable_thinking 流式推理 → 结构化 DSL
+# WebSocket: Socratic lesson-script streaming generation (PRD §12.2, 5-event protocol)
+# issue #20: two-stage CoT pipeline — enable_thinking streams reasoning into a structured DSL
 @app.websocket("/ws/socratic-dsl")
 async def ws_socratic_dsl(websocket: WebSocket):
-    """流式推送课稿生成: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error。
+    """Stream lesson-script generation: start → stream_chunk(thinking) → stage_change → dsl_complete → finish/error.
 
-    issue #20: FUSION_K12_COT_ENABLED=true 时走真两阶段 — 流式推送 thinking tokens,
-    否则走占位提示 (向后兼容)。
+    issue #20: with FUSION_K12_COT_ENABLED=true the real two-stage path runs — thinking tokens are streamed;
+    otherwise a placeholder hint is sent (backward compatible).
     """
     from ._prompt import build_prompt
     from .course.cot_pipeline import (
@@ -2819,7 +2868,7 @@ async def ws_socratic_dsl(websocket: WebSocket):
         topic = str(payload.get("topic", ""))
         grade = str(payload.get("grade", "5"))
         if not topic:
-            await websocket.send_json({"event": "error", "data": {"message": "topic 必填"}})
+            await websocket.send_json({"event": "error", "data": {"message": "topic is required"}})
             await websocket.close()
             return
         await websocket.send_json({"event": "start", "data": {"stage": "thinking", "cot_enabled": cot_enabled()}})
@@ -2835,13 +2884,13 @@ async def ws_socratic_dsl(websocket: WebSocket):
             return
         tutor = mod.socratic_tutor()
         if tutor is None:
-            await websocket.send_json({"event": "error", "data": {"message": f"学科 {subject} 未实现课稿"}})
+            await websocket.send_json({"event": "error", "data": {"message": f"subject {subject} does not implement a lesson script"}})
             await websocket.close()
             return
 
         thinking_text = ""
         if cot_enabled() and mlx_client is not None:
-            # 阶段 1: 真两阶段 CoT — 流式推送 thinking tokens
+            # Stage 1: real two-stage CoT — stream thinking tokens
             thinking_prompt = build_prompt(
                 COT_THINKING_PROMPT,
                 topic=topic, grade=grade,
@@ -2861,7 +2910,8 @@ async def ws_socratic_dsl(websocket: WebSocket):
             thinking_text, _ = extract_thinking(thinking_text)
             logger.info("ws_socratic_dsl: CoT thinking %d chars", len(thinking_text))
         else:
-            # 向后兼容: 占位提示
+            # Backward compatible: placeholder hint
+            # i18n: user-facing (progress text streamed to the classroom UI)
             await websocket.send_json({"event": "stream_chunk", "data": {"stage": "thinking", "text": "正在分析知识点与教学路径..."}})
 
         await websocket.send_json({"event": "stage_change", "data": {"new_stage": "dsl"}})
@@ -2872,12 +2922,12 @@ async def ws_socratic_dsl(websocket: WebSocket):
             misconceptions=payload.get("misconceptions") or None,
             layer=str(payload.get("layer", "B")) or "B",
         )
-        # issue #19 P0: 输出 spec DSL v3.0 合规结构 (fusion-core SOCRATIC_DSL_V3_SCHEMA)
-        # to_dict() 保留内部教学脚本格式, to_spec_dict() 转 spec 合约供下游消费
+        # issue #19 P0: emit a spec DSL v3.0 compliant structure (fusion-core SOCRATIC_DSL_V3_SCHEMA)
+        # to_dict() preserves the internal teaching-script format, to_spec_dict() converts to the spec contract for downstream consumers
         await websocket.send_json({"event": "dsl_complete", "data": {"dsl": dsl.to_spec_dict(), "thinking": thinking_text}})
         await websocket.send_json({"event": "finish", "data": {}})
     except Exception as exc:
-        logger.warning("ws_socratic_dsl 异常: %s", exc)
+        logger.warning("ws_socratic_dsl exception: %s", exc)
         try:
             await websocket.send_json({"event": "error", "data": {"message": str(exc)}})
         except Exception:
@@ -2889,18 +2939,18 @@ async def ws_socratic_dsl(websocket: WebSocket):
             pass
 
 
-# ==================== 数字人平台层 (K2/K3) ====================
+# ==================== Digital-human platform layer (K2/K3) ====================
 
 
 @app.post("/api/digital-human/session")
 async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """创建数字人会话 — 加载讲稿, prewarm 插件, 返回 session_id + 页面清单。
+    """Create a digital-human session — load the script, prewarm plugins, return session_id + page manifest.
 
-    mode: topic=自由主题(默认) | course=按教案讲(class_id 必填, 复用课堂包 script_pages)
-        | expand=举一反三(class_id 可选, 图谱上下文+扩展讲解) | qa=纯问答(直接提问)
+    mode: topic=free topic (default) | course=teach by lesson plan (class_id required, reuses the classroom pack script_pages)
+        | expand=variation drills (class_id optional, graph context + extended narration) | qa=pure Q&A (ask directly)
     """
     if digital_human_manager is None:
-        raise HTTPException(503, "digital_human_manager 未初始化")
+        raise HTTPException(503, "digital_human_manager not initialized")
     subject = str(req.get("subject", "math"))
     topic = str(req.get("topic", ""))
     grade = str(req.get("grade", "3"))
@@ -2911,10 +2961,10 @@ async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: No
     class_id = str(req.get("class_id", ""))
     knowledge_node_id = str(req.get("knowledge_node_id", ""))
     lesson_plan = req.get("lesson_plan") or None
-    # 复用已有 script — 若 req 带 script (pages), 注入 lesson_plan 避 DH 重生成讲稿
+    # Reuse an existing script — if req carries script (pages), inject it into lesson_plan so the DH does not regenerate the narration
     script_pages = req.get("script", {}).get("pages") if isinstance(req.get("script"), dict) else None
-    # course/expand 模式: 从课堂包取元数据 — course 直接复用 script_pages (零 LLM);
-    # expand 只取 topic/subject/grade, 讲稿走图谱上下文+扩展生成
+    # course/expand modes: pull metadata from the classroom pack — course reuses script_pages directly (zero LLM);
+    # expand takes only topic/subject/grade, narration goes through graph context + extended generation
     if mode in ("course", "expand") and class_id:
         try:
             pack = packager.get_by_id(class_id) or packager.get_by_code(class_id)
@@ -2922,29 +2972,29 @@ async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: No
             pages = script_obj.get("pages", []) if isinstance(script_obj, dict) else []
             if pages and mode == "course" and not script_pages:
                 script_pages = pages
-            # 两种模式都从包补元数据 (expand 也需要 topic)
+            # Both modes fill metadata from the pack (expand also needs topic)
             if pack is not None:
                 topic = topic or str(getattr(pack, "topic", "") or "")
                 subject = subject if req.get("subject") else str(getattr(pack, "subject", subject) or subject)
                 grade = grade if req.get("grade") else str(getattr(pack, "grade", grade) or grade)
             if mode == "course" and not pages:
-                logger.warning("dh course mode: 课堂包 %s 无讲稿页 (pages=%s)", class_id, len(pages))
+                logger.warning("dh course mode: classroom pack %s has no script pages (pages=%s)", class_id, len(pages))
         except Exception as exc:
-            logger.warning("dh %s mode: 课堂包 %s 加载失败, 走常规生成: %s", mode, class_id, exc)
+            logger.warning("dh %s mode: classroom pack %s load failed, falling back to normal generation: %s", mode, class_id, exc)
     if script_pages and lesson_plan is None:
         lesson_plan = {}
     if script_pages:
         lesson_plan["script_pages"] = script_pages
-    # mode=qa: 纯问答 — topic 允许为空 (进来就问)
+    # mode=qa: pure Q&A — topic may be empty (question comes first)
     if not topic and mode != "qa":
-        raise HTTPException(400, "topic 必填")
+        raise HTTPException(400, "topic is required")
     try:
         sess = await digital_human_manager.create_session(
             subject, topic, grade, code=code, student_id=student_id, layer=layer,
             lesson_plan=lesson_plan, mode=mode, knowledge_node_id=knowledge_node_id,
         )
     except Exception as exc:
-        logger.error("dh_create_session 失败: %s", exc, exc_info=True)
+        logger.error("dh_create_session failed: %s", exc, exc_info=True)
         raise HTTPException(500, str(exc))
     return {
         "session_id": sess.session_id, "page_count": sess.page_count,
@@ -2958,13 +3008,13 @@ async def dh_create_session(req: dict, _: str = Depends(require_api_key), _r: No
 
 @app.post("/api/digital-human/token")
 async def dh_token(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """签 LiveKit token + room 名。livekit 不可用时返 WS-only 标志。"""
+    """Sign a LiveKit token + room name. When livekit is unavailable a WS-only flag is returned."""
     if digital_human_manager is None:
-        raise HTTPException(503, "digital_human_manager 未初始化")
+        raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
     sess = digital_human_manager.get(session_id)
     if sess is None:
-        raise HTTPException(404, "会话不存在")
+        raise HTTPException(404, "session not found")
     room = f"class_{sess.code or sess.session_id}"
     identity = f"student_{sess.student_id or session_id[-6:]}"
     token = ""
@@ -2973,7 +3023,7 @@ async def dh_token(req: dict, _: str = Depends(require_api_key), _r: None = Depe
         token = sess.livekit.sign_token(identity, room)
         lk_available = True
     except Exception as exc:
-        logger.info("dh_token: LiveKit 不可用, WS 降级: %s", exc)
+        logger.info("dh_token: LiveKit unavailable, WS fallback: %s", exc)
     return {
         "session_id": session_id, "room": room, "identity": identity,
         "token": token, "livekit_available": lk_available,
@@ -2983,76 +3033,76 @@ async def dh_token(req: dict, _: str = Depends(require_api_key), _r: None = Depe
 
 @app.post("/api/digital-human/narrate")
 async def dh_narrate(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """讲解指定页 — TTS 合成 + Avatar 渲染, 返回音频/帧元数据 (Phase B: WS 传音频)。"""
+    """Narrate a given page — TTS synthesis + Avatar rendering, returns audio/frame metadata (Phase B: audio over WS)."""
     if digital_human_manager is None:
-        raise HTTPException(503, "digital_human_manager 未初始化")
+        raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
     idx = int(req.get("idx", 0))
     sess = digital_human_manager.get(session_id)
     if sess is None:
-        raise HTTPException(404, "会话不存在")
+        raise HTTPException(404, "session not found")
     try:
         res = await sess.narrate_page(idx)
     except Exception as exc:
-        logger.error("dh_narrate 失败: %s", exc, exc_info=True)
+        logger.error("dh_narrate failed: %s", exc, exc_info=True)
         raise HTTPException(500, str(exc))
     return res
 
 
 @app.post("/api/digital-human/raise-hand")
 async def dh_raise_hand(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """举手提问 — LLM 流式应答 (学生文字输入, Phase D 加语音)。"""
+    """Raise-hand question — LLM streaming answer (student text input, Phase D adds voice)."""
     if digital_human_manager is None:
-        raise HTTPException(503, "digital_human_manager 未初始化")
+        raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
     text = str(req.get("text", ""))
     image_b64 = str(req.get("image_b64", "")).strip()
     sess = digital_human_manager.get(session_id)
     if sess is None:
-        raise HTTPException(404, "会话不存在")
+        raise HTTPException(404, "session not found")
     if not text and not image_b64:
-        raise HTTPException(400, "text 或 image_b64 必填其一")
+        raise HTTPException(400, "either text or image_b64 is required")
     try:
         res = await sess.raise_hand(text, image_b64=image_b64)
     except Exception as exc:
-        logger.error("dh_raise_hand 失败: %s", exc, exc_info=True)
+        logger.error("dh_raise_hand failed: %s", exc, exc_info=True)
         raise HTTPException(500, str(exc))
     return res
 
 
 @app.post("/api/digital-human/finish")
 async def dh_finish(req: dict, _: str = Depends(require_api_key), _r: None = Depends(_require_ready)):
-    """结束数字人会话 — 释放资源, 落库课堂记录。"""
+    """End the digital-human session — release resources, persist the classroom record."""
     if digital_human_manager is None:
-        raise HTTPException(503, "digital_human_manager 未初始化")
+        raise HTTPException(503, "digital_human_manager not initialized")
     session_id = str(req.get("session_id", ""))
     try:
         res = await digital_human_manager.finish(session_id)
     except Exception as exc:
-        logger.error("dh_finish 失败: %s", exc, exc_info=True)
+        logger.error("dh_finish failed: %s", exc, exc_info=True)
         raise HTTPException(500, str(exc))
     if res is None:
-        raise HTTPException(404, "会话不存在")
+        raise HTTPException(404, "session not found")
     return res
 
 
 @app.websocket("/ws/digital-human/{session_id}")
 async def ws_digital_human(websocket: WebSocket, session_id: str):
-    """数字人 WS — 推送状态事件/情绪/音频, 收学生动作 (narrate/raise_hand/finish)。
+    """Digital-human WS — pushes status events/emotion/audio, receives student actions (narrate/raise_hand/finish).
 
-    Phase B: TTS 音频走 WS 二进制帧。Phase C: 视频走 LiveKit。
+    Phase B: TTS audio over WS binary frames. Phase C: video over LiveKit.
     """
     await websocket.accept()
     if digital_human_manager is None:
-        await websocket.send_json({"event": "error", "data": {"message": "manager 未初始化"}})
+        await websocket.send_json({"event": "error", "data": {"message": "manager not initialized"}})
         await websocket.close()
         return
     sess = digital_human_manager.get(session_id)
     if sess is None:
-        await websocket.send_json({"event": "error", "data": {"message": "会话不存在"}})
+        await websocket.send_json({"event": "error", "data": {"message": "session not found"}})
         await websocket.close()
         return
-    logger.info("ws_digital_human[%s]: 连接", session_id)
+    logger.info("ws_digital_human[%s]: connected", session_id)
     try:
         await websocket.send_json({"event": "ready", "data": {
             "page_count": sess.page_count, "pages": sess.page_manifest(),
@@ -3087,7 +3137,7 @@ async def ws_digital_human(websocket: WebSocket, session_id: str):
                     await websocket.send_json({"event": "finished", "data": {"session_id": session_id}})
                     break
                 else:
-                    await websocket.send_json({"event": "error", "data": {"message": f"未知 action: {action}"}})
+                    await websocket.send_json({"event": "error", "data": {"message": f"unknown action: {action}"}})
             elif "bytes" in msg:
                 pcm = msg["bytes"]
                 await websocket.send_json({"event": "asr_start", "data": {}})
@@ -3096,9 +3146,9 @@ async def ws_digital_human(websocket: WebSocket, session_id: str):
                 if res.get("has_audio") and sess._last_audio:
                     await websocket.send_bytes(sess._last_audio)
     except WebSocketDisconnect:
-        logger.info("ws_digital_human[%s]: 断开", session_id)
+        logger.info("ws_digital_human[%s]: disconnected", session_id)
     except Exception as exc:
-        logger.warning("ws_digital_human[%s] 异常: %s", session_id, exc)
+        logger.warning("ws_digital_human[%s] exception: %s", session_id, exc)
         try:
             await websocket.send_json({"event": "error", "data": {"message": str(exc)}})
         except Exception:
@@ -3110,10 +3160,10 @@ async def ws_digital_human(websocket: WebSocket, session_id: str):
             pass
 
 
-# 教师 Web GUI 静态挂载 (PRD GUI §2: dist/ 由 serve.py StaticFiles 挂 /, API 走 /api/*)
+# Teacher Web GUI static mount (PRD GUI §2: dist/ mounted at / by serve.py StaticFiles, API under /api/*)
 _WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 if _WEB_DIST.exists():
     app.mount("/", StaticFiles(directory=str(_WEB_DIST), html=True), name="web-gui")
-    logger.info("web_gui: 挂载 dist/ %s", _WEB_DIST)
+    logger.info("web_gui: mounted dist/ %s", _WEB_DIST)
 else:
-    logger.debug("web_gui: dist/ 不存在, 跳过静态挂载 (开发模式用 vite dev)")
+    logger.debug("web_gui: dist/ missing, skipping static mount (use vite dev in development)")
